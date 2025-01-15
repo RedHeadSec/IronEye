@@ -2,6 +2,7 @@ use ldap3::{LdapConn, Scope, SearchEntry, result::Result, LdapConnSettings};
 use std::time::Duration;
 use crate::args::ConnectionArgs;
 use chrono::Local;
+use crate::args::ProxyConfig;
 
 #[derive(Clone)]
 pub struct LdapConfig {
@@ -12,6 +13,7 @@ pub struct LdapConfig {
     pub hash: Option<String>,
     pub secure_ldaps: bool,
     pub timestamp_format: bool,
+    pub proxy: Option<ProxyConfig>
 }
 
 pub fn ldap_connect(config: &LdapConfig) -> Result<()> {

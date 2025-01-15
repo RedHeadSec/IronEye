@@ -70,6 +70,7 @@ fn main() {
                             hash: args.hash.clone(),
                             secure_ldaps: args.secure_ldaps,
                             timestamp_format: args.timestamp_format,
+                            proxy: args.proxy.clone()
                         };
                         match ldap_connect(&ldap_config) {
                             Ok(_) => {

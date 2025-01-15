@@ -10,6 +10,56 @@ Ldapper port with added features:
 - More default queries such as what Ldeep has
 
 
+Ldeep
+commands:
+  available commands
+
+  {auth_policies,bitlockerkeys,computers,conf,delegations,domain_policy,fsmo,gmsa,gpo,groups,machines,ou,pkis,pso,sccm,shadow_principals,silos,smsa,subnets,templates,trusts,users,zones,from_guid,from_sid,laps,memberships,membersof,object,sddl,silo,zone,all,enum_users,search,whoami,add_to_group,change_uac,create_computer,create_user,modify_password,remove_from_group,unlock}
+    auth_policies       List the authentication policies configured in the Active Directory.
+    bitlockerkeys       Extract the bitlocker recovery keys.
+    computers           List the computer hostnames and resolve them if --resolve is specify.
+    conf                Dump the configuration partition of the Active Directory.
+    delegations         List accounts configured for any kind of delegation.
+    domain_policy       Return the domain policy.
+    fsmo                List FSMO roles.
+    gmsa                List the gmsa accounts and retrieve secrets(NT + kerberos keys) if possible.
+    gpo                 Return the list of Group policy objects.
+    groups              List the groups.
+    machines            List the machine accounts.
+    ou                  Return the list of organizational units with linked GPO.
+    pkis                List pkis.
+    pso                 List the Password Settings Objects.
+    sccm                List servers related to SCCM infrastructure (Primary/Secondary Sites and Distribution Points).
+    shadow_principals   List the shadow principals and the groups associated with.
+    silos               List the silos configured in the Active Directory.
+    smsa                List the smsa accounts and the machines they are associated with.
+    subnets             List sites and associated subnets.
+    templates           List certificate templates.
+    trusts              List the domain's trust relationships.
+    users               List users according to a filter.
+    zones               List the DNS zones configured in the Active Directory.
+    from_guid           Return the object associated with the given `guid`.
+    from_sid            Return the object associated with the given `sid`.
+    laps                Return the LAPS passwords. If a target is specified, only retrieve the LAPS password for this one.
+    memberships         List the group for which `account` belongs to.
+    membersof           List the members of `group`.
+    object              Return the records containing `object` in a CN.
+    sddl                Returns the SDDL of an object given it's CN.
+    silo                Get information about a specific `silo`.
+    zone                Return the records of a DNS zone.
+    all                 Collect and store computers, domain_policy, zones, gpo, groups, ou, users, trusts, pso information
+    enum_users          Anonymously enumerate users with LDAP pings.
+    search              Query the LDAP with `filter` and retrieve ALL or `attributes` if specified.
+    whoami              Return user identity.
+    add_to_group        Add `user` to `group`.
+    change_uac          Change user account control
+    create_computer     Create a computer account
+    create_user         Create a user account
+    modify_password     Change `user`'s password.
+    remove_from_group   Remove `user` from `group`.
+    unlock              Unlock `user`
+
+
 ## Getting started
 
 Blah
