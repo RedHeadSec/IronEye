@@ -9,7 +9,7 @@ pub struct ConnectionArgs {
     pub dc_ip: String,
     pub hash: Option<String>,
     pub timestamp_format: bool,  // New field for timestamp formatting
-    pub secure_ldaps: bool,      // New field for LDAPS
+    pub secure_ldaps: bool      // New field for LDAPS
 }
 
 pub struct SprayArgs {
@@ -18,6 +18,10 @@ pub struct SprayArgs {
     pub domain: String,
     pub dc_ip: String,
     pub hash: Option<String>,
+    pub timestamp_format: bool,  // New field for timestamp formatting   
+    //pub threads: u32,            // New field for number of threads
+    //pub delay: u64,              // New field for delay between requests
+    //pub timeout: u64,            // New field for timeout
 }
 
 pub fn get_connect_arguments() -> Option<ConnectionArgs> {
@@ -165,6 +169,14 @@ pub fn get_spray_arguments() -> Option<SprayArgs> {
                 .required(false)
                 .conflicts_with("password")
         )
+        .arg(
+            Arg::new("timestamp")
+                .short('t')
+                .long("timestamp")
+                .action(clap::ArgAction::SetTrue)
+                .help("Format timestamps as DD/MM/YYYY HH:MM:SS")
+                .required(false)
+        )
         .get_matches();
 
     let userfile = matches.get_one::<String>("userfile").cloned()?;
@@ -172,6 +184,7 @@ pub fn get_spray_arguments() -> Option<SprayArgs> {
     let domain = matches.get_one::<String>("domain").cloned()?;
     let dc_ip = matches.get_one::<String>("dc-ip").cloned()?;
     let hash = matches.get_one::<String>("hash").cloned();
+    let timestamp_format = matches.get_flag("timestamp");
 
     Some(SprayArgs {
         userfile,
@@ -179,6 +192,14 @@ pub fn get_spray_arguments() -> Option<SprayArgs> {
         domain,
         dc_ip,
         hash,
+        timestamp_format,
+        //threads: 10, // Default number of threads
+        //delay: 0,    // Default delay between requests
+        //timeout: 5,  // Default timeout
     })
 }
 
+pub fn print_timestamp() {
+    let timestamp = Local::now().format("%Y-%m-%d %H:%M:%S").to_string();
+    println!("[{}]", timestamp);
+}

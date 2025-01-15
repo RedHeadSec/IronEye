@@ -7,3 +7,4 @@ edition = "2021"
 dialoguer = "0.10"
 clap = { version = "4.3", features = ["derive"] }
 chrono = "0.4"
+ldap3 = "0.11"
