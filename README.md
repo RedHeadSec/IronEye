@@ -1,5 +1,13 @@
 # LdapShot
 
+GOALS:
+
+Ldapper port with added features:
+- Export results to file functionality
+- Password Spraying Functionality
+- Custom Query 
+- Better Error Handling
+- More default queries such as what Ldeep has
 
 
 ## Getting started
