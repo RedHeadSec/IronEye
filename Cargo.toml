@@ -8,3 +8,4 @@ dialoguer = "0.10"
 clap = { version = "4.3", features = ["derive"] }
 chrono = "0.4"
 ldap3 = "0.11"
+rustyline = "11.0.0"

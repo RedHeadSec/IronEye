@@ -22,7 +22,8 @@ pub mod commands;
 pub mod help; //Local Lib
 pub mod args; //Local Lib
 pub mod ldap; //Local Lib
-use help::show_help; 
+pub mod ldapping;
+use help::*; 
 use args::{get_connect_arguments, get_userenum_arguments, get_spray_arguments,print_timestamp};
 use ldap::{ldap_connect,LdapConfig};
 use commands::*;
@@ -44,24 +45,9 @@ fn main() {
         match selection {
             0 => {
                 println!("Enter the Connect arguments (e.g., -u administrator@domain.local -p 'Password123!' -d domain.local -D 10.10.10.10 [-s] [-t]): ");
+                loop {
                 match get_connect_arguments() {
                     Some(args) => {
-                        /*
-                        if args.timestamp_format {
-                             print_timestamp();
-                        }
-                        println!("User: {}", args.username);
-                        println!("Domain: {}", args.domain);
-                        println!("DC IP: {}", args.dc_ip);
-                        if let Some(hash) = args.hash {
-                            println!("Using hash: {}", hash);
-                        } else {
-                            println!("Using password authentication");
-                        }
-                        if args.secure_ldaps {
-                            println!("Using secure LDAPS connection");
-                        }
-                            */
                         let ldap_config = LdapConfig {
                             username: args.username.clone(),
                             password: args.password.clone(),
@@ -74,7 +60,7 @@ fn main() {
                         };
                         match ldap_connect(&ldap_config) {
                             Ok(_) => {
-                                let cmd_options = vec!["DACL Query", "Get SPNs", "Query Groups", "Machine Quota", "Net Commands", "Password Policy", "Back"];
+                                let cmd_options = vec!["DACL Query", "Get SPNs", "Query Groups", "Machine Quota", "Net Commands", "Password Policy","Custom Ldap Query","Back"];
                                 let cmd_selection = Select::with_theme(&ColorfulTheme::default())
                                     .with_prompt("Select command")
                                     .default(0)
@@ -89,39 +75,50 @@ fn main() {
                                     3 => if let Err(e) = query_machine_quota() { eprintln!("Error: {}", e) },
                                     4 => if let Err(e) = run_net_commands() { eprintln!("Error: {}", e) },
                                     5 => if let Err(e) = query_password_policy() { eprintln!("Error: {}", e) },
-                                    6 => println!("Returning to main menu..."),
+                                    6 => if let Err(e) = custom_ldap_query() { eprintln!("Error: {}", e) },
+                                    7 => break, //return to main loop
                                     _ => unreachable!(),
                                 }
                             },
                             Err(e) => eprintln!("Error during LDAP operations: {}", e),
                         }
+                    
                     }
                     None => println!("Required arguments not found!")
                 }
             }
+            }
         
             
         1 => {
-            println!("Enter the User Enumeration arguments: ");
+            println!("Enter the User Enumeration arguments:");
             match get_userenum_arguments() {
                 Some(args) => {
-                    println!("Starting User Enumeration:");
-                    println!("User: {}", args.userfile);
+                    println!("\nConfiguration:");
+                    println!("User file: {}", args.userfile);
                     println!("Domain: {}", args.domain);
                     println!("DC IP: {}", args.dc_ip);
-                    if let Some(hash) = args.hash {
-                        println!("Using hash: {}", hash);
+                    if let Some(output_file) = &args.output {
+                        println!("Output file: {}", output_file);
                     } else {
-                        println!("Using password authentication");
+                        println!("Output file: None (results will be displayed to stdout)");
                     }
                     if args.timestamp_format {
-                        print_timestamp();
-                    } else {
-                        println!("Connecting with:");
+                        println!("Timestamp formatting: Enabled");
+                    }
+                    if args.proxy.is_some() {
+                        println!("Proxy: Configured");
+                    }
+        
+                    println!("\nStarting enumeration...");
+                    if let Err(e) = ldapping::run(&args) {
+                        eprintln!("Error during enumeration: {}", e);
                     }
                 }
-                None => println!("Required arguments not found!")
+                None => println!("Invalid arguments provided!")
             }
+            println!("\nUser enumeration complete.");
+            add_terminal_spacing(2);
         }
         2 => {
             println!("Enter the Password Spray arguments: ");
@@ -154,7 +151,7 @@ fn main() {
         
         4 => {
             // Option 3: Version
-            show_help();
+            show_help_main();
         }
         
         
@@ -177,6 +174,4 @@ fn main() {
     }
 }
 }
-
-
 

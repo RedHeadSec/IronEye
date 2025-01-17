@@ -1,0 +1,10 @@
+domainadmin
+localuser
+domainuser
+bogger
+rickross
+sccm
+admin
+root
+pre2k
+Administrators

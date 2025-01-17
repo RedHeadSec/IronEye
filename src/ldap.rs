@@ -16,7 +16,7 @@ pub struct LdapConfig {
     pub proxy: Option<ProxyConfig>
 }
 
-pub fn ldap_connect(config: &LdapConfig) -> Result<()> {
+pub fn ldap_connect(config: &LdapConfig) -> Result<(LdapConn, String)> {
     let settings = LdapConnSettings::new()
         .set_conn_timeout(Duration::from_secs(30))
         .set_no_tls_verify(true);
@@ -45,7 +45,7 @@ pub fn ldap_connect(config: &LdapConfig) -> Result<()> {
         println!("Successfully connected to LDAP server");
     }
 
-    // Perform verification search
+    // Perform verification search and get search base
     let search_base = config.domain.split('.')
         .map(|part| format!("DC={}", part))
         .collect::<Vec<_>>()
@@ -62,7 +62,6 @@ pub fn ldap_connect(config: &LdapConfig) -> Result<()> {
         println!("Error - No Result from LDAP");
     }
 
-    ldap.unbind()?;
-
-    Ok(())
+    // Return both the connection and the search_base for future queries
+    Ok((ldap, search_base))
 }
