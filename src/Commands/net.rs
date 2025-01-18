@@ -1,7 +1,7 @@
 // src/commands/net.rs
 
 use crate::ldap::LdapConfig;
-use chrono::NaiveDateTime;
+use chrono::DateTime;
 use ldap3::{Scope, SearchEntry};
 use std::error::Error;
 
