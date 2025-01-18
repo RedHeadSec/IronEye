@@ -9,3 +9,5 @@ clap = { version = "4.3", features = ["derive"] }
 chrono = "0.4"
 ldap3 = "0.11"
 rustyline = "11.0.0"
+base64 = "0.21" 
+hex = "0.4" 

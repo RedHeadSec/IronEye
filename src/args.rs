@@ -1,9 +1,9 @@
 // src/args.rs
-use clap::{Arg, Command};
-use chrono::Local;
-use rustyline::DefaultEditor;
 use crate::help::add_terminal_spacing;
 use crate::ldap::LdapConfig;
+use chrono::Local;
+use clap::{Arg, Command};
+use rustyline::DefaultEditor;
 
 pub struct ConnectionArgs {
     pub username: String,
@@ -12,8 +12,8 @@ pub struct ConnectionArgs {
     pub dc_ip: String,
     pub hash: Option<String>,
     pub timestamp_format: bool,
-    pub secure_ldaps: bool,  
-    pub proxy: Option<ProxyConfig>
+    pub secure_ldaps: bool,
+    pub proxy: Option<ProxyConfig>,
 }
 
 pub struct UserEnumArgs {
@@ -22,7 +22,7 @@ pub struct UserEnumArgs {
     pub dc_ip: String,
     pub output: Option<String>,
     pub timestamp_format: bool,
-    pub proxy: Option<ProxyConfig>
+    pub proxy: Option<ProxyConfig>,
 }
 
 pub struct SprayArgs {
@@ -32,10 +32,10 @@ pub struct SprayArgs {
     pub dc_ip: String,
     pub hash: Option<String>,
     pub timestamp_format: bool,
-    pub proxy: Option<ProxyConfig>  // New field for timestamp formatting   
-    //pub threads: u32,            // New field for number of threads
-    //pub delay: u64,              // New field for delay between requests
-    //pub timeout: u64,            // New field for timeout
+    pub proxy: Option<ProxyConfig>, // New field for timestamp formatting
+                                    //pub threads: u32,            // New field for number of threads
+                                    //pub delay: u64,              // New field for delay between requests
+                                    //pub timeout: u64,            // New field for timeout
 }
 
 #[derive(Clone)]
@@ -68,7 +68,7 @@ pub fn get_connect_arguments() -> Option<LdapConfig> {
     let mut secure_ldaps = false;
     let mut timestamp_format = false;
     let proxy = None;
-    
+
     while i < args.len() {
         match args[i] {
             "-u" | "--username" => {
@@ -123,7 +123,11 @@ pub fn get_connect_arguments() -> Option<LdapConfig> {
         }
     }
 
-    if username.is_empty() || (password.is_empty() && hash.is_none()) || domain.is_empty() || dc_ip.is_empty() {
+    if username.is_empty()
+        || (password.is_empty() && hash.is_none())
+        || domain.is_empty()
+        || dc_ip.is_empty()
+    {
         println!("Missing required arguments!");
         add_terminal_spacing(1);
         return None;
@@ -240,30 +244,28 @@ pub fn get_spray_arguments() -> Option<SprayArgs> {
         dc_ip,
         hash,
         timestamp_format,
-        proxy
-        //threads: 10, // Default number of threads
-        //delay: 0,    // Default delay between requests
-        //timeout: 5,  // Default timeout
+        proxy, //threads: 10, // Default number of threads
+               //delay: 0,    // Default delay between requests
+               //timeout: 5,  // Default timeout
     })
 }
-
 
 pub fn get_userenum_arguments() -> Option<UserEnumArgs> {
     println!("\nArgument format: --userfile <path> --domain <domain> --dc-ip <ip> --output <filename> [--timestamp] [--proxy <proxy_url>]");
     println!("Example: --userfile users.txt --domain corp.local --dc-ip 192.168.1.10 --output results.txt --timestamp");
     add_terminal_spacing(1);
-    
+
     let mut rl = DefaultEditor::new().ok()?;
     let args_input = rl.readline("Enter arguments: ").ok()?;
 
     let args: Vec<&str> = args_input.split_whitespace().collect();
-    
+
     let mut userfile = None;
     let mut domain = None;
     let mut dc_ip = None;
     let mut timestamp_format = false;
     let mut proxy_str = None;
-    let mut output = None; 
+    let mut output = None;
 
     let mut i = 0;
     while i < args.len() {
@@ -277,7 +279,7 @@ pub fn get_userenum_arguments() -> Option<UserEnumArgs> {
                     return None;
                 }
             }
-            "--output" => {  
+            "--output" => {
                 if i + 1 < args.len() {
                     output = Some(args[i + 1].to_string());
                     i += 2;
@@ -352,7 +354,6 @@ pub fn get_userenum_arguments() -> Option<UserEnumArgs> {
     })
 }
 
-
 pub fn print_timestamp() {
     let timestamp = Local::now().format("%Y-%m-%d %H:%M:%S").to_string();
     println!("[{}]", timestamp);
@@ -360,7 +361,7 @@ pub fn print_timestamp() {
 
 fn parse_proxy_parts(proxy_parts: &str, proxy_type: ProxyType) -> Option<ProxyConfig> {
     let parts: Vec<&str> = proxy_parts.split('@').collect();
-    
+
     match parts.len() {
         // No authentication
         1 => {
@@ -376,12 +377,12 @@ fn parse_proxy_parts(proxy_parts: &str, proxy_type: ProxyType) -> Option<ProxyCo
             } else {
                 None
             }
-        },
+        }
         // With authentication
         2 => {
             let auth_parts: Vec<&str> = parts[0].split(':').collect();
             let addr_parts: Vec<&str> = parts[1].split(':').collect();
-            
+
             if auth_parts.len() == 2 && addr_parts.len() == 2 {
                 Some(ProxyConfig {
                     proxy_type,
@@ -393,7 +394,7 @@ fn parse_proxy_parts(proxy_parts: &str, proxy_type: ProxyType) -> Option<ProxyCo
             } else {
                 None
             }
-        },
+        }
         _ => None,
     }
 }

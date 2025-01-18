@@ -1,7 +1,7 @@
-use ldap3::{LdapConn, Scope, result::Result, LdapConnSettings};
-use std::time::Duration;
-use chrono::Local;
 use crate::args::ProxyConfig;
+use chrono::Local;
+use ldap3::{result::Result, LdapConn, LdapConnSettings, Scope};
+use std::time::Duration;
 
 #[derive(Clone)]
 pub struct LdapConfig {
@@ -12,7 +12,7 @@ pub struct LdapConfig {
     pub hash: Option<String>,
     pub secure_ldaps: bool,
     pub timestamp_format: bool,
-    pub proxy: Option<ProxyConfig>
+    pub proxy: Option<ProxyConfig>,
 }
 
 pub fn ldap_connect(config: &LdapConfig) -> Result<(LdapConn, String)> {
@@ -27,7 +27,7 @@ pub fn ldap_connect(config: &LdapConfig) -> Result<(LdapConn, String)> {
     };
 
     let mut ldap = LdapConn::with_settings(settings, &ldap_url)?;
-    
+
     let bind_dn = format!("{}@{}", config.username, config.domain);
 
     // Bind with either password or hash
@@ -45,17 +45,21 @@ pub fn ldap_connect(config: &LdapConfig) -> Result<(LdapConn, String)> {
     }
 
     // Perform verification search and get search base
-    let search_base = config.domain.split('.')
+    let search_base = config
+        .domain
+        .split('.')
         .map(|part| format!("DC={}", part))
         .collect::<Vec<_>>()
         .join(",");
 
-    let (results, _) = ldap.search(
-        &search_base,
-        Scope::Base,
-        "(objectClass=*)",
-        vec!["defaultNamingContext"]
-    )?.success()?;
+    let (results, _) = ldap
+        .search(
+            &search_base,
+            Scope::Base,
+            "(objectClass=*)",
+            vec!["defaultNamingContext"],
+        )?
+        .success()?;
 
     if results.is_empty() {
         println!("Error - No Result from LDAP");

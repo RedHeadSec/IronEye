@@ -6,8 +6,6 @@ pub fn load_userlist(file_path: &str) -> io::Result<Vec<String>> {
     let path = Path::new(file_path);
     let file = File::open(path)?;
     let reader = io::BufReader::new(file);
-    let users: Vec<String> = reader.lines()
-        .filter_map(|line| line.ok())
-        .collect();
+    let users: Vec<String> = reader.lines().filter_map(|line| line.ok()).collect();
     Ok(users)
 }

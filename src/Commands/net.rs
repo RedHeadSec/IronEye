@@ -1,5 +1,6 @@
 // src/commands/net.rs
 
+use crate::help::add_terminal_spacing;
 use crate::ldap::LdapConfig;
 use chrono::DateTime;
 use ldap3::{Scope, SearchEntry};
@@ -21,7 +22,11 @@ const UF_DONT_REQ_PREAUTH: i64 = 0x400000;
 const UF_TRUSTED_TO_AUTH_FOR_DELEGATION: i64 = 0x1000000;
 const UF_NO_AUTH_DATA_REQUIRED: i64 = 0x2000000;
 
-pub fn net_command(config: &mut LdapConfig, command_type: &str, name: &str) -> Result<(), Box<dyn Error>> {
+pub fn net_command(
+    config: &mut LdapConfig,
+    command_type: &str,
+    name: &str,
+) -> Result<(), Box<dyn Error>> {
     match command_type.to_lowercase().as_str() {
         "user" => net_user(config, name),
         "group" => net_group(config, name),
@@ -31,56 +36,80 @@ pub fn net_command(config: &mut LdapConfig, command_type: &str, name: &str) -> R
 
 fn net_user(config: &mut LdapConfig, username: &str) -> Result<(), Box<dyn Error>> {
     let (mut ldap, search_base) = crate::ldap::ldap_connect(config)?;
-    
+
     let result = ldap.search(
         &search_base,
         Scope::Subtree,
-        &format!("(&(objectClass=user)(sAMAccountName={}))", username),
+        &format!(
+            "(&(objectCategory=person)(objectClass=user)(sAMAccountName={}))",
+            username
+        ),
         vec![
-            "sAMAccountName", "cn", "description", "userAccountControl",
-            "accountExpires", "pwdLastSet", "homeDirectory", "lastLogon",
-            "logonCount", "mail", "servicePrincipalName", "lastLogonTimestamp",
-            "lockoutTime", "displayName", "userPrincipalName",
+            "sAMAccountName",
+            "cn",
+            "description",
+            "userAccountControl",
+            "accountExpires",
+            "pwdLastSet",
+            "homeDirectory",
+            "lastLogon",
+            "logonCount",
+            "mail",
+            "servicePrincipalName",
+            "lastLogonTimestamp",
+            "lockoutTime",
+            "displayName",
+            "userPrincipalName",
+            "objectClass",
         ],
     )?;
 
     let (entries, _) = result.success()?;
-    
+
     if let Some(entry) = entries.first() {
         let user_entry = SearchEntry::construct(entry.clone());
-        
+
         // Check if it's actually a user object
-        if !user_entry.attrs.get("objectClass")
-            .map_or(false, |classes| classes.iter().any(|c| c == "user")) {
+        if !user_entry
+            .attrs
+            .get("objectClass")
+            .map_or(false, |classes| classes.iter().any(|c| c == "user"))
+        {
             println!("Object class is not of type \"user\"");
             return Ok(());
         }
 
         println!("\nUser Information - {}:", username);
         println!("-------------------------------------------------------------------------------");
-        
+
         // Basic user information
         println!("User Name: \t\t{}", username);
         if let Some(full_name) = user_entry.attrs.get("displayName").and_then(|v| v.first()) {
             println!("Full Name: \t\t{}", full_name);
         }
-        
+
         if let Some(comment) = user_entry.attrs.get("description").and_then(|v| v.first()) {
             println!("Comment: \t\t{}", comment);
         }
 
         // User Account Control flags
-        if let Some(uac) = user_entry.attrs.get("userAccountControl")
+        if let Some(uac) = user_entry
+            .attrs
+            .get("userAccountControl")
             .and_then(|v| v.first())
-            .and_then(|v| v.parse::<i64>().ok()) {
+            .and_then(|v| v.parse::<i64>().ok())
+        {
             println!("User Account Control: \t");
             print_uac_flags(uac);
         }
 
         // Lockout time
-        if let Some(lockout) = user_entry.attrs.get("lockoutTime")
+        if let Some(lockout) = user_entry
+            .attrs
+            .get("lockoutTime")
             .and_then(|v| v.first())
-            .and_then(|v| v.parse::<i64>().ok()) {
+            .and_then(|v| v.parse::<i64>().ok())
+        {
             if lockout != 0 {
                 println!("Last Lockout Time: \t{}", windows_time_to_string(lockout));
             } else {
@@ -89,10 +118,14 @@ fn net_user(config: &mut LdapConfig, username: &str) -> Result<(), Box<dyn Error
         }
 
         // Account expiration
-        if let Some(expires) = user_entry.attrs.get("accountExpires")
+        if let Some(expires) = user_entry
+            .attrs
+            .get("accountExpires")
             .and_then(|v| v.first())
-            .and_then(|v| v.parse::<i64>().ok()) {
-            println!("Account Expires: \t{}", 
+            .and_then(|v| v.parse::<i64>().ok())
+        {
+            println!(
+                "Account Expires: \t{}",
                 if expires == 0 || expires == 9223372036854775807 {
                     "Never".to_string()
                 } else {
@@ -102,23 +135,36 @@ fn net_user(config: &mut LdapConfig, username: &str) -> Result<(), Box<dyn Error
         }
 
         // Password last set
-        if let Some(pwd_last_set) = user_entry.attrs.get("pwdLastSet")
+        if let Some(pwd_last_set) = user_entry
+            .attrs
+            .get("pwdLastSet")
             .and_then(|v| v.first())
-            .and_then(|v| v.parse::<i64>().ok()) {
-            println!("Password Last Set: \t{}", windows_time_to_string(pwd_last_set));
+            .and_then(|v| v.parse::<i64>().ok())
+        {
+            println!(
+                "Password Last Set: \t{}",
+                windows_time_to_string(pwd_last_set)
+            );
         }
 
         // Home directory
-        if let Some(home) = user_entry.attrs.get("homeDirectory").and_then(|v| v.first()) {
+        if let Some(home) = user_entry
+            .attrs
+            .get("homeDirectory")
+            .and_then(|v| v.first())
+        {
             println!("Home Directory: \t\t{}", home);
         } else {
             println!("Home Directory:");
         }
 
         // Last logon
-        if let Some(last_logon) = user_entry.attrs.get("lastLogon")
+        if let Some(last_logon) = user_entry
+            .attrs
+            .get("lastLogon")
             .and_then(|v| v.first())
-            .and_then(|v| v.parse::<i64>().ok()) {
+            .and_then(|v| v.parse::<i64>().ok())
+        {
             if last_logon != 0 {
                 println!("Last Logon: \t\t{}", windows_time_to_string(last_logon));
             } else {
@@ -127,9 +173,12 @@ fn net_user(config: &mut LdapConfig, username: &str) -> Result<(), Box<dyn Error
         }
 
         // Logon count
-        if let Some(count) = user_entry.attrs.get("logonCount")
+        if let Some(count) = user_entry
+            .attrs
+            .get("logonCount")
             .and_then(|v| v.first())
-            .and_then(|v| v.parse::<i64>().ok()) {
+            .and_then(|v| v.parse::<i64>().ok())
+        {
             println!("Logon Count: \t\t{}", count);
         }
 
@@ -149,7 +198,6 @@ fn net_user(config: &mut LdapConfig, username: &str) -> Result<(), Box<dyn Error
         } else {
             println!("SPN(s):");
         }
-
     } else {
         println!("User not found");
     }
@@ -159,22 +207,28 @@ fn net_user(config: &mut LdapConfig, username: &str) -> Result<(), Box<dyn Error
 
 fn net_group(config: &mut LdapConfig, groupname: &str) -> Result<(), Box<dyn Error>> {
     let (mut ldap, search_base) = crate::ldap::ldap_connect(config)?;
-    
+
     let result = ldap.search(
         &search_base,
         Scope::Subtree,
-        &format!("(&(objectClass=group)(sAMAccountName={}))", groupname),
+        &format!(
+            "(&(objectCategory=group)(objectClass=group)(sAMAccountName={}))",
+            groupname
+        ),
         vec!["member", "description", "memberOf", "objectClass"],
     )?;
 
     let (entries, _) = result.success()?;
-    
+
     if let Some(entry) = entries.first() {
         let group_entry = SearchEntry::construct(entry.clone());
-        
+
         // Check if it's actually a group object
-        if !group_entry.attrs.get("objectClass")
-            .map_or(false, |classes| classes.iter().any(|c| c == "group")) {
+        if !group_entry
+            .attrs
+            .get("objectClass")
+            .map_or(false, |classes| classes.iter().any(|c| c == "group"))
+        {
             println!("Object class is not of type \"group\"");
             return Ok(());
         }
@@ -201,7 +255,9 @@ fn net_group(config: &mut LdapConfig, groupname: &str) -> Result<(), Box<dyn Err
                 if let Ok((member_entries, _)) = member_result.success() {
                     if let Some(member_entry) = member_entries.first() {
                         let member = SearchEntry::construct(member_entry.clone());
-                        if let Some(sam_name) = member.attrs.get("sAMAccountName").and_then(|v| v.first()) {
+                        if let Some(sam_name) =
+                            member.attrs.get("sAMAccountName").and_then(|v| v.first())
+                        {
                             println!("{}", sam_name);
                         }
                     }
@@ -213,7 +269,7 @@ fn net_group(config: &mut LdapConfig, groupname: &str) -> Result<(), Box<dyn Err
     } else {
         println!("Group not found");
     }
-
+    add_terminal_spacing(2);
     Ok(())
 }
 
