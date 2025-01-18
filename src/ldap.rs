@@ -1,6 +1,5 @@
 use ldap3::{LdapConn, Scope, SearchEntry, result::Result, LdapConnSettings};
 use std::time::Duration;
-use crate::args::ConnectionArgs;
 use chrono::Local;
 use crate::args::ProxyConfig;
 
@@ -40,9 +39,9 @@ pub fn ldap_connect(config: &LdapConfig) -> Result<(LdapConn, String)> {
 
     if config.timestamp_format {
         let timestamp = Local::now().format("%Y-%m-%d %H:%M:%S").to_string();
-        println!("[{}] Successfully connected to LDAP server", timestamp);
+        print!("[{}]", timestamp);
     } else {
-        println!("Successfully connected to LDAP server");
+        //println!("Successfully connected to LDAP server");
     }
 
     // Perform verification search and get search base

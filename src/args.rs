@@ -2,11 +2,9 @@
 use clap::{Arg, Command};
 use chrono::Local;
 use dialoguer::Input;
-use rustyline::Editor;
-use rustyline::history::DefaultHistory;
 use rustyline::DefaultEditor;
-use std::error::Error;
-use crate::add_terminal_spacing;
+use crate::help::add_terminal_spacing;
+use crate::ldap::LdapConfig;
 
 pub struct ConnectionArgs {
     pub username: String,
@@ -56,103 +54,92 @@ pub enum ProxyType {
     Socks5,
 }
 
-pub fn get_connect_arguments() -> Option<ConnectionArgs> {
-    let matches = Command::new("LdapShot>")
-        .about("Connect Arguments")
-        .arg(
-            Arg::new("username")
-                .short('u')
-                .long("user")
-                .value_parser(clap::value_parser!(String))
-                .help("Username for the connection")
-                .required(true)
-        )
-        .arg(
-            Arg::new("password")
-                .short('p')
-                .long("password")
-                .value_parser(clap::value_parser!(String))
-                .help("Password for the connection")
-                .required(true)
-                .conflicts_with("hash")
-        )
-        .arg(
-            Arg::new("domain")
-                .short('d')
-                .long("domain")
-                .value_parser(clap::value_parser!(String))
-                .help("Domain for the connection")
-                .required(true)
-        )
-        .arg(
-            Arg::new("dc-ip")
-                .short('D')
-                .long("dc-ip")
-                .value_parser(clap::value_parser!(String))
-                .help("DC target for the connection")
-                .required(true)
-        )
-        .arg(
-            Arg::new("hash")
-                .short('H')
-                .long("hash")
-                .value_parser(clap::value_parser!(String))
-                .help("Hash for the connection")
-                .required(false)
-                .conflicts_with("password")
-        )
-        .arg(
-            Arg::new("timestamp")
-                .short('t')
-                .long("timestamp")
-                .action(clap::ArgAction::SetTrue)
-                .help("Format timestamps as DD/MM/YYYY HH:MM:SS")
-                .required(false)
-        )
-        .arg(
-            Arg::new("secure")
-                .short('s')
-                .long("secure")
-                .action(clap::ArgAction::SetTrue)
-                .help("Use LDAPS (LDAP over SSL/TLS)")
-                .required(false)
-        )
-        .arg(
-            Arg::new("proxy")
-                .long("proxy")
-                .value_parser(clap::value_parser!(String))
-                .help("SOCKS proxy (format: socks5://[user:pass@]host:port or socks4://[user:pass@]host:port)")
-                .required(false)
-        )
-        .get_matches();
+pub fn get_connect_arguments() -> Option<LdapConfig> {
+    let input: String = Input::new()
+        .with_prompt(">")
+        .interact()
+        .unwrap_or_default();
 
-    let username = matches.get_one::<String>("username").cloned()?;
-    let password = matches.get_one::<String>("password").cloned()?;
-    let domain = matches.get_one::<String>("domain").cloned()?;
-    let dc_ip = matches.get_one::<String>("dc-ip").cloned()?;
-    let hash = matches.get_one::<String>("hash").cloned();
-    let timestamp_format = matches.get_flag("timestamp");
-    let secure_ldaps = matches.get_flag("secure");
-    // Parse proxy if provided
-    let proxy = matches.get_one::<String>("proxy").and_then(|proxy_str| {
-        if let Some(stripped) = proxy_str.strip_prefix("socks5://") {
-            parse_proxy_parts(stripped, ProxyType::Socks5)
-        } else if let Some(stripped) = proxy_str.strip_prefix("socks4://") {
-            parse_proxy_parts(stripped, ProxyType::Socks4)
-        } else {
-            None
+    let args: Vec<&str> = input.split_whitespace().collect();
+    let mut i = 0;
+    let mut username = String::new();
+    let mut password = String::new();
+    let mut domain = String::new();
+    let mut dc_ip = String::new();
+    let mut hash = None;
+    let mut secure_ldaps = false;
+    let mut timestamp_format = false;
+    let mut proxy = None;
+    
+    while i < args.len() {
+        match args[i] {
+            "-u" | "--username" => {
+                if i + 1 < args.len() {
+                    username = args[i + 1].to_string();
+                    i += 2;
+                } else {
+                    i += 1;
+                }
+            }
+            "-p" | "--password" => {
+                if i + 1 < args.len() {
+                    password = args[i + 1].to_string();
+                    i += 2;
+                } else {
+                    i += 1;
+                }
+            }
+            "-d" | "--domain" => {
+                if i + 1 < args.len() {
+                    domain = args[i + 1].to_string();
+                    i += 2;
+                } else {
+                    i += 1;
+                }
+            }
+            "-i" | "--dc-ip" => {
+                if i + 1 < args.len() {
+                    dc_ip = args[i + 1].to_string();
+                    i += 2;
+                } else {
+                    i += 1;
+                }
+            }
+            "-H" | "--hash" => {
+                if i + 1 < args.len() {
+                    hash = Some(args[i + 1].to_string());
+                    i += 2;
+                } else {
+                    i += 1;
+                }
+            }
+            "-s" | "--secure" => {
+                secure_ldaps = true;
+                i += 1;
+            }
+            "-t" | "--timestamp" => {
+                timestamp_format = true;
+                i += 1;
+            }
+            _ => i += 1,
         }
-    });
+    }
 
-    Some(ConnectionArgs {
+    if username.is_empty() || (password.is_empty() && hash.is_none()) || domain.is_empty() || dc_ip.is_empty() {
+        println!("Missing required arguments!");
+        add_terminal_spacing(1);
+        return None;
+    }
+
+    Some(LdapConfig {
         username,
         password,
         domain,
         dc_ip,
         hash,
-        timestamp_format,
         secure_ldaps,
-        proxy
+        timestamp_format,
+        proxy,
     })
 }
 

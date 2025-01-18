@@ -17,7 +17,6 @@ const VERSION: &str = "v0.1";
 
 // Imports
 use dialoguer::{theme::ColorfulTheme, Input, Select, Confirm};
-use clap::{Arg, Command};
 pub mod commands;
 pub mod help; //Local Lib
 pub mod args; //Local Lib
@@ -34,6 +33,7 @@ fn main() {
     println!("{}", LOGO);
     loop {
     let options = vec!["Connect", "UserEnum", "Password Spray", "Version", "Help", "Exit"];
+    add_terminal_spacing(1);
     let selection = Select::with_theme(&ColorfulTheme::default())
         .with_prompt("Choose an option")
         .default(4)
@@ -44,49 +44,40 @@ fn main() {
     println!("You selected: {}", options[selection]);
         match selection {
             0 => {
-                println!("Enter the Connect arguments (e.g., -u administrator@domain.local -p 'Password123!' -d domain.local -D 10.10.10.10 [-s] [-t]): ");
-                loop {
+                println!("Enter the Connect arguments (e.g., -u administrator -p 'Password123!' -d domain.local -D 10.10.10.10 [-s] [-t]): ");
+                // Handle connection first
                 match get_connect_arguments() {
-                    Some(args) => {
-                        let ldap_config = LdapConfig {
-                            username: args.username.clone(),
-                            password: args.password.clone(),
-                            domain: args.domain.clone(),
-                            dc_ip: args.dc_ip.clone(),
-                            hash: args.hash.clone(),
-                            secure_ldaps: args.secure_ldaps,
-                            timestamp_format: args.timestamp_format,
-                            proxy: args.proxy.clone()
-                        };
-                        match ldap_connect(&ldap_config) {
-                            Ok(_) => {
-                                let cmd_options = vec!["DACL Query", "Get SPNs", "Query Groups", "Machine Quota", "Net Commands", "Password Policy","Custom Ldap Query","Back"];
-                                let cmd_selection = Select::with_theme(&ColorfulTheme::default())
-                                    .with_prompt("Select command")
-                                    .default(0)
-                                    .items(&cmd_options)
-                                    .interact()
-                                    .unwrap();
-                                
-                                match cmd_selection {
-                                    0 => if let Err(e) = query_dacl() { eprintln!("Error: {}", e) },
-                                    1 => if let Err(e) = query_spns() { eprintln!("Error: {}", e) },
-                                    2 => if let Err(e) = query_groups() { eprintln!("Error: {}", e) },
-                                    3 => if let Err(e) = query_machine_quota() { eprintln!("Error: {}", e) },
-                                    4 => if let Err(e) = run_net_commands() { eprintln!("Error: {}", e) },
-                                    5 => if let Err(e) = query_password_policy() { eprintln!("Error: {}", e) },
-                                    6 => if let Err(e) = custom_ldap_query() { eprintln!("Error: {}", e) },
-                                    7 => break, //return to main loop
-                                    _ => unreachable!(),
-                                }
-                            },
-                            Err(e) => eprintln!("Error during LDAP operations: {}", e),
+                    Some(mut ldap_config) => {
+                        // If connection successful, show sub-command menu
+                        loop {
+                            let cmd_options = vec!["DACL Query", "Get SPNs", "Query Groups", "Machine Quota", "Net Commands", "Password Policy", "Custom Ldap Query", "Back"];
+                            let cmd_selection = Select::with_theme(&ColorfulTheme::default())
+                                .with_prompt("Select command")
+                                .default(0)
+                                .items(&cmd_options)
+                                .interact()
+                                .unwrap();
+
+                            add_terminal_spacing(2);
+                            match cmd_selection {
+                                0 => if let Err(e) = query_dacl() { eprintln!("Error: {}", e) },
+                                1 => if let Err(e) = commands::getspns::get_service_principal_names(&mut ldap_config) {
+                                    eprintln!("Error: {}", e)
+                                },
+                                2 => if let Err(e) = query_groups() { eprintln!("Error: {}", e) },
+                                3 => if let Err(e) = query_machine_quota() { eprintln!("Error: {}", e) },
+                                4 => if let Err(e) = run_net_commands() { eprintln!("Error: {}", e) },
+                                5 => if let Err(e) = commands::getpasspol::get_password_policy(&mut ldap_config) {
+                                    eprintln!("Error: {}", e)
+                                },
+                                6 => if let Err(e) = custom_ldap_query() { eprintln!("Error: {}", e) },
+                                7 => break, // Return to main menu
+                                _ => unreachable!(),
+                            }
                         }
-                    
                     }
-                    None => println!("Required arguments not found!")
+                    None => println!("Required arguments not provided!")
                 }
-            }
             }
         
             
