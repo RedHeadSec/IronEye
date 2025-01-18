@@ -721,6 +721,7 @@ dependencies = [
  "clap",
  "dialoguer",
  "hex",
+ "lazy_static",
  "ldap3",
  "rustyline",
 ]
