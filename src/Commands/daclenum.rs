@@ -1,234 +1,74 @@
-use crate::help::add_terminal_spacing;
 use crate::ldap::LdapConfig;
-use ldap3::{controls::RawControl, Scope, SearchEntry};
+use ldap3::{Scope, SearchEntry, controls::RawControl};
 use std::error::Error;
+use crate::help::add_terminal_spacing;
 
-#[derive(Debug)]
-struct Header {
-    revision: String,
-    sbz1: String,
-    control: String,
-    offset_owner: String,
-    offset_group: String,
-    offset_sacl: String,
-    offset_dacl: String,
-}
 
-#[derive(Debug)]
-struct AclHeader {
-    acl_revision: String,
-    sbz1: String,
-    acl_size_bytes: String,
-    ace_count: String,
-    sbz2: String,
-}
 
-#[derive(Debug)]
-struct AceHeader {
-    ace_type: String,
-    ace_flags: String,
-    ace_size_bytes: String,
-}
-
-fn endian_convert(sd: &str) -> String {
-    let sd_bytes = hex::decode(sd).unwrap_or_default();
-    let mut reversed = sd_bytes;
-    reversed.reverse();
-    hex::encode(reversed)
-}
-
-fn get_header(sd: &str) -> Header {
-    Header {
-        revision: sd[0..2].to_string(),
-        sbz1: endian_convert(&sd[2..4]),
-        control: endian_convert(&sd[4..8]),
-        offset_owner: endian_convert(&sd[8..16]),
-        offset_group: endian_convert(&sd[16..24]),
-        offset_sacl: endian_convert(&sd[24..32]),
-        offset_dacl: endian_convert(&sd[32..40]),
-    }
-}
-
-fn get_acl_header(sd: &str) -> AclHeader {
-    AclHeader {
-        acl_revision: sd[40..42].to_string(),
-        sbz1: endian_convert(&sd[42..44]),
-        acl_size_bytes: endian_convert(&sd[44..48]),
-        ace_count: endian_convert(&sd[48..52]),
-        sbz2: endian_convert(&sd[52..56]),
-    }
-}
-
-fn get_ace_header(sd: &str) -> AceHeader {
-    AceHeader {
-        ace_type: sd[0..2].to_string(),
-        ace_flags: sd[2..4].to_string(),
-        ace_size_bytes: endian_convert(&sd[4..8]),
-    }
-}
-
-fn get_ace_mask(ace: &str) -> String {
-    endian_convert(&ace[8..16])
-}
-
-fn get_ace_flags(ace: &str) -> String {
-    endian_convert(&ace[16..24])
-}
-
-fn hex_to_offset(hex_offset: &str) -> usize {
-    usize::from_str_radix(hex_offset, 16).unwrap_or(0)
-}
-
-fn convert_sid(sid_hex: &str) -> String {
-    // TODO: Implement SID conversion similar to Go implementation
-    // This would convert the binary SID to string format
-    sid_hex.to_string()
-}
-
-fn get_owner(header: &Header, sd: &str) -> String {
-    let offset = hex_to_offset(&header.offset_owner);
-    let owner_hex_sid = &sd[offset..offset + 56];
-    convert_sid(owner_hex_sid)
-}
-
-fn get_group(header: &Header, sd: &str) -> String {
-    let offset = hex_to_offset(&header.offset_group);
-    let group_hex_sid = &sd[offset..offset + 56];
-    convert_sid(group_hex_sid)
-}
-
-fn get_object_and_inherited_type(ace: &str, ace_flags: &str) -> (String, String) {
-    match ace_flags {
-        "00000001" => {
-            // ObjectType field exists
-            let object_type = &ace[24..56];
-            let guid = format_guid(object_type);
-            (guid, String::new())
-        },
-        "00000002" => {
-            // InheritedObjectType field exists
-            let inherited_type = &ace[24..56];
-            let guid = format_guid(inherited_type);
-            (String::new(), guid)
-        },
-        "00000003" => {
-            // Both fields exist
-            let object_type = &ace[24..56];
-            let inherited_type = &ace[56..88];
-            (format_guid(object_type), format_guid(inherited_type))
-        },
-        _ => (String::new(), String::new()),
-    }
-}
-
-fn format_guid(guid_hex: &str) -> String {
-    let portion1 = endian_convert(&guid_hex[0..8]);
-    let portion2 = endian_convert(&guid_hex[8..12]);
-    let portion3 = endian_convert(&guid_hex[12..16]);
-    let portion4 = &guid_hex[16..20];
-    let portion5 = &guid_hex[20..];
-    
-    format!("{}-{}-{}-{}-{}", portion1, portion2, portion3, portion4, portion5)
-}
-
-// Modified query_dacl function to use these parsers
 pub fn query_dacl(config: &mut LdapConfig, target: &str, principal: Option<&str>) -> Result<(), Box<dyn Error>> {
     let (mut ldap, search_base) = crate::ldap::ldap_connect(config)?;
     
-    println!("[*] Starting DACL query for target: {}", target);
-    
+    // Create the search filter for the target
     let target_filter = if target.contains("=") {
         format!("(distinguishedName={})", target)
     } else {
         format!("(|(sAMAccountName={})(cn={}))", target, target)
     };
 
-    println!("[*] Using filter: {}", target_filter);
-
-    // Create control value exactly matching the ldapsearch example
-    // "\x30\x03\x02\x01\x07" base64 encoded is MAMCAQc=
-    let control_value = vec![0x30, 0x03, 0x02, 0x01, 0x07];
+    // Create security descriptor control
+    // From Go implementation: DACL_SECURITY_INFORMATION = 0x4
     let sd_flags_control = RawControl {
         ctype: "1.2.840.113556.1.4.801".to_string(),
-        crit: true,
-        val: Some(control_value),
+        crit: true,  // Changed to true as per Go implementation
+        val: Some(vec![48, 3, 2, 1, 4]),  // Changed to 4 (DACL only) as per Go implementation
     };
 
-    println!("[*] Using control: 1.2.840.113556.1.4.801 with value MAMCAQc=");
-
-    // Set the control
+    // Add the control to the connection
     ldap.with_controls(vec![sd_flags_control]);
 
-    // Request attributes
-    let attrs = vec![
-        "nTSecurityDescriptor",
-        "distinguishedName",
-        "objectClass",
-        "sAMAccountName"
-    ];
-
-    println!("[*] Performing LDAP search...");
-    println!("[*] Base DN: {}", search_base);
-    println!("[*] Filter: {}", target_filter);
-    println!("[*] Requested attributes: {:?}", attrs);
+    // Perform the search
+    println!("Searching for target: {}", target);
+    println!("Using filter: {}", target_filter);
+    println!("Base DN: {}", search_base);
     
-    let (entries, result) = ldap.search(
+    let (entries, _) = ldap.search(
         &search_base,
         Scope::Subtree,
         &target_filter,
-        attrs,
+        vec!["nTSecurityDescriptor", "distinguishedName"],  // Added distinguishedName for debugging
     )?.success()?;
 
-    println!("[*] Search completed. Found {} entries", entries.len());
-
-    if entries.is_empty() {
-        println!("[!] No entries found for target: {}", target);
-        return Ok(());
-    }
-
-    for entry in entries {
-        let entry = SearchEntry::construct(entry);
-        println!("\n[+] Found entry: {}", entry.dn);
+    if let Some(entry) = entries.first() {
+        let entry = SearchEntry::construct(entry.clone());
+        println!("Found entry: {}", entry.dn);
         
-        println!("[*] Available attributes:");
+        println!("Available attributes:");
         for (attr_name, values) in &entry.attrs {
-            println!("  - {}: {} value(s)", attr_name, values.len());
-            // Print actual values for debugging (except nTSecurityDescriptor)
-            if attr_name != "nTSecurityDescriptor" {
-                for value in values {
-                    println!("    Value: {}", value);
-                }
-            }
+            println!("  {}: {} value(s)", attr_name, values.len());
         }
-
+        
         if let Some(security_descriptors) = entry.attrs.get("nTSecurityDescriptor") {
             for sd in security_descriptors {
-                println!("\n[+] Processing Security Descriptor ({} bytes)", sd.len());
-                let sd_hex = hex::encode(sd);
-                
-                if sd_hex.len() < 40 {
-                    println!("[!] Security descriptor too short: {} bytes", sd_hex.len());
-                    continue;
+                println!("Security Descriptor found ({} bytes)", sd.len());
+                println!("First 32 bytes of raw data:");
+                for (i, byte) in sd.as_bytes().iter().take(32).enumerate() {
+                    if i % 16 == 0 {
+                        print!("\n{:04x}: ", i);
+                    }
+                    print!("{:02x} ", byte);
                 }
-
-                let header = get_header(&sd_hex);
-                println!("\n[+] Security Descriptor Header:");
-                println!("  Revision: {}", header.revision);
-                println!("  Control: {}", header.control);
-                println!("  Owner Offset: {}", header.offset_owner);
-                println!("  Group Offset: {}", header.offset_group);
-                println!("  SACL Offset: {}", header.offset_sacl);
-                println!("  DACL Offset: {}", header.offset_dacl);
-
-                // Continue with the rest of your parsing...
+                println!("\n");
             }
         } else {
-            println!("\n[!] No nTSecurityDescriptor attribute found");
-            println!("[*] Connection details:");
-            println!("  SSL Enabled: {}", config.secure_ldaps);
-            println!("  Control Critical: true");
-            println!("  Control Value (base64): MAMCAQc=");
+            println!("No nTSecurityDescriptor attribute found");
+            println!("Debug info:");
+            println!("1. Control OID: 1.2.840.113556.1.4.801");
+            println!("2. Control Value: {:?}", vec![48, 3, 2, 1, 4]);
+            println!("3. Control Critical: true");
+            println!("4. SSL Enabled: {}", config.secure_ldaps);
         }
+    } else {
+        println!("Target not found");
     }
     add_terminal_spacing(2);
     Ok(())
