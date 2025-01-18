@@ -219,7 +219,7 @@ fn net_group(config: &mut LdapConfig, groupname: &str) -> Result<(), Box<dyn Err
 
 fn windows_time_to_string(windows_time: i64) -> String {
     let unix_time = (windows_time - 116444736000000000) / 10000000;
-    if let Some(dt) = ateTime::from_timestamp(unix_time, 0) {
+    if let Some(dt) = DateTime::from_timestamp(unix_time, 0) {
         dt.format("%m/%d/%Y %I:%M:%S %p").to_string()
     } else {
         "Invalid date".to_string()
