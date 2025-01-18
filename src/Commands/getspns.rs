@@ -1,13 +1,20 @@
 // src/commands/getspns.rs
 use ldap3::{LdapConn, SearchEntry, Scope};
 use std::error::Error;
+use std::fs::File;
+use std::io::Write;
 use crate::ldap::LdapConfig;
 use chrono::{DateTime, TimeZone, Utc, Local};
 use crate::help::add_terminal_spacing;
+use dialoguer::{Input, Confirm};
 
 pub fn get_service_principal_names(config: &mut LdapConfig) -> Result<(), Box<dyn Error>> {
     let (mut ldap, search_base) = crate::ldap::ldap_connect(config)?;
     let entries = query_spns(&mut ldap, &search_base)?;
+
+    let header = format!("{:<50} {:<15} {:<30} {:<30} {}\n", 
+        "SPN", "Username", "PasswordLastSet", "LastLogon", "Delegation");
+    let mut output = String::from(&header);
 
     // Print header
     println!("{:<50} {:<15} {:<30} {:<30} {}", 
@@ -44,10 +51,29 @@ pub fn get_service_principal_names(config: &mut LdapConfig) -> Result<(), Box<dy
 
         // Print each SPN for this account
         for spn in spns {
-            println!("{:<50} {:<15} {:<30} {:<30} {}", 
+            let line = format!("{:<50} {:<15} {:<30} {:<30} {}\n",
                 spn, sam_account_name, pwd_last_set, last_logon, delegation);
+            output.push_str(&line);
+            println!("{}", line.trim());
         }
     }
+        // Ask if user wants to export results
+        add_terminal_spacing(1);
+        if Confirm::new()
+            .with_prompt("Would you like to export the results to a file?")
+            .default(false)
+            .interact()? 
+    {
+        let filename: String = Input::new()
+            .with_prompt("Enter filename")
+            .default("spns.txt".into())
+            .interact()?;
+
+        let mut file = File::create(&filename)?;
+        file.write_all(output.as_bytes())?;
+        println!("\nResults exported to: {}", filename);
+    }
+
     add_terminal_spacing(2);
     Ok(())
 }
@@ -90,7 +116,7 @@ fn windows_timestamp_to_datetime(windows_time: i64) -> String {
         chrono::LocalResult::Single(dt) => {
             // Convert to local time
             let local_time: DateTime<Local> = DateTime::from(dt);
-            local_time.format("%Y-%m-%d %H:%M:%S %z %Z").to_string()
+            local_time.format("%Y-%m-%d %H:%M:%S").to_string()
         },
         _ => "Invalid timestamp".to_string(),
     }

@@ -16,7 +16,7 @@ const VERSION: &str = "v0.1";
 
 
 // Imports
-use dialoguer::{theme::ColorfulTheme, Input, Select, Confirm};
+use dialoguer::{theme::ColorfulTheme, Select, Confirm};
 pub mod commands;
 pub mod help; //Local Lib
 pub mod args; //Local Lib
@@ -24,7 +24,6 @@ pub mod ldap; //Local Lib
 pub mod ldapping;
 use help::*; 
 use args::{get_connect_arguments, get_userenum_arguments, get_spray_arguments,print_timestamp};
-use ldap::{ldap_connect,LdapConfig};
 use commands::*;
 
 
@@ -44,7 +43,7 @@ fn main() {
     println!("You selected: {}", options[selection]);
         match selection {
             0 => {
-                println!("Enter the Connect arguments (e.g., -u administrator -p 'Password123!' -d domain.local -D 10.10.10.10 [-s] [-t]): ");
+                println!("Enter the Connect arguments (e.g., -u administrator -p 'Password123!' -d domain.local -i 10.10.10.10 [-s] [-t]): ");
                 // Handle connection first
                 match get_connect_arguments() {
                     Some(mut ldap_config) => {
@@ -65,8 +64,43 @@ fn main() {
                                     eprintln!("Error: {}", e)
                                 },
                                 2 => if let Err(e) = query_groups() { eprintln!("Error: {}", e) },
-                                3 => if let Err(e) = query_machine_quota() { eprintln!("Error: {}", e) },
-                                4 => if let Err(e) = run_net_commands() { eprintln!("Error: {}", e) },
+                                3 => if let Err(e) = commands::maq::get_machine_account_quota(&mut ldap_config) {
+                                    eprintln!("Error: {}", e)
+                                },
+                                4 => {
+                                    println!("Enter the net command arguments (e.g., user administrator OR group \"Domain Admins\"): ");
+                                    let mut input = String::new();
+                                    if let Err(e) = std::io::stdin().read_line(&mut input) {
+                                        eprintln!("Error reading input: {}", e);
+                                        continue;
+                                    }
+                                    
+                                    let args: Vec<&str> = input.trim().split_whitespace().collect();
+                                    
+                                    if args.len() < 2 {
+                                        eprintln!("Error: net command requires type (user/group) and name");
+                                        eprintln!("Usage: net <user|group> <name>");
+                                        continue;
+                                    }
+                                    
+                                    let command_type = args[0].to_lowercase();
+                                    if command_type != "user" && command_type != "group" {
+                                        eprintln!("Error: net command type must be either 'user' or 'group'");
+                                        eprintln!("Usage: net <user|group> <name>");
+                                        continue;
+                                    }
+                                    
+                                    // Join the remaining arguments to handle names with spaces
+                                    let name = args[1..].join(" ");
+                                    if name.is_empty() {
+                                        eprintln!("Error: name cannot be empty");
+                                        continue;
+                                    }
+                                    
+                                    if let Err(e) = commands::net::net_command(&mut ldap_config, &command_type, &name) {
+                                        eprintln!("Error: {}", e)
+                                    }
+                                },
                                 5 => if let Err(e) = commands::getpasspol::get_password_policy(&mut ldap_config) {
                                     eprintln!("Error: {}", e)
                                 },

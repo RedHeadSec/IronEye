@@ -1,6 +1,6 @@
 use std::error::Error;
 use ldap3::{LdapConn, Scope, SearchEntry};
-use std::fs::{File, OpenOptions};
+use std::fs::File;
 use std::io::{BufRead, BufReader, Write};
 use std::sync::{Arc, Mutex};
 use std::thread;

@@ -1,4 +1,4 @@
-use ldap3::{LdapConn, Scope, SearchEntry, result::Result, LdapConnSettings};
+use ldap3::{LdapConn, Scope, result::Result, LdapConnSettings};
 use std::time::Duration;
 use chrono::Local;
 use crate::args::ProxyConfig;

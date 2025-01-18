@@ -3,7 +3,7 @@ pub mod daclenum;
 pub mod getspns;
 pub mod net;
 pub mod groups;
-pub mod getmachinequota;
+pub mod maq;
 pub mod customldap;
 
 
@@ -12,7 +12,7 @@ pub mod customldap;
 pub use getpasspol::get_password_policy;
 pub use daclenum::query_dacl;
 pub use getspns::get_service_principal_names;
-pub use net::run_net_commands;
+pub use net::net_command;
 pub use groups::query_groups;
-pub use getmachinequota::query_machine_quota;
+pub use maq::get_machine_account_quota;
 pub use customldap::custom_ldap_query;

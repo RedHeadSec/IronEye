@@ -1,7 +1,6 @@
 // src/args.rs
 use clap::{Arg, Command};
 use chrono::Local;
-use dialoguer::Input;
 use rustyline::DefaultEditor;
 use crate::help::add_terminal_spacing;
 use crate::ldap::LdapConfig;
@@ -55,12 +54,11 @@ pub enum ProxyType {
 }
 
 pub fn get_connect_arguments() -> Option<LdapConfig> {
-    let input: String = Input::new()
-        .with_prompt(">")
-        .interact()
-        .unwrap_or_default();
+    let mut rl = DefaultEditor::new().ok()?;
+    let args_input = rl.readline("Enter arguments: ").ok()?;
 
-    let args: Vec<&str> = input.split_whitespace().collect();
+    let args: Vec<&str> = args_input.split_whitespace().collect();
+
     let mut i = 0;
     let mut username = String::new();
     let mut password = String::new();
@@ -69,7 +67,7 @@ pub fn get_connect_arguments() -> Option<LdapConfig> {
     let mut hash = None;
     let mut secure_ldaps = false;
     let mut timestamp_format = false;
-    let mut proxy = None;
+    let proxy = None;
     
     while i < args.len() {
         match args[i] {
