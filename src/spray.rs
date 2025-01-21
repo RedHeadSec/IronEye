@@ -2,7 +2,7 @@ use crate::args::ProxyConfig;
 use crate::args::SprayArgs;
 use crate::help::print_timestamp;
 use chrono::Local;
-use ldap3::{LdapConn, LdapError, Scope, SearchEntry};
+use ldap3::{LdapConn};
 use rand::Rng;
 use std::error::Error;
 use std::fs::File;
@@ -11,7 +11,6 @@ use std::path::Path;
 use std::thread;
 use std::time::Duration;
 use std::net::TcpStream;
-use url::Url;
 use crate::help::add_terminal_spacing;
 
 pub struct SprayConfig {
