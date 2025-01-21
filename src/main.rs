@@ -1,15 +1,16 @@
 const LOGO: &str = r#"
- /$$             /$$                      /$$$$$$  /$$                   /$$    
-| $$            | $$                     /$$__  $$| $$                  | $$    
-| $$        /$$$$$$$  /$$$$$$   /$$$$$$ | $$  \__/| $$$$$$$   /$$$$$$  /$$$$$$  
-| $$       /$$__  $$ |____  $$ /$$__  $$|  $$$$$$ | $$__  $$ /$$__  $$|_  $$_/  
-| $$      | $$  | $$  /$$$$$$$| $$  \ $$ \____  $$| $$  \ $$| $$  \ $$  | $$    
-| $$      | $$  | $$ /$$__  $$| $$  | $$ /$$  \ $$| $$  | $$| $$  | $$  | $$ /$$
-| $$$$$$$$|  $$$$$$$|  $$$$$$$| $$$$$$$/|  $$$$$$/| $$  | $$|  $$$$$$/  |  $$$$/
-|________/ \_______/ \_______/| $$____/  \______/ |__/  |__/ \______/    \___/  
-                              | $$                                              
-                              | $$                                              
-                              |__/                                              
+
+░▒▓█▓▒░░▒▓███████▓▒░  ░▒▓██████▓▒░ ░▒▓███████▓▒░ ░▒▓████████▓▒░░▒▓█▓▒░░▒▓█▓▒░░▒▓████████▓▒░ 
+░▒▓█▓▒░░▒▓█▓▒░░▒▓█▓▒░░▒▓█▓▒░░▒▓█▓▒░░▒▓█▓▒░░▒▓█▓▒░░▒▓█▓▒░       ░▒▓█▓▒░░▒▓█▓▒░░▒▓█▓▒░        
+░▒▓█▓▒░░▒▓█▓▒░░▒▓█▓▒░░▒▓█▓▒░░▒▓█▓▒░░▒▓█▓▒░░▒▓█▓▒░░▒▓█▓▒░       ░▒▓█▓▒░░▒▓█▓▒░░▒▓█▓▒░        
+░▒▓█▓▒░░▒▓███████▓▒░ ░▒▓█▓▒░░▒▓█▓▒░░▒▓█▓▒░░▒▓█▓▒░░▒▓██████▓▒░   ░▒▓██████▓▒░ ░▒▓██████▓▒░   
+░▒▓█▓▒░░▒▓█▓▒░░▒▓█▓▒░░▒▓█▓▒░░▒▓█▓▒░░▒▓█▓▒░░▒▓█▓▒░░▒▓█▓▒░          ░▒▓█▓▒░    ░▒▓█▓▒░        
+░▒▓█▓▒░░▒▓█▓▒░░▒▓█▓▒░░▒▓█▓▒░░▒▓█▓▒░░▒▓█▓▒░░▒▓█▓▒░░▒▓█▓▒░          ░▒▓█▓▒░    ░▒▓█▓▒░        
+░▒▓█▓▒░░▒▓█▓▒░░▒▓█▓▒░ ░▒▓██████▓▒░ ░▒▓█▓▒░░▒▓█▓▒░░▒▓████████▓▒░   ░▒▓█▓▒░    ░▒▓████████▓▒░ 
+                                                                                            
+Description: A mullti-purpose LDAP tool written in Rust.
+Created By: Evasive_Ginger                                                                                           
+                                         
 "#;
 
 const VERSION: &str = "v0.1";
@@ -21,9 +22,13 @@ pub mod commands;
 pub mod help; //Local Lib
 pub mod ldap; //Local Lib
 pub mod ldapping;
-use args::{get_connect_arguments, get_spray_arguments, get_userenum_arguments, print_timestamp};
+pub mod spray;
+use args::{
+    get_connect_arguments, get_spray_arguments, get_userenum_arguments, ProxyType,
+};
 use commands::*;
 use help::*;
+use spray::*;
 
 fn main() {
     println!("{}", LOGO);
@@ -39,7 +44,7 @@ fn main() {
         add_terminal_spacing(1);
         let selection = Select::with_theme(&ColorfulTheme::default())
             .with_prompt("Choose an option")
-            .default(4)
+            .default(0)
             .items(&options)
             .interact()
             .unwrap();
@@ -269,25 +274,28 @@ fn main() {
                 add_terminal_spacing(2);
             }
             2 => {
-                println!("Enter the Password Spray arguments: ");
                 match get_spray_arguments() {
                     Some(args) => {
-                        println!("Starting Password Spray:");
-                        println!("Users File: {}", args.userfile);
-                        println!("Domain: {}", args.domain);
-                        println!("DC IP: {}", args.dc_ip);
-                        if let Some(hash) = args.hash {
-                            println!("Using hash: {}", hash);
-                        } else {
-                            println!("Using password: {}", args.password);
-                        }
-                        if args.timestamp_format {
-                            print_timestamp();
-                        } else {
-                            println!("Connecting with:");
+                        // Print the paths being used
+                        println!("Using username/users file: {}", args.userfile);
+                        println!("Using password/passwords file: {}", args.password);
+
+                        match SprayConfig::from_args(&args) {
+                            Ok(spray_config) => {
+                                // Remove the & before spray_config
+                                if let Err(e) = spray::start_password_spray(spray_config) {
+                                    eprintln!("Error during password spray: {}", e);
+                                }
+                            }
+                            Err(e) => {
+                                eprintln!("Error parsing arguments: {}", e);
+                            }
                         }
                     }
-                    None => println!("Required arguments not found!"),
+                    None => {
+                        println!("Required arguments not provided!");
+                        println!("Usage: --users <usernames/users_file> --passwords <password/passwords_file> --domain <domain> --dc-ip <ip>");
+                    }
                 }
             }
 
@@ -297,12 +305,12 @@ fn main() {
             }
 
             4 => {
-                // Option 3: Version
+                // Option 4: Help Menu
                 show_help_main();
             }
 
             5 => {
-                // Option 4: Quit
+                // Option 5: Quit
                 let confirm = Confirm::with_theme(&ColorfulTheme::default())
                     .with_prompt("Are you sure you want to quit?")
                     .interact()

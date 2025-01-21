@@ -1,13 +1,15 @@
-use crate::ldap::LdapConfig;
-use ldap3::{Scope, SearchEntry, controls::RawControl};
-use std::error::Error;
 use crate::help::add_terminal_spacing;
+use crate::ldap::LdapConfig;
+use ldap3::{controls::RawControl, Scope, SearchEntry};
+use std::error::Error;
 
-
-
-pub fn query_dacl(config: &mut LdapConfig, target: &str, principal: Option<&str>) -> Result<(), Box<dyn Error>> {
+pub fn query_dacl(
+    config: &mut LdapConfig,
+    target: &str,
+    _principal: Option<&str>,
+) -> Result<(), Box<dyn Error>> {
     let (mut ldap, search_base) = crate::ldap::ldap_connect(config)?;
-    
+
     // Create the search filter for the target
     let target_filter = if target.contains("=") {
         format!("(distinguishedName={})", target)
@@ -19,8 +21,8 @@ pub fn query_dacl(config: &mut LdapConfig, target: &str, principal: Option<&str>
     // From Go implementation: DACL_SECURITY_INFORMATION = 0x4
     let sd_flags_control = RawControl {
         ctype: "1.2.840.113556.1.4.801".to_string(),
-        crit: true,  // Changed to true as per Go implementation
-        val: Some(vec![48, 3, 2, 1, 4]),  // Changed to 4 (DACL only) as per Go implementation
+        crit: true,                      // Changed to true as per Go implementation
+        val: Some(vec![48, 3, 2, 1, 4]), // Changed to 4 (DACL only) as per Go implementation
     };
 
     // Add the control to the connection
@@ -30,23 +32,25 @@ pub fn query_dacl(config: &mut LdapConfig, target: &str, principal: Option<&str>
     println!("Searching for target: {}", target);
     println!("Using filter: {}", target_filter);
     println!("Base DN: {}", search_base);
-    
-    let (entries, _) = ldap.search(
-        &search_base,
-        Scope::Subtree,
-        &target_filter,
-        vec!["nTSecurityDescriptor", "distinguishedName"],  // Added distinguishedName for debugging
-    )?.success()?;
+
+    let (entries, _) = ldap
+        .search(
+            &search_base,
+            Scope::Subtree,
+            &target_filter,
+            vec!["nTSecurityDescriptor", "distinguishedName"], // Added distinguishedName for debugging
+        )?
+        .success()?;
 
     if let Some(entry) = entries.first() {
         let entry = SearchEntry::construct(entry.clone());
         println!("Found entry: {}", entry.dn);
-        
+
         println!("Available attributes:");
         for (attr_name, values) in &entry.attrs {
             println!("  {}: {} value(s)", attr_name, values.len());
         }
-        
+
         if let Some(security_descriptors) = entry.attrs.get("nTSecurityDescriptor") {
             for sd in security_descriptors {
                 println!("Security Descriptor found ({} bytes)", sd.len());

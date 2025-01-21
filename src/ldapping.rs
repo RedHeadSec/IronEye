@@ -1,11 +1,11 @@
-use std::error::Error;
+use crate::args::UserEnumArgs;
 use ldap3::{LdapConn, Scope, SearchEntry};
-use std::fs::{File, OpenOptions};
+use std::error::Error;
+use std::fs::File;
 use std::io::{BufRead, BufReader, Write};
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use std::thread;
-use std::sync::atomic::{AtomicUsize, Ordering};
-use crate::args::UserEnumArgs;
 
 #[derive(Clone)]
 pub struct LdapConfig {
@@ -14,21 +14,22 @@ pub struct LdapConfig {
     pub file_path: String,
     pub threads: usize,
     pub output_file: Option<String>,
-    pub port: u16
+    pub port: u16,
 }
 
 pub fn run(args: &UserEnumArgs) -> Result<(), Box<dyn Error>> {
     let config = LdapConfig {
         dc: args.dc_ip.clone(),
-        base_dn: args.domain
+        base_dn: args
+            .domain
             .split('.')
             .map(|s| format!("DC={}", s))
             .collect::<Vec<_>>()
             .join(","),
         file_path: args.userfile.clone(),
-        threads: 4,  // default value
+        threads: 4, // default value
         output_file: args.output.clone(),
-        port: 389,  // default value
+        port: 389, // default value
     };
 
     brute_force_users(config);
@@ -43,9 +44,9 @@ fn brute_force_users(config: LdapConfig) {
     let results = Arc::new(Mutex::new(Vec::new()));
     let usernames = Arc::new(usernames);
     let total_users = usernames.len();
-    
+
     let progress = Arc::new(AtomicUsize::new(0));
-    
+
     if usernames.len() == 0 {
         println!("No usernames found in input file");
         return;
@@ -57,7 +58,7 @@ fn brute_force_users(config: LdapConfig) {
     for i in 0..thread_count {
         let start = i * chunk_size;
         let end = std::cmp::min(start + chunk_size, usernames.len());
-        
+
         if start >= end {
             continue;
         }
@@ -71,7 +72,7 @@ fn brute_force_users(config: LdapConfig) {
         let handle = thread::spawn(move || {
             let ldap_url = format!("ldap://{}", config.dc);
             //println!("Attempting to connect to: {}", ldap_url);
-            
+
             match LdapConn::new(&ldap_url) {
                 Ok(mut conn) => {
                     for username in usernames[start..end].iter() {
@@ -82,13 +83,14 @@ fn brute_force_users(config: LdapConfig) {
                                         Ok(mut results) => {
                                             println!("Adding {} to results", username);
                                             results.push(username.clone());
-                                        },
+                                        }
                                         Err(e) => eprintln!("Failed to lock results mutex: {}", e),
                                     }
                                 }
                                 // Add these lines after the user check:
                                 let count = progress.fetch_add(1, Ordering::SeqCst) + 1;
-                                println!("Progress: {}/{} users checked ({}%)", 
+                                println!(
+                                    "Progress: {}/{} users checked ({}%)",
                                     count,
                                     total_users,
                                     (count as f64 / total_users as f64 * 100.0) as u32
@@ -100,7 +102,8 @@ fn brute_force_users(config: LdapConfig) {
                                     println!("Got ResultCode 201 for {}, continuing...", username);
                                     // Add progress counter here too for failed attempts
                                     let count = progress.fetch_add(1, Ordering::SeqCst) + 1;
-                                    println!("Progress: {}/{} users checked ({}%)", 
+                                    println!(
+                                        "Progress: {}/{} users checked ({}%)",
                                         count,
                                         total_users,
                                         (count as f64 / total_users as f64 * 100.0) as u32
@@ -140,7 +143,10 @@ fn brute_force_users(config: LdapConfig) {
     // Print statistics
     println!("\n[+] Users checked: {}", total_users);
     println!("[+] Valid users found: {}", found_users.len());
-    println!("[+] Success rate: {:.2}%", (found_users.len() as f64 / total_users as f64) * 100.0);
+    println!(
+        "[+] Success rate: {:.2}%",
+        (found_users.len() as f64 / total_users as f64) * 100.0
+    );
 
     // Handle file output if specified
     if let Some(output_file) = config.output_file {
@@ -149,7 +155,11 @@ fn brute_force_users(config: LdapConfig) {
             Ok(mut file) => {
                 let content = found_users.join("\n") + "\n";
                 match file.write_all(content.as_bytes()) {
-                    Ok(_) => println!("Successfully wrote {} users to {}", found_users.len(), output_file),
+                    Ok(_) => println!(
+                        "Successfully wrote {} users to {}",
+                        found_users.len(),
+                        output_file
+                    ),
                     Err(e) => eprintln!("Error writing to file: {}", e),
                 }
             }
@@ -163,17 +173,17 @@ fn check_user(conn: &mut LdapConn, username: &str) -> Result<bool, ldap3::LdapEr
         "(&(NtVer=\\06\\00\\00\\00)(AAC=\\10\\00\\00\\00)(User={}))",
         username
     );
-    
+
     let result = conn.search(
-        "",  // empty base DN
+        "", // empty base DN
         Scope::Base,
         &filter,
-        vec!["NetLogon"]
+        vec!["NetLogon"],
     )?;
 
     if !result.0.is_empty() {
         let entry = SearchEntry::construct(result.0[0].clone());
-        
+
         // Get the raw bytes of the NetLogon attribute
         if let Some(values) = entry.bin_attrs.get("NetLogon") {
             if !values.is_empty() {
@@ -185,14 +195,17 @@ fn check_user(conn: &mut LdapConn, username: &str) -> Result<bool, ldap3::LdapEr
                 }
             }
         }
-        
+
         // Try with the normal attrs as fallback
         if let Some(values) = entry.attrs.get("NetLogon") {
             if !values.is_empty() {
                 let bytes = values[0].as_bytes();
                 if bytes.len() > 2 && bytes[0] == 0x17 {
                     println!("Valid user found: {}", username);
-                    println!("NetLogon response bytes: {:?}", &bytes[..std::cmp::min(bytes.len(), 10)]);
+                    println!(
+                        "NetLogon response bytes: {:?}",
+                        &bytes[..std::cmp::min(bytes.len(), 10)]
+                    );
                     return Ok(true);
                 }
             }

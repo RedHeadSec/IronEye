@@ -1,3 +1,8 @@
+use std::error::Error;
+use std::fs::File;
+use std::io::{BufRead, BufReader};
+use chrono::Local;
+
 pub fn show_help_main() {
     println!("\nHelp Information:");
     println!("1. 'Connect' - Connect to a ldap server and run queries");
@@ -56,7 +61,22 @@ pub enum PromptFormat {
     UserAtDomain, // user@domain.local [ldap(s)://ip]
 }
 
-pub fn get_prompt_string(username: &str, domain: &str, use_ssl: bool,server: &str) -> String {
+pub fn get_prompt_string(username: &str, domain: &str, use_ssl: bool, server: &str) -> String {
     let protocol = if use_ssl { "ldaps" } else { "ldap" };
-    format!("{}@{}\n({}:{})", username, domain,server, protocol)
+    format!("{}@{}\n({}:{})", username, domain, server, protocol)
+}
+
+pub fn read_file_lines(filename: &str) -> Result<Vec<String>, Box<dyn Error>> {
+    let file = File::open(filename)?;
+    let reader = BufReader::new(file);
+    Ok(reader
+        .lines()
+        .filter_map(|line| line.ok())
+        .filter(|line| !line.trim().is_empty())
+        .collect())
+}
+
+pub fn print_timestamp() -> String {
+    let timestamp = Local::now().format("%Y-%m-%d %H:%M:%S").to_string();
+    timestamp
 }
