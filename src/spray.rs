@@ -86,9 +86,6 @@ pub fn start_password_spray(config: SprayConfig) -> Result<(), Box<dyn Error>> {
     let output_file = format!("found_credentials_{}.txt", timestamp);
     let mut found_creds = None;
     let mut valid_credentials_found = false;
-    let mut attempt_count = 0;
-    let total_attempts = users.len() * passwords.len();
-
     let total_attempts = users.len() * passwords.len();
     let mut attempt_count = 0;
 
@@ -99,7 +96,7 @@ pub fn start_password_spray(config: SprayConfig) -> Result<(), Box<dyn Error>> {
             passwords.len()
         );
         
-        for (user_index, user) in users.iter().enumerate() {
+        for (_user_index, user) in users.iter().enumerate() {
             attempt_count += 1;
             let progress_percentage = (attempt_count as f64 / total_attempts as f64 * 100.0) as u32;
             
@@ -242,7 +239,7 @@ fn read_users(user_input: &str) -> io::Result<Vec<String>> {
     }
 }
 
-fn check_ldap_port(host: &str, port: u16, timeout: Duration) -> Result<(), Box<dyn Error>> {
+fn check_ldap_port(host: &str, port: u16, _timeout: Duration) -> Result<(), Box<dyn Error>> {
     match TcpStream::connect((host, port)) {
         Ok(_) => Ok(()),
         Err(e) => Err(Box::new(e)),
