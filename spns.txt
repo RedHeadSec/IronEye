@@ -1,4 +1,0 @@
-SPN                                                Username        PasswordLastSet                LastLogon                      Delegation
-kadmin/changepw                                    krbtgt          2024-07-04 14:01:37 -0500 -05:00 Never                          None
-MSSQLSvc/sccm-sql.ludus.domain:1433                sqlsccmsvc      2024-12-16 15:26:53 -0600 -06:00 2025-01-17 18:06:53 -0600 -06:00 None
-MSSQLSvc/sccm-sql:1433                             sqlsccmsvc      2024-12-16 15:26:53 -0600 -06:00 2025-01-17 18:06:53 -0600 -06:00 None
