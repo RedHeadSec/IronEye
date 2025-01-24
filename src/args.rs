@@ -1,7 +1,6 @@
 // src/args.rs
 use crate::help::add_terminal_spacing;
 use crate::ldap::LdapConfig;
-use chrono::Local;
 use rustyline::DefaultEditor;
 
 pub struct ConnectionArgs {
@@ -37,6 +36,14 @@ pub struct SprayArgs {
     pub delay: u64,
     pub continue_on_success: bool,
     pub verbose: bool,
+}
+
+#[derive(Debug)]
+pub struct TgtArguments {
+    pub username: String,
+    pub password: String,
+    pub realm: String,
+    pub server: String,
 }
 
 #[derive(Clone)]
@@ -162,7 +169,7 @@ impl ConnectionArgs {
 
 pub fn get_spray_arguments() -> Option<SprayArgs> {
     println!("\nArgument format: --users <user/path> --passwords <pass/path> --domain <domain> --dc-ip <ip> [--threads <num>] [--jitter <ms>] [--delay <ms>] [--continue-on-success] [--verbose] [--timestamp] [--proxy <proxy_url>]");
-    println!("Example: --users users.txt --passwords passwords.txt --domain corp.local --dc-ip 192.168.1.10 --threads 10 --jitter 100 --delay 1000 --continue-on-success --verbose --timestamp");
+    println!("Example: --users users.txt --passwords passwords.txt --domain corp.local --dc-ip 192.168.1.10 --threads 10 --jitter 10 --delay 10 --continue-on-success --verbose --timestamp");
     add_terminal_spacing(1);
 
     let mut rl = DefaultEditor::new().ok()?;
@@ -423,10 +430,6 @@ pub fn get_userenum_arguments() -> Option<UserEnumArgs> {
     })
 }
 
-pub fn print_timestamp() {
-    let timestamp = Local::now().format("%Y-%m-%d %H:%M:%S").to_string();
-    println!("[{}]", timestamp);
-}
 
 fn parse_proxy_parts(proxy_parts: &str, proxy_type: ProxyType) -> Option<ProxyConfig> {
     let parts: Vec<&str> = proxy_parts.split('@').collect();
@@ -466,4 +469,38 @@ fn parse_proxy_parts(proxy_parts: &str, proxy_type: ProxyType) -> Option<ProxyCo
         }
         _ => None,
     }
+}
+
+fn read_line() -> Option<String> {
+    let mut rl = DefaultEditor::new().ok()?;
+    match rl.readline("> ") {
+        Ok(line) => Some(line.trim().to_string()),
+        Err(_) => None,
+    }
+}
+
+pub fn get_tgt_arguments() -> Option<TgtArguments> {
+    println!("Enter TGT arguments in the format: <username> <password> <realm> <server>");
+    println!("Example: tywin.lannister Password123 SEVENKINGDOMS.LOCAL 192.168.1.10");
+    
+    let input = match read_line() {
+        Some(line) => line,
+        None => return None,
+    };
+
+    let args: Vec<&str> = input.split_whitespace().collect();
+
+    if args.len() != 4 {
+        println!("Error: Incorrect number of arguments");
+        println!("Usage: <username> <password> <realm> <server>");
+        println!("Example: tywin.lannister Password123 SEVENKINGDOMS.LOCAL 192.168.1.10");
+        return None;
+    }
+
+    Some(TgtArguments {
+        username: args[0].to_string(),
+        password: args[1].to_string(),
+        realm: args[2].to_string(),
+        server: args[3].to_string(),
+    })
 }

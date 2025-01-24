@@ -23,18 +23,23 @@ pub mod help; //Local Lib
 pub mod ldap; //Local Lib
 pub mod ldapping;
 pub mod spray;
+pub mod gettgt;
 use args::{
-    get_connect_arguments, get_spray_arguments, get_userenum_arguments,
+    get_connect_arguments, get_spray_arguments, get_userenum_arguments, get_tgt_arguments
 };
 use commands::*;
 use help::*;
 use spray::*;
+use gettgt::*;
 
-fn main() {
+
+#[tokio::main]
+async fn main() {
     println!("{}", LOGO);
     loop {
         let options = vec![
             "Connect",
+            "GetTGT",
             "UserEnum",
             "Password Spray",
             "Version",
@@ -244,6 +249,28 @@ fn main() {
             }
 
             1 => {
+                println!("Enter the TGT arguments:");
+                match get_tgt_arguments() {
+                    Some(args) => {
+                        println!("\nConfiguration:");
+                        println!("Username: {}", args.username);
+                        println!("Password: {}", args.password);
+                        println!("Realm: {}", args.realm);
+                        println!("Server: {}", args.server);
+
+                        println!("\nRequesting TGT...");
+                        match get_tgt(&args.username, &args.password, &args.realm, &args.server).await {
+                            Ok(_) => println!("TGT operation completed successfully"),
+                            Err(e) => eprintln!("Error during TGT operation: {}", e),
+                        }
+                    }
+                    None => println!("Invalid arguments provided!"),
+                }
+                println!("\nTGT operation complete.");
+                add_terminal_spacing(2);
+            }
+
+            2 => {
                 println!("Enter the User Enumeration arguments:");
                 match get_userenum_arguments() {
                     Some(args) => {
@@ -273,7 +300,7 @@ fn main() {
                 println!("\nUser enumeration complete.");
                 add_terminal_spacing(2);
             }
-            2 => {
+            3 => {
                 match get_spray_arguments() {
                     Some(args) => {
                         // Print the paths being used
@@ -299,18 +326,15 @@ fn main() {
                 }
             }
 
-            3 => {
-                // Option 3: Version
+            4 => {
                 println!("{}", VERSION);
             }
 
-            4 => {
-                // Option 4: Help Menu
+            5 => {
                 show_help_main();
             }
 
-            5 => {
-                // Option 5: Quit
+            6 => {
                 let confirm = Confirm::with_theme(&ColorfulTheme::default())
                     .with_prompt("Are you sure you want to quit?")
                     .interact()
