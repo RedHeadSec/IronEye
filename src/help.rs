@@ -5,14 +5,15 @@ use chrono::Local;
 
 pub fn show_help_main() {
     println!("\nHelp Information:");
-    println!("1. 'Connect' - Connect to a ldap server and run queries");
+    println!("1. 'Connect' - Connect to a ldap server and run queries.");
+    println!("2. 'GetTGT' - Connect to server and get ccache/krb file for a given user.");
     println!(
-        "2. 'UserEnum' - Enumerate valid users via ldap/kerberos/ldap ping in an internal domain."
+        "3. 'UserEnum' - Enumerate valid users via ldap/kerberos/ldap ping in an internal domain."
     );
-    println!("3. 'Password Spray' - Perform Password Spraying against the internal domain.");
-    println!("4. 'Version' - Shows Version.");
-    println!("5. 'Help' - Shows this help message.");
-    println!("6. 'Exit' - Exits the program.");
+    println!("4. 'Password Spray' - Perform Password Spraying against the internal domain.");
+    println!("5. 'Version' - Shows Version.");
+    println!("6. 'Help' - Shows this help message.");
+    println!("7. 'Exit' - Exits the program.");
 }
 
 pub fn show_help_connect() {

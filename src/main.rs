@@ -33,8 +33,7 @@ use spray::*;
 use gettgt::*;
 
 
-#[tokio::main]
-async fn main() {
+fn main() {
     println!("{}", LOGO);
     loop {
         let options = vec![
@@ -259,7 +258,7 @@ async fn main() {
                         println!("Server: {}", args.server);
 
                         println!("\nRequesting TGT...");
-                        match get_tgt(&args.username, &args.password, &args.realm, &args.server).await {
+                        match get_tgt(&args.username, &args.password, &args.realm, &args.server) {
                             Ok(_) => println!("TGT operation completed successfully"),
                             Err(e) => eprintln!("Error during TGT operation: {}", e),
                         }
