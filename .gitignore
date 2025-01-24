@@ -8,6 +8,9 @@ users.txt
 found_creds
 *.krb
 *.ccache
+domain_groups*
+DS_STORE
+
 
 # Generated Kerberos tickets
 *.ticket
