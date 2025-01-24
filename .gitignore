@@ -10,7 +10,7 @@ found_creds
 *.ccache
 domain_groups*
 DS_STORE
-
+users_export.csv
 
 # Generated Kerberos tickets
 *.ticket

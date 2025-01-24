@@ -24,8 +24,9 @@ pub mod ldap; //Local Lib
 pub mod ldapping;
 pub mod spray;
 pub mod gettgt;
+pub mod deep_queries;
 use args::{
-    get_connect_arguments, get_spray_arguments, get_userenum_arguments, get_tgt_arguments
+    get_connect_arguments, get_spray_arguments, get_userenum_arguments, get_tgt_arguments,run_nested_query_menu
 };
 use commands::*;
 use help::*;
@@ -69,6 +70,7 @@ fn main() {
                                 "Machine Quota",
                                 "Net Commands",
                                 "Password Policy",
+                                "Deep-Queries",
                                 "Custom Ldap Query",
                                 "Back",
                             ];
@@ -234,11 +236,16 @@ fn main() {
                                     }
                                 }
                                 6 => {
+                                    if let Err(e) = run_nested_query_menu(&mut ldap_config) {
+                                        eprintln!("Error: {}", e)
+                                    }
+                                }
+                                7 => {
                                     if let Err(e) = custom_ldap_query() {
                                         eprintln!("Error: {}", e)
                                     }
                                 }
-                                7 => break, // Return to main menu
+                                8 => break, // Return to main menu
                                 _ => unreachable!(),
                             }
                         }

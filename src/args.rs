@@ -1,6 +1,8 @@
 // src/args.rs
 use crate::help::add_terminal_spacing;
 use crate::ldap::LdapConfig;
+use crate::deep_queries::users;
+use crate::deep_queries::trusts;
 use rustyline::DefaultEditor;
 
 pub struct ConnectionArgs {
@@ -504,3 +506,43 @@ pub fn get_tgt_arguments() -> Option<TgtArguments> {
         server: args[3].to_string(),
     })
 }
+
+pub fn run_nested_query_menu(ldap_config: &mut LdapConfig) -> Result<(), String> {
+    let mut rl = rustyline::DefaultEditor::new().map_err(|e| format!("Error initializing input: {}", e))?;
+    let menu_prompt = "Select a predefined LDAP query (e.g., 1 for Trusts, 2 for Users): ";
+    
+    loop {
+        println!("Options:");
+        println!("1. Query Domain Trusts");
+        println!("2. Query All Users");
+        println!("3. Back to Main Menu");
+
+        let input = rl.readline(menu_prompt).map_err(|e| format!("Error reading input: {}", e))?;
+        let input = input.trim();
+
+        match input {
+            "1" => {
+                // Call Trusts query
+                if let Err(e) = trusts::get_trusts(ldap_config) {
+                    eprintln!("Error running Trusts query: {}", e);
+                }
+            }
+            "2" => {
+                // Call Users query
+                if let Err(e) = users::get_users(ldap_config) {
+                    eprintln!("Error running Users query: {}", e);
+                }
+            }
+            "3" => {
+                println!("Returning to the main menu...");
+                break;
+            }
+            _ => {
+                println!("Invalid option. Please enter 1, 2, or 3.");
+            }
+        }
+    }
+
+    Ok(())
+}
+
