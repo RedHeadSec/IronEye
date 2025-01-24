@@ -1,8 +1,36 @@
-/target
-
-
 # Added by cargo
 #
-# already existing elements were commented out
 
-#/target
+/target
+
+# Test files
+users.txt
+found_creds
+*.krb
+*.ccache
+
+# Generated Kerberos tickets
+*.ticket
+*_tgt.krb
+*_tgt.ccache
+
+# Rust specific
+/target/
+**/*.rs.bk
+Cargo.lock
+
+# IDE specific
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS specific
+.DS_Store
+Thumbs.db
+
+# Logs and temp files
+*.log
+*.tmp
+temp/
+logs/
