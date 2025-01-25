@@ -23,7 +23,10 @@ pub fn get_trusts(config: &mut LdapConfig) -> Result<(), Box<dyn Error>> {
         }
 
         if let Some(trust_attributes) = entry.attrs.get("trustAttributes") {
-            println!("Trust Attributes: {}", interpret_trust_attributes(&trust_attributes[0]));
+            println!(
+                "Trust Attributes: {}",
+                interpret_trust_attributes(&trust_attributes[0])
+            );
         }
 
         if let Some(trust_direction) = entry.attrs.get("trustDirection") {

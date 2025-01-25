@@ -11,6 +11,10 @@ found_creds
 domain_groups*
 DS_STORE
 users_export.csv
+*history*
+results.txt
+*.csv
+
 
 # Generated Kerberos tickets
 *.ticket

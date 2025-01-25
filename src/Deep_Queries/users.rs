@@ -1,7 +1,7 @@
 use crate::ldap::LdapConfig;
+use csv::Writer;
 use ldap3::{LdapConn, Scope, SearchEntry};
 use std::error::Error;
-use csv::Writer;
 
 pub fn get_users(config: &mut LdapConfig) -> Result<(), Box<dyn Error>> {
     // Establish LDAP connection
@@ -21,10 +21,26 @@ pub fn get_users(config: &mut LdapConfig) -> Result<(), Box<dyn Error>> {
 
     // Write each user's details to the CSV file and print them to the terminal
     for entry in entries {
-        let sam_account_name = entry.attrs.get("sAMAccountName").and_then(|v| v.get(0)).map_or("", String::as_str);
-        let display_name = entry.attrs.get("displayName").and_then(|v| v.get(0)).map_or("", String::as_str);
-        let mail = entry.attrs.get("mail").and_then(|v| v.get(0)).map_or("", String::as_str);
-        let description = entry.attrs.get("description").and_then(|v| v.get(0)).map_or("", String::as_str);
+        let sam_account_name = entry
+            .attrs
+            .get("sAMAccountName")
+            .and_then(|v| v.get(0))
+            .map_or("", String::as_str);
+        let display_name = entry
+            .attrs
+            .get("displayName")
+            .and_then(|v| v.get(0))
+            .map_or("", String::as_str);
+        let mail = entry
+            .attrs
+            .get("mail")
+            .and_then(|v| v.get(0))
+            .map_or("", String::as_str);
+        let description = entry
+            .attrs
+            .get("description")
+            .and_then(|v| v.get(0))
+            .map_or("", String::as_str);
 
         // Write to the CSV file
         wtr.write_record(&[sam_account_name, display_name, mail, description])?;
@@ -44,10 +60,7 @@ pub fn get_users(config: &mut LdapConfig) -> Result<(), Box<dyn Error>> {
 }
 
 // Helper function to perform the LDAP search for user accounts
-fn query_users(
-    ldap: &mut LdapConn,
-    search_base: &str,
-) -> Result<Vec<SearchEntry>, Box<dyn Error>> {
+fn query_users(ldap: &mut LdapConn, search_base: &str) -> Result<Vec<SearchEntry>, Box<dyn Error>> {
     let search_filter = "(objectClass=user)";
     let result = ldap.search(
         search_base,

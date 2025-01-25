@@ -1,8 +1,15 @@
 // src/args.rs
+use crate::deep_queries::computers;
+use crate::deep_queries::ou;
+use crate::deep_queries::pki;
+use crate::deep_queries::sccm;
+use crate::deep_queries::subnets;
+use crate::deep_queries::trusts;
+use crate::deep_queries::users;
 use crate::help::add_terminal_spacing;
 use crate::ldap::LdapConfig;
-use crate::deep_queries::users;
-use crate::deep_queries::trusts;
+use dialoguer::theme::ColorfulTheme;
+use dialoguer::Select;
 use rustyline::DefaultEditor;
 
 pub struct ConnectionArgs {
@@ -64,95 +71,114 @@ pub enum ProxyType {
 }
 
 pub fn get_connect_arguments() -> Option<LdapConfig> {
-    let mut rl = DefaultEditor::new().ok()?;
-    let args_input = rl.readline("Enter arguments: ").ok()?;
+    let mut rl = DefaultEditor::new().expect("Failed to initialize input editor");
+    rl.load_history("connect_history.txt").ok(); // Load history if it exists
 
-    let args: Vec<&str> = args_input.split_whitespace().collect();
+    println!("Enter Connect arguments (e.g., -u administrator -p 'Password123!' -d domain.local -i 10.10.10.10 [-s] [-t]):");
 
-    let mut i = 0;
-    let mut username = String::new();
-    let mut password = String::new();
-    let mut domain = String::new();
-    let mut dc_ip = String::new();
-    let mut hash = None;
-    let mut secure_ldaps = false;
-    let mut timestamp_format = false;
-    let proxy = None;
+    match rl.readline("> ") {
+        Ok(line) => {
+            rl.add_history_entry(line.as_str()).ok(); // Save to history
+            rl.save_history("connect_history.txt").ok(); // Persist history to disk
 
-    while i < args.len() {
-        match args[i] {
-            "-u" | "--username" => {
-                if i + 1 < args.len() {
-                    username = args[i + 1].to_string();
-                    i += 2;
-                } else {
-                    i += 1;
+            let args: Vec<&str> = line.split_whitespace().collect();
+
+            let mut username = String::new();
+            let mut password = String::new();
+            let mut domain = String::new();
+            let mut dc_ip = String::new();
+            let mut hash = None;
+            let mut secure_ldaps = false;
+            let mut timestamp_format = false;
+
+            let mut i = 0;
+            while i < args.len() {
+                match args[i] {
+                    "-u" | "--username" => {
+                        if i + 1 < args.len() {
+                            username = args[i + 1].to_string();
+                            i += 2;
+                        } else {
+                            eprintln!("Missing value for username argument!");
+                            return None;
+                        }
+                    }
+                    "-p" | "--password" => {
+                        if i + 1 < args.len() {
+                            password = args[i + 1].to_string();
+                            i += 2;
+                        } else {
+                            eprintln!("Missing value for password argument!");
+                            return None;
+                        }
+                    }
+                    "-d" | "--domain" => {
+                        if i + 1 < args.len() {
+                            domain = args[i + 1].to_string();
+                            i += 2;
+                        } else {
+                            eprintln!("Missing value for domain argument!");
+                            return None;
+                        }
+                    }
+                    "-i" | "--dc-ip" => {
+                        if i + 1 < args.len() {
+                            dc_ip = args[i + 1].to_string();
+                            i += 2;
+                        } else {
+                            eprintln!("Missing value for DC IP argument!");
+                            return None;
+                        }
+                    }
+                    "-H" | "--hash" => {
+                        if i + 1 < args.len() {
+                            hash = Some(args[i + 1].to_string());
+                            i += 2;
+                        } else {
+                            eprintln!("Missing value for hash argument!");
+                            return None;
+                        }
+                    }
+                    "-s" | "--secure" => {
+                        secure_ldaps = true;
+                        i += 1;
+                    }
+                    "-t" | "--timestamp" => {
+                        timestamp_format = true;
+                        i += 1;
+                    }
+                    _ => {
+                        eprintln!("Unrecognized argument: {}", args[i]);
+                        i += 1;
+                    }
                 }
             }
-            "-p" | "--password" => {
-                if i + 1 < args.len() {
-                    password = args[i + 1].to_string();
-                    i += 2;
-                } else {
-                    i += 1;
-                }
+
+            if username.is_empty()
+                || password.is_empty() && hash.is_none()
+                || domain.is_empty()
+                || dc_ip.is_empty()
+            {
+                eprintln!("Missing required arguments! Make sure to provide -u, -p, -d, and -i.");
+                return None;
             }
-            "-d" | "--domain" => {
-                if i + 1 < args.len() {
-                    domain = args[i + 1].to_string();
-                    i += 2;
-                } else {
-                    i += 1;
-                }
-            }
-            "-i" | "--dc-ip" => {
-                if i + 1 < args.len() {
-                    dc_ip = args[i + 1].to_string();
-                    i += 2;
-                } else {
-                    i += 1;
-                }
-            }
-            "-H" | "--hash" => {
-                if i + 1 < args.len() {
-                    hash = Some(args[i + 1].to_string());
-                    i += 2;
-                } else {
-                    i += 1;
-                }
-            }
-            "-s" | "--secure" => {
-                secure_ldaps = true;
-                i += 1;
-            }
-            "-t" | "--timestamp" => {
-                timestamp_format = true;
-                i += 1;
-            }
-            _ => i += 1,
+
+            Some(LdapConfig {
+                username,
+                password,
+                domain,
+                dc_ip,
+                hash,
+                secure_ldaps,
+                timestamp_format,
+                proxy: None, // You can add proxy support later if needed
+            })
+        }
+        Err(e) => {
+            eprintln!("Error reading input: {}", e);
+            None
         }
     }
-
-    if username.is_empty()
-        || (password.is_empty() && hash.is_none())
-        || domain.is_empty()
-        || dc_ip.is_empty()
-    {
-        println!("Missing required arguments!");
-        add_terminal_spacing(1);
-        return None;
-    }
-
-    Some(LdapConfig {
-        username,
-        password,
-        domain,
-        dc_ip,
-        hash,
-        secure_ldaps,
-        timestamp_format,
-        proxy,
-    })
 }
 
 impl ConnectionArgs {
@@ -175,7 +201,19 @@ pub fn get_spray_arguments() -> Option<SprayArgs> {
     add_terminal_spacing(1);
 
     let mut rl = DefaultEditor::new().ok()?;
-    let args_input = rl.readline("Enter arguments: ").ok()?;
+    rl.load_history("spray_history.txt").ok(); // Load history if it exists
+
+    let args_input = match rl.readline("Enter arguments: ") {
+        Ok(line) => {
+            rl.add_history_entry(line.as_str()).ok(); // Add input to history
+            rl.save_history("spray_history.txt").ok(); // Save history to disk
+            line
+        }
+        Err(e) => {
+            println!("Error reading input: {}", e);
+            return None;
+        }
+    };
 
     let args: Vec<&str> = args_input.split_whitespace().collect();
 
@@ -285,21 +323,8 @@ pub fn get_spray_arguments() -> Option<SprayArgs> {
         }
     }
 
-    // Check required arguments
-    if users.is_none() {
-        println!("Error: --users is required");
-        return None;
-    }
-    if passwords.is_none() {
-        println!("Error: --passwords is required");
-        return None;
-    }
-    if domain.is_none() {
-        println!("Error: --domain is required");
-        return None;
-    }
-    if dc_ip.is_none() {
-        println!("Error: --dc-ip is required");
+    if users.is_none() || passwords.is_none() || domain.is_none() || dc_ip.is_none() {
+        println!("Error: --users, --passwords, --domain, and --dc-ip are required");
         return None;
     }
 
@@ -328,13 +353,108 @@ pub fn get_spray_arguments() -> Option<SprayArgs> {
     })
 }
 
+pub fn get_tgt_arguments() -> Option<TgtArguments> {
+    println!("\nArgument format: --username <username> --password <password> --realm <realm> --server <kdc_server>");
+    let mut rl = DefaultEditor::new().ok()?;
+    rl.load_history("tgt_arguments_history.txt").ok();
+
+    let args_input = match rl.readline("Enter arguments: ") {
+        Ok(line) => {
+            rl.add_history_entry(line.as_str()).ok();
+            rl.save_history("tgt_arguments_history.txt").ok();
+            line
+        }
+        Err(e) => {
+            eprintln!("Error reading input: {}", e);
+            return None;
+        }
+    };
+
+    let args: Vec<&str> = args_input.split_whitespace().collect();
+
+    let mut username = None;
+    let mut password = None;
+    let mut realm = None;
+    let mut server = None;
+
+    let mut i = 0;
+    while i < args.len() {
+        match args[i] {
+            "-u" | "--username" => {
+                if i + 1 < args.len() {
+                    username = Some(args[i + 1].to_string());
+                    i += 2;
+                } else {
+                    println!("Error: --username requires a value");
+                    return None;
+                }
+            }
+            "-p" | "--password" => {
+                if i + 1 < args.len() {
+                    password = Some(args[i + 1].to_string());
+                    i += 2;
+                } else {
+                    println!("Error: --password requires a value");
+                    return None;
+                }
+            }
+            "-d" | "--domain" => {
+                if i + 1 < args.len() {
+                    realm = Some(args[i + 1].to_string());
+                    i += 2;
+                } else {
+                    println!("Error: --realm requires a value");
+                    return None;
+                }
+            }
+            "-i" | "--dc-ip" => {
+                if i + 1 < args.len() {
+                    server = Some(args[i + 1].to_string());
+                    i += 2;
+                } else {
+                    println!("Error: --server requires a value");
+                    return None;
+                }
+            }
+            _ => {
+                println!("Unknown argument: {}", args[i]);
+                return None;
+            }
+        }
+    }
+
+    if username.is_none() || password.is_none() || realm.is_none() || server.is_none() {
+        println!("Error: --username, --password, --realm, and --server are required");
+        return None;
+    }
+
+    Some(TgtArguments {
+        username: username.unwrap(),
+        password: password.unwrap(),
+        realm: realm.unwrap(),
+        server: server.unwrap(),
+    })
+}
+
 pub fn get_userenum_arguments() -> Option<UserEnumArgs> {
     println!("\nArgument format: --userfile <path> --domain <domain> --dc-ip <ip> --output <filename> [--timestamp] [--proxy <proxy_url>]");
     println!("Example: --userfile users.txt --domain corp.local --dc-ip 192.168.1.10 --output results.txt --timestamp");
     add_terminal_spacing(1);
 
     let mut rl = DefaultEditor::new().ok()?;
-    let args_input = rl.readline("Enter arguments: ").ok()?;
+    rl.load_history("userenum_history.txt").ok(); // Load history if it exists
+
+    let args_input = match rl.readline("Enter arguments: ") {
+        Ok(line) => {
+            rl.add_history_entry(line.as_str()).ok(); // Add input to history
+            rl.save_history("userenum_history.txt").ok(); // Save history to disk
+            line
+        }
+        Err(e) => {
+            println!("Error reading input: {}", e);
+            return None;
+        }
+    };
 
     let args: Vec<&str> = args_input.split_whitespace().collect();
 
@@ -404,13 +524,11 @@ pub fn get_userenum_arguments() -> Option<UserEnumArgs> {
         }
     }
 
-    // Validate required arguments
     if userfile.is_none() || domain.is_none() || dc_ip.is_none() {
         println!("Error: --userfile, --domain, and --dc-ip are required");
         return None;
     }
 
-    // Parse proxy if provided
     let proxy = proxy_str.and_then(|proxy_str| {
         if let Some(stripped) = proxy_str.strip_prefix("socks5://") {
             parse_proxy_parts(stripped, ProxyType::Socks5)
@@ -431,7 +549,6 @@ pub fn get_userenum_arguments() -> Option<UserEnumArgs> {
         proxy,
     })
 }
-
 
 fn parse_proxy_parts(proxy_parts: &str, proxy_type: ProxyType) -> Option<ProxyConfig> {
     let parts: Vec<&str> = proxy_parts.split('@').collect();
@@ -473,76 +590,80 @@ fn parse_proxy_parts(proxy_parts: &str, proxy_type: ProxyType) -> Option<ProxyCo
     }
 }
 
-fn read_line() -> Option<String> {
-    let mut rl = DefaultEditor::new().ok()?;
-    match rl.readline("> ") {
-        Ok(line) => Some(line.trim().to_string()),
-        Err(_) => None,
-    }
-}
-
-pub fn get_tgt_arguments() -> Option<TgtArguments> {
-    println!("Enter TGT arguments in the format: <username> <password> <realm> <server>");
-    println!("Example: tywin.lannister Password123 SEVENKINGDOMS.LOCAL 192.168.1.10");
-    
-    let input = match read_line() {
-        Some(line) => line,
-        None => return None,
-    };
-
-    let args: Vec<&str> = input.split_whitespace().collect();
-
-    if args.len() != 4 {
-        println!("Error: Incorrect number of arguments");
-        println!("Usage: <username> <password> <realm> <server>");
-        println!("Example: tywin.lannister Password123 SEVENKINGDOMS.LOCAL 192.168.1.10");
-        return None;
-    }
-
-    Some(TgtArguments {
-        username: args[0].to_string(),
-        password: args[1].to_string(),
-        realm: args[2].to_string(),
-        server: args[3].to_string(),
-    })
-}
-
 pub fn run_nested_query_menu(ldap_config: &mut LdapConfig) -> Result<(), String> {
-    let mut rl = rustyline::DefaultEditor::new().map_err(|e| format!("Error initializing input: {}", e))?;
-    let menu_prompt = "Select a predefined LDAP query (e.g., 1 for Trusts, 2 for Users): ";
-    
     loop {
-        println!("Options:");
-        println!("1. Query Domain Trusts");
-        println!("2. Query All Users");
-        println!("3. Back to Main Menu");
+        // Define the menu options
+        let options = vec![
+            "Query Domain Trusts",
+            "Query All Users",
+            "Query All Computers",
+            "Query All Subnets",
+            "Query All PKI Information",
+            "Query All SCCM Information",
+            "Query All Organization Units",
+            "Back to Main Menu",
+        ];
 
-        let input = rl.readline(menu_prompt).map_err(|e| format!("Error reading input: {}", e))?;
-        let input = input.trim();
+        // Display the menu using dialoguer
+        let selection = Select::with_theme(&ColorfulTheme::default())
+            .with_prompt("Select a predefined LDAP query")
+            .items(&options)
+            .default(0)
+            .interact()
+            .map_err(|e| format!("Error displaying menu: {}", e))?;
 
-        match input {
-            "1" => {
+        // Match the user's selection
+        match selection {
+            0 => {
                 // Call Trusts query
                 if let Err(e) = trusts::get_trusts(ldap_config) {
                     eprintln!("Error running Trusts query: {}", e);
                 }
             }
-            "2" => {
+            1 => {
                 // Call Users query
                 if let Err(e) = users::get_users(ldap_config) {
                     eprintln!("Error running Users query: {}", e);
                 }
             }
-            "3" => {
+            2 => {
+                // Call Computers query
+                if let Err(e) = computers::get_computers(ldap_config) {
+                    eprintln!("Error running Computers query: {}", e);
+                }
+            }
+            3 => {
+                // Call Subnets query
+                if let Err(e) = subnets::get_subnets(ldap_config) {
+                    eprintln!("Error running Subnets query: {}", e);
+                }
+            }
+            4 => {
+                // Call PKI query
+                if let Err(e) = pki::get_pki_info(ldap_config) {
+                    eprintln!("Error running PKI query: {}", e);
+                }
+            }
+            5 => {
+                // Call SCCM query
+                if let Err(e) = sccm::get_sccm_info(ldap_config) {
+                    eprintln!("Error running SCCM query: {}", e);
+                }
+            }
+            6 => {
+                // Call OU query
+                if let Err(e) = ou::get_organizational_units(ldap_config) {
+                    eprintln!("Error running OU query: {}", e);
+                }
+            }
+            7 => {
+                // Back to main menu
                 println!("Returning to the main menu...");
                 break;
             }
-            _ => {
-                println!("Invalid option. Please enter 1, 2, or 3.");
-            }
+            _ => unreachable!(),
         }
     }
 
     Ok(())
 }
-

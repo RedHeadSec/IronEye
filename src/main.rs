@@ -19,20 +19,19 @@ const VERSION: &str = "v0.2";
 use dialoguer::{theme::ColorfulTheme, Confirm, Select};
 pub mod args; //Local Lib
 pub mod commands;
+pub mod deep_queries;
+pub mod gettgt;
 pub mod help; //Local Lib
 pub mod ldap; //Local Lib
 pub mod ldapping;
 pub mod spray;
-pub mod gettgt;
-pub mod deep_queries;
 use args::{
-    get_connect_arguments, get_spray_arguments, get_userenum_arguments, get_tgt_arguments,run_nested_query_menu
+    get_connect_arguments, get_spray_arguments, get_tgt_arguments, get_userenum_arguments,
+    run_nested_query_menu
 };
-use commands::*;
+use gettgt::*;
 use help::*;
 use spray::*;
-use gettgt::*;
-
 
 fn main() {
     println!("{}", LOGO);
@@ -57,14 +56,19 @@ fn main() {
         println!("You selected: {}", options[selection]);
         match selection {
             0 => {
-                println!("Enter the Connect arguments (e.g., -u administrator -p 'Password123!' -d domain.local -i 10.10.10.10 [-s] [-t]): ");
                 // Handle connection first
                 match get_connect_arguments() {
                     Some(mut ldap_config) => {
                         // If connection successful, show sub-command menu
+                        if let Ok((_ldap, _search_base)) = crate::ldap::ldap_connect(&ldap_config) {
+                            println!("\nSuccessfully connected to LDAP server.\n");
+                        } else {
+                            println!("Failed to connect to LDAP server. Check credentials or connection to server!");
+                            break;
+                        }
                         loop {
                             let cmd_options = vec![
-                                "DACL Query",
+                                "DACL Query (NOT IMPLEMENTED)",
                                 "Get SPNs",
                                 "Query Groups",
                                 "Machine Quota",
@@ -241,8 +245,10 @@ fn main() {
                                     }
                                 }
                                 7 => {
-                                    if let Err(e) = custom_ldap_query() {
-                                        eprintln!("Error: {}", e)
+                                    if let Err(e) =
+                                        commands::customldap::custom_ldap_query(&mut ldap_config)
+                                    {
+                                        eprintln!("Error running custom LDAP query: {}", e);
                                     }
                                 }
                                 8 => break, // Return to main menu
@@ -255,25 +261,14 @@ fn main() {
             }
 
             1 => {
-                println!("Enter the TGT arguments:");
-                match get_tgt_arguments() {
-                    Some(args) => {
-                        println!("\nConfiguration:");
-                        println!("Username: {}", args.username);
-                        println!("Password: {}", args.password);
-                        println!("Realm: {}", args.realm);
-                        println!("Server: {}", args.server);
-
-                        println!("\nRequesting TGT...");
-                        match get_tgt(&args.username, &args.password, &args.realm, &args.server) {
-                            Ok(_) => println!("TGT operation completed successfully"),
-                            Err(e) => eprintln!("Error during TGT operation: {}", e),
-                        }
+                println!("You selected: Get TGT");
+                if let Some(args) = get_tgt_arguments() {
+                    if let Err(e) = get_tgt(args) {
+                        eprintln!("Error acquiring TGT: {}", e);
                     }
-                    None => println!("Invalid arguments provided!"),
-                }
-                println!("\nTGT operation complete.");
-                add_terminal_spacing(2);
+                } else {
+                    println!("Failed to parse TGT arguments.");
+                };
             }
 
             2 => {
