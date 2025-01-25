@@ -5,7 +5,8 @@
 
 # Test files
 users.txt
-found_creds
+passwords.txt
+found_cred*
 *.krb
 *.ccache
 domain_groups*
