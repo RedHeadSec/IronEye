@@ -27,7 +27,7 @@ pub mod ldapping;
 pub mod spray;
 use args::{
     get_connect_arguments, get_spray_arguments, get_tgt_arguments, get_userenum_arguments,
-    run_nested_query_menu
+    run_nested_query_menu,
 };
 use gettgt::*;
 use help::*;

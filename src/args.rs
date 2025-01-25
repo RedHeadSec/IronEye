@@ -36,7 +36,7 @@ pub struct SprayArgs {
     pub userfile: String,
     pub password: String,
     pub domain: String,
-    pub dc_ip: String,
+    pub dc_ip: Vec<String>,
     pub hash: Option<String>,
     pub timestamp_format: bool,
     pub proxy: Option<ProxyConfig>,
@@ -45,6 +45,8 @@ pub struct SprayArgs {
     pub delay: u64,
     pub continue_on_success: bool,
     pub verbose: bool,
+    pub lockout_threshold: Option<u32>,      // New
+    pub lockout_window_seconds: Option<u32>, // New
 }
 
 #[derive(Debug)]
@@ -74,7 +76,7 @@ pub fn get_connect_arguments() -> Option<LdapConfig> {
     let mut rl = DefaultEditor::new().expect("Failed to initialize input editor");
     rl.load_history("connect_history.txt").ok(); // Load history if it exists
 
-    println!("Enter Connect arguments (e.g., -u administrator -p 'Password123!' -d domain.local -i 10.10.10.10 [-s] [-t]):");
+    println!("Enter Connect arguments (e.g., -u administrator -p 'Password123!' -d domain.local -i 10.10.10.10,10.10.10.11 [-s] [-t]):");
 
     match rl.readline("> ") {
         Ok(line) => {
@@ -121,12 +123,12 @@ pub fn get_connect_arguments() -> Option<LdapConfig> {
                             return None;
                         }
                     }
-                    "-i" | "--dc-ip" => {
+                    "-i" | "--dc-ips" => {
                         if i + 1 < args.len() {
                             dc_ip = args[i + 1].to_string();
                             i += 2;
                         } else {
-                            eprintln!("Missing value for DC IP argument!");
+                            eprintln!("Missing value for DC IPs argument!");
                             return None;
                         }
                     }
@@ -197,7 +199,7 @@ impl ConnectionArgs {
 
 pub fn get_spray_arguments() -> Option<SprayArgs> {
     println!("\nArgument format: --users <user/path> --passwords <pass/path> --domain <domain> --dc-ip <ip> [--threads <num>] [--jitter <ms>] [--delay <ms>] [--continue-on-success] [--verbose] [--timestamp] [--proxy <proxy_url>]");
-    println!("Example: --users users.txt --passwords passwords.txt --domain corp.local --dc-ip 192.168.1.10 --threads 10 --jitter 10 --delay 10 --continue-on-success --verbose --timestamp");
+    println!("Example: --users users.txt --passwords passwords.txt --domain corp.local --dc-ip 192.168.1.10 --threads 10 --jitter 10 --delay 10 --continue-on-success --verbose --timestamp --lockout-threshold 5 --lockout-window 600");
     add_terminal_spacing(1);
 
     let mut rl = DefaultEditor::new().ok()?;
@@ -228,6 +230,8 @@ pub fn get_spray_arguments() -> Option<SprayArgs> {
     let mut verbose = false;
     let mut timestamp = false;
     let mut proxy = None;
+    let mut lockout_threshold = None;
+    let mut lockout_window_seconds = None;
 
     let mut i = 0;
     while i < args.len() {
@@ -261,7 +265,13 @@ pub fn get_spray_arguments() -> Option<SprayArgs> {
             }
             "-i" | "--dc-ip" => {
                 if i + 1 < args.len() {
-                    dc_ip = Some(args[i + 1].to_string());
+                    let dc_input = args[i + 1].to_string();
+                    // Allow comma-separated DC IPs or a single DC IP
+                    let dc_list: Vec<String> = dc_input
+                        .split(',')
+                        .map(|dc| dc.trim().to_string())
+                        .collect();
+                    dc_ip = Some(dc_list);
                     i += 2;
                 } else {
                     println!("Error: --dc-ip requires a value");
@@ -316,6 +326,24 @@ pub fn get_spray_arguments() -> Option<SprayArgs> {
                     return None;
                 }
             }
+            "-lt" | "--lockout-threshold" => {
+                if i + 1 < args.len() {
+                    lockout_threshold = Some(args[i + 1].parse().unwrap_or(3));
+                    i += 2;
+                } else {
+                    println!("Error: --lockout-threshold requires a value");
+                    return None;
+                }
+            }
+            "-lw" | "--lockout-window" => {
+                if i + 1 < args.len() {
+                    lockout_window_seconds = Some(args[i + 1].parse().unwrap_or(300));
+                    i += 2;
+                } else {
+                    println!("Error: --lockout-window requires a value");
+                    return None;
+                }
+            }
             _ => {
                 println!("Unknown argument: {}", args[i]);
                 return None;
@@ -350,6 +378,8 @@ pub fn get_spray_arguments() -> Option<SprayArgs> {
         delay,
         continue_on_success,
         verbose,
+        lockout_threshold,
+        lockout_window_seconds,
     })
 }
 

