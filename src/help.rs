@@ -5,8 +5,8 @@ use std::io::{BufRead, BufReader};
 
 pub fn show_help_main() {
     println!("\nHelp Information:");
-    println!("1. 'Connect' - Connect to a ldap server and run queries.");
-    println!("2. 'GetTGT' - Connect to server and get ccache/krb file for a given user.");
+    println!("1. 'Connect' - Connect to a ldap server and run queries. Use -k for Kerberos using KRB5CCNAME variable.");
+    println!("2. 'Cerberos' - Kerberos Attacks using https://github.com/zer1t0/cerbero");
     println!(
         "3. 'UserEnum' - Enumerate valid users via ldap/kerberos/ldap ping in an internal domain."
     );
@@ -17,40 +17,30 @@ pub fn show_help_main() {
 }
 
 pub fn show_help_connect() {
-    println!("\nHelp Information:");
-    println!("1. 'Connect' - Connect to a ldap server and run queries");
+    println!("\nHelp Information for 'Connect' Submodules:");
+    println!("The 'Connect' module allows you to perform various LDAP-related actions after connecting to a server.");
+    println!("\nAvailable Options:");
     println!(
-        "2. 'UserEnum' - Enumerate valid users via ldap/kerberos/ldap ping in an internal domain."
+        "  1. 'DACL Query' - (NOT IMPLEMENTED) Planned for querying Domain Access Control Lists."
     );
-    println!("3. 'Password Spray' - Perform Password Spraying against the internal domain.");
-    println!("4. 'Version' - Shows Version.");
-    println!("5. 'Help' - Shows this help message.");
-    println!("6. 'Exit' - Exits the program.");
+    println!("  2. 'Get SPNs' - Retrieve Service Principal Names (SPNs) for Kerberos services in the domain.");
+    println!("  3. 'Query Groups' - Enumerate groups and their memberships in the domain.");
+    println!("  4. 'Machine Quota' - Check the machine account quota for the domain.");
+    println!("  5. 'Net Commands' - Execute predefined or custom network commands.");
+    println!("  6. 'Password Policy' - Retrieve and display the domain's password policy.");
+    println!("  7. 'Deep-Queries' - Perform predefined deep LDAP queries (e.g., users, computers, trusts).");
+    println!("  8. 'Custom LDAP Query' - Execute a custom LDAP query by providing a filter and attributes.");
+    println!("  9. 'Back' - Return to the main menu.");
+    println!("\nNotes:");
+    println!("  - Ensure you are connected to an LDAP server before running these commands.");
+    println!("  - Some submodules may require specific privileges or account permissions.");
+    println!("  - The 'Custom LDAP Query' option allows advanced users to provide their own filters and attributes.");
+    println!("\n");
 }
 
-pub fn show_help_userenum() {
-    println!("\nHelp Information:");
-    println!("1. 'Connect' - Connect to a ldap server and run queries");
-    println!(
-        "2. 'UserEnum' - Enumerate valid users via ldap/kerberos/ldap ping in an internal domain."
-    );
-    println!("3. 'Password Spray' - Perform Password Spraying against the internal domain.");
-    println!("4. 'Version' - Shows Version.");
-    println!("5. 'Help' - Shows this help message.");
-    println!("6. 'Exit' - Exits the program.");
-}
+pub fn show_help_userenum() {}
 
-pub fn show_help_passwordspray() {
-    println!("\nHelp Information:");
-    println!("1. 'Connect' - Connect to a ldap server and run queries");
-    println!(
-        "2. 'UserEnum' - Enumerate valid users via ldap/kerberos/ldap ping in an internal domain."
-    );
-    println!("3. 'Password Spray' - Perform Password Spraying against the internal domain.");
-    println!("4. 'Version' - Shows Version.");
-    println!("5. 'Help' - Shows this help message.");
-    println!("6. 'Exit' - Exits the program.");
-}
+pub fn show_help_passwordspray() {}
 
 pub fn add_terminal_spacing(lines: u8) {
     for _ in 0..lines {
