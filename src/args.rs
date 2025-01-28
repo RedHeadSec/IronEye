@@ -8,6 +8,7 @@ use crate::deep_queries::trusts;
 use crate::deep_queries::users;
 use crate::help::add_terminal_spacing;
 use crate::ldap::LdapConfig;
+use crate::proxy::{parse_proxy_url, ProxyConfig};
 use dialoguer::theme::ColorfulTheme;
 use dialoguer::Select;
 use rustyline::DefaultEditor;
@@ -20,7 +21,8 @@ pub struct ConnectionArgs {
     pub hash: Option<String>,
     pub timestamp_format: bool,
     pub secure_ldaps: bool,
-    pub proxy: Option<ProxyConfig>,
+    pub kerberos: bool,
+    pub proxy: Option<String>,
 }
 
 pub struct UserEnumArgs {
@@ -29,7 +31,7 @@ pub struct UserEnumArgs {
     pub dc_ip: String,
     pub output: Option<String>,
     pub timestamp_format: bool,
-    pub proxy: Option<ProxyConfig>,
+    //pub proxy: Option<String>,
 }
 
 pub struct SprayArgs {
@@ -49,39 +51,16 @@ pub struct SprayArgs {
     pub lockout_window_seconds: Option<u32>, // New
 }
 
-#[derive(Debug)]
-pub struct TgtArguments {
-    pub username: String,
-    pub password: String,
-    pub realm: String,
-    pub server: String,
-}
-
-#[derive(Clone)]
-pub struct ProxyConfig {
-    pub proxy_type: ProxyType,
-    pub host: String,
-    pub port: u16,
-    pub username: Option<String>,
-    pub password: Option<String>,
-}
-
-#[derive(Clone, Debug, PartialEq)]
-pub enum ProxyType {
-    Socks4,
-    Socks5,
-}
-
 pub fn get_connect_arguments() -> Option<LdapConfig> {
     let mut rl = DefaultEditor::new().expect("Failed to initialize input editor");
-    rl.load_history("connect_history.txt").ok(); // Load history if it exists
+    rl.load_history(".connect_history.txt").ok(); // Load history if it exists
 
-    println!("Enter Connect arguments (e.g., -u administrator -p 'Password123!' -d domain.local -i 10.10.10.10,10.10.10.11 [-s] [-t]):");
+    println!("Enter Connect arguments (e.g., -u administrator -p 'Password123!' -d domain.local -i 10.10.10.10 [-s] [-t] [-k] [--proxy socks4/5://127.0.0.1:1080]):");
 
     match rl.readline("> ") {
         Ok(line) => {
             rl.add_history_entry(line.as_str()).ok(); // Save to history
-            rl.save_history("connect_history.txt").ok(); // Persist history to disk
+            rl.save_history(".connect_history.txt").ok(); // Persist history to disk
 
             let args: Vec<&str> = line.split_whitespace().collect();
 
@@ -92,6 +71,8 @@ pub fn get_connect_arguments() -> Option<LdapConfig> {
             let mut hash = None;
             let mut secure_ldaps = false;
             let mut timestamp_format = false;
+            let mut kerberos = false;
+            let mut proxy = None;
 
             let mut i = 0;
             while i < args.len() {
@@ -106,6 +87,10 @@ pub fn get_connect_arguments() -> Option<LdapConfig> {
                         }
                     }
                     "-p" | "--password" => {
+                        if kerberos {
+                            eprintln!("You've specified a password and Kerberos auth, Kerberos will take priority.");
+                            return None;
+                        }
                         if i + 1 < args.len() {
                             password = args[i + 1].to_string();
                             i += 2;
@@ -137,7 +122,7 @@ pub fn get_connect_arguments() -> Option<LdapConfig> {
                             hash = Some(args[i + 1].to_string());
                             i += 2;
                         } else {
-                            eprintln!("Missing value for hash argument!");
+                            eprintln!("Missing value for hash argument! (NOT IMPLEMENTED)");
                             return None;
                         }
                     }
@@ -149,6 +134,29 @@ pub fn get_connect_arguments() -> Option<LdapConfig> {
                         timestamp_format = true;
                         i += 1;
                     }
+                    "-k" | "--kerberos" => {
+                        kerberos = true;
+                        if !password.is_empty() {
+                            eprintln!("You've specified a password and Kerberos auth, Kerberos will take priority.");
+                            return None;
+                        }
+                        i += 1;
+                    }
+                    "--proxy" => {
+                        if i + 1 < args.len() {
+                            match parse_proxy_url(args[i + 1]) {
+                                Ok(parsed_proxy) => proxy = Some(parsed_proxy),
+                                Err(e) => {
+                                    eprintln!("Invalid proxy URL: {}", e);
+                                    return None;
+                                }
+                            }
+                            i += 2;
+                        } else {
+                            eprintln!("Missing value for --proxy argument!");
+                            return None;
+                        }
+                    }
                     _ => {
                         eprintln!("Unrecognized argument: {}", args[i]);
                         i += 1;
@@ -157,7 +165,7 @@ pub fn get_connect_arguments() -> Option<LdapConfig> {
             }
 
             if username.is_empty()
-                || password.is_empty() && hash.is_none()
+                || (password.is_empty() && !kerberos)
                 || domain.is_empty()
                 || dc_ip.is_empty()
             {
@@ -173,7 +181,8 @@ pub fn get_connect_arguments() -> Option<LdapConfig> {
                 hash,
                 secure_ldaps,
                 timestamp_format,
-                proxy: None, // You can add proxy support later if needed
+                kerberos,
+                proxy,
             })
         }
         Err(e) => {
@@ -198,17 +207,17 @@ impl ConnectionArgs {
 }
 
 pub fn get_spray_arguments() -> Option<SprayArgs> {
-    println!("\nArgument format: --users <user/path> --passwords <pass/path> --domain <domain> --dc-ip <ip> [--threads <num>] [--jitter <ms>] [--delay <ms>] [--continue-on-success] [--verbose] [--timestamp] [--proxy <proxy_url>]");
-    println!("Example: --users users.txt --passwords passwords.txt --domain corp.local --dc-ip 192.168.1.10 --threads 10 --jitter 10 --delay 10 --continue-on-success --verbose --timestamp --lockout-threshold 5 --lockout-window 600");
+    println!("\nArgument format: --users <user/path> --passwords <pass/path> --domain <domain> --dc-ip <ip> [--threads <num>] [--jitter <ms>] [--delay <ms>] [--continue-on-success] [--verbose] [--timestamp] [--proxy <proxy_url>] [--lockout-threshold <num>] [--lockout-window <seconds>]");
+    println!("Example: --users users.txt --passwords passwords.txt --domain corp.local --dc-ip 192.168.1.10 --threads 10 --jitter 10 --delay 10 --continue-on-success --verbose --timestamp --proxy socks5://127.0.0.1:1080 --lockout-threshold 5 --lockout-window 600");
     add_terminal_spacing(1);
 
     let mut rl = DefaultEditor::new().ok()?;
-    rl.load_history("spray_history.txt").ok(); // Load history if it exists
+    rl.load_history(".spray_history.txt").ok(); // Load history if it exists
 
     let args_input = match rl.readline("Enter arguments: ") {
         Ok(line) => {
             rl.add_history_entry(line.as_str()).ok(); // Add input to history
-            rl.save_history("spray_history.txt").ok(); // Save history to disk
+            rl.save_history(".spray_history.txt").ok(); // Save history to disk
             line
         }
         Err(e) => {
@@ -266,7 +275,6 @@ pub fn get_spray_arguments() -> Option<SprayArgs> {
             "-i" | "--dc-ip" => {
                 if i + 1 < args.len() {
                     let dc_input = args[i + 1].to_string();
-                    // Allow comma-separated DC IPs or a single DC IP
                     let dc_list: Vec<String> = dc_input
                         .split(',')
                         .map(|dc| dc.trim().to_string())
@@ -313,13 +321,19 @@ pub fn get_spray_arguments() -> Option<SprayArgs> {
                 verbose = true;
                 i += 1;
             }
-            "--timestamp" => {
+            "-T" | "--timestamp" => {
                 timestamp = true;
                 i += 1;
             }
             "--proxy" => {
                 if i + 1 < args.len() {
-                    proxy = Some(args[i + 1].to_string());
+                    match parse_proxy_url(args[i + 1]) {
+                        Ok(parsed_proxy) => proxy = Some(parsed_proxy),
+                        Err(e) => {
+                            println!("Invalid proxy URL: {}", e);
+                            return None;
+                        }
+                    }
                     i += 2;
                 } else {
                     println!("Error: --proxy requires a value");
@@ -363,16 +377,7 @@ pub fn get_spray_arguments() -> Option<SprayArgs> {
         dc_ip: dc_ip.unwrap(),
         hash: None,
         timestamp_format: timestamp,
-        proxy: proxy.and_then(|p| {
-            if let Some(stripped) = p.strip_prefix("socks5://") {
-                parse_proxy_parts(stripped, ProxyType::Socks5)
-            } else if let Some(stripped) = p.strip_prefix("socks4://") {
-                parse_proxy_parts(stripped, ProxyType::Socks4)
-            } else {
-                println!("Error: proxy must start with socks5:// or socks4://");
-                None
-            }
-        }),
+        proxy,
         threads,
         jitter,
         delay,
@@ -383,87 +388,35 @@ pub fn get_spray_arguments() -> Option<SprayArgs> {
     })
 }
 
-pub fn get_tgt_arguments() -> Option<TgtArguments> {
-    println!("\nArgument format: --username <username> --password <password> --realm <realm> --server <kdc_server>");
-    let mut rl = DefaultEditor::new().ok()?;
-    rl.load_history("tgt_arguments_history.txt").ok();
+pub fn get_cerbero_args() -> Option<String> {
+    println!("\nCerbero Argument Examples:");
+    println!("1. Press Enter to see the main help menu for Cerberos");
+    println!("2. Example:\nask --help \nasreproast --help\nbrute --help\nconvert --help\ncraft --help\nhash --help\nkerberoast --help\nlist --help\n");
 
-    let args_input = match rl.readline("Enter arguments: ") {
-        Ok(line) => {
-            rl.add_history_entry(line.as_str()).ok();
-            rl.save_history("tgt_arguments_history.txt").ok();
-            line
+    // Initialize input editor
+    let mut rl = DefaultEditor::new().expect("Failed to initialize input editor");
+    rl.load_history(".cerbero_history.txt").ok();
+
+    println!("\nEnter Cerbero arguments (leave empty for '--help'):");
+
+    // Get the user input
+    match rl.readline("> ") {
+        Ok(input) => {
+            rl.add_history_entry(input.as_str()).ok();
+            rl.save_history(".cerbero_history.txt").ok();
+
+            // If the user enters nothing, return `--help`
+            if input.trim().is_empty() {
+                Some("--help".to_string())
+            } else {
+                Some(input.trim().to_string()) // Return the full argument string
+            }
         }
         Err(e) => {
             eprintln!("Error reading input: {}", e);
-            return None;
-        }
-    };
-
-    let args: Vec<&str> = args_input.split_whitespace().collect();
-
-    let mut username = None;
-    let mut password = None;
-    let mut realm = None;
-    let mut server = None;
-
-    let mut i = 0;
-    while i < args.len() {
-        match args[i] {
-            "-u" | "--username" => {
-                if i + 1 < args.len() {
-                    username = Some(args[i + 1].to_string());
-                    i += 2;
-                } else {
-                    println!("Error: --username requires a value");
-                    return None;
-                }
-            }
-            "-p" | "--password" => {
-                if i + 1 < args.len() {
-                    password = Some(args[i + 1].to_string());
-                    i += 2;
-                } else {
-                    println!("Error: --password requires a value");
-                    return None;
-                }
-            }
-            "-d" | "--domain" => {
-                if i + 1 < args.len() {
-                    realm = Some(args[i + 1].to_string());
-                    i += 2;
-                } else {
-                    println!("Error: --realm requires a value");
-                    return None;
-                }
-            }
-            "-i" | "--dc-ip" => {
-                if i + 1 < args.len() {
-                    server = Some(args[i + 1].to_string());
-                    i += 2;
-                } else {
-                    println!("Error: --server requires a value");
-                    return None;
-                }
-            }
-            _ => {
-                println!("Unknown argument: {}", args[i]);
-                return None;
-            }
+            None
         }
     }
-
-    if username.is_none() || password.is_none() || realm.is_none() || server.is_none() {
-        println!("Error: --username, --password, --realm, and --server are required");
-        return None;
-    }
-
-    Some(TgtArguments {
-        username: username.unwrap(),
-        password: password.unwrap(),
-        realm: realm.unwrap(),
-        server: server.unwrap(),
-    })
 }
 
 pub fn get_userenum_arguments() -> Option<UserEnumArgs> {
@@ -472,12 +425,12 @@ pub fn get_userenum_arguments() -> Option<UserEnumArgs> {
     add_terminal_spacing(1);
 
     let mut rl = DefaultEditor::new().ok()?;
-    rl.load_history("userenum_history.txt").ok(); // Load history if it exists
+    rl.load_history(".userenum_history.txt").ok(); // Load history if it exists
 
     let args_input = match rl.readline("Enter arguments: ") {
         Ok(line) => {
             rl.add_history_entry(line.as_str()).ok(); // Add input to history
-            rl.save_history("userenum_history.txt").ok(); // Save history to disk
+            rl.save_history(".userenum_history.txt").ok(); // Save history to disk
             line
         }
         Err(e) => {
@@ -492,13 +445,13 @@ pub fn get_userenum_arguments() -> Option<UserEnumArgs> {
     let mut domain = None;
     let mut dc_ip = None;
     let mut timestamp_format = false;
-    let mut proxy_str = None;
+    //let mut proxy_str = None;
     let mut output = None;
 
     let mut i = 0;
     while i < args.len() {
         match args[i] {
-            "--userfile" => {
+            "-u" | "--userfile" => {
                 if i + 1 < args.len() {
                     userfile = Some(args[i + 1].to_string());
                     i += 2;
@@ -507,7 +460,7 @@ pub fn get_userenum_arguments() -> Option<UserEnumArgs> {
                     return None;
                 }
             }
-            "--output" => {
+            "-o" | "--output" => {
                 if i + 1 < args.len() {
                     output = Some(args[i + 1].to_string());
                     i += 2;
@@ -516,7 +469,7 @@ pub fn get_userenum_arguments() -> Option<UserEnumArgs> {
                     return None;
                 }
             }
-            "--domain" => {
+            "-d" | "--domain" => {
                 if i + 1 < args.len() {
                     domain = Some(args[i + 1].to_string());
                     i += 2;
@@ -525,7 +478,7 @@ pub fn get_userenum_arguments() -> Option<UserEnumArgs> {
                     return None;
                 }
             }
-            "--dc-ip" => {
+            "-i" | "--dc-ip" => {
                 if i + 1 < args.len() {
                     dc_ip = Some(args[i + 1].to_string());
                     i += 2;
@@ -534,19 +487,11 @@ pub fn get_userenum_arguments() -> Option<UserEnumArgs> {
                     return None;
                 }
             }
-            "--timestamp" => {
+            "-t" | "--timestamp" => {
                 timestamp_format = true;
                 i += 1;
             }
-            "--proxy" => {
-                if i + 1 < args.len() {
-                    proxy_str = Some(args[i + 1].to_string());
-                    i += 2;
-                } else {
-                    println!("Error: --proxy requires a value");
-                    return None;
-                }
-            }
+
             _ => {
                 println!("Unknown argument: {}", args[i]);
                 return None;
@@ -559,65 +504,14 @@ pub fn get_userenum_arguments() -> Option<UserEnumArgs> {
         return None;
     }
 
-    let proxy = proxy_str.and_then(|proxy_str| {
-        if let Some(stripped) = proxy_str.strip_prefix("socks5://") {
-            parse_proxy_parts(stripped, ProxyType::Socks5)
-        } else if let Some(stripped) = proxy_str.strip_prefix("socks4://") {
-            parse_proxy_parts(stripped, ProxyType::Socks4)
-        } else {
-            println!("Error: proxy must start with socks5:// or socks4://");
-            None
-        }
-    });
-
     Some(UserEnumArgs {
         userfile: userfile.unwrap(),
         domain: domain.unwrap(),
         dc_ip: dc_ip.unwrap(),
         output,
         timestamp_format,
-        proxy,
+        //proxy,
     })
-}
-
-fn parse_proxy_parts(proxy_parts: &str, proxy_type: ProxyType) -> Option<ProxyConfig> {
-    let parts: Vec<&str> = proxy_parts.split('@').collect();
-
-    match parts.len() {
-        // No authentication
-        1 => {
-            let addr_parts: Vec<&str> = parts[0].split(':').collect();
-            if addr_parts.len() == 2 {
-                Some(ProxyConfig {
-                    proxy_type,
-                    host: addr_parts[0].to_string(),
-                    port: addr_parts[1].parse().ok()?,
-                    username: None,
-                    password: None,
-                })
-            } else {
-                None
-            }
-        }
-        // With authentication
-        2 => {
-            let auth_parts: Vec<&str> = parts[0].split(':').collect();
-            let addr_parts: Vec<&str> = parts[1].split(':').collect();
-
-            if auth_parts.len() == 2 && addr_parts.len() == 2 {
-                Some(ProxyConfig {
-                    proxy_type,
-                    host: addr_parts[0].to_string(),
-                    port: addr_parts[1].parse().ok()?,
-                    username: Some(auth_parts[0].to_string()),
-                    password: Some(auth_parts[1].to_string()),
-                })
-            } else {
-                None
-            }
-        }
-        _ => None,
-    }
 }
 
 pub fn run_nested_query_menu(ldap_config: &mut LdapConfig) -> Result<(), String> {

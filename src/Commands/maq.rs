@@ -1,6 +1,7 @@
 // src/commands/maq.rs
 use crate::help::add_terminal_spacing;
 use crate::ldap::LdapConfig;
+use chrono::NaiveDateTime;
 use ldap3::{Scope, SearchEntry};
 use std::error::Error;
 
@@ -145,10 +146,24 @@ pub fn get_machine_account_quota(config: &mut LdapConfig) -> Result<(), Box<dyn 
 
                 if let Some(created) = group_entry.attrs.get("whenCreated").and_then(|v| v.first())
                 {
-                    println!("Created: {}", created);
+                    // Remove any trailing `.0Z` if present
+                    let cleaned_timestamp = created.trim_end_matches(".0Z");
+
+                    // Try parsing the timestamp
+                    match NaiveDateTime::parse_from_str(cleaned_timestamp, "%Y%m%d%H%M%S") {
+                        Ok(parsed_time) => {
+                            let formatted_time =
+                                parsed_time.format("%Y-%m-%d %H:%M:%S UTC").to_string();
+                            println!("Created: {}", formatted_time);
+                        }
+                        Err(_) => {
+                            println!("Created (raw): {}", created); // Fallback: print raw if parsing fails
+                        }
+                    }
                 }
             }
         }
+        println!("\n\nNote: This setting can also be changed via GPO, which may not accurately reflect here. If you have a quota > 0 but insufficent rights to create an account as a user or under one of these listed groups, then consider possible GPO restrictions.");
 
         if !found_custom {
             println!("No custom groups found with machine account creation rights.");

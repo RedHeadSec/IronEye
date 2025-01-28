@@ -8,8 +8,9 @@ const LOGO: &str = r#"
 ░▒▓█▓▒░ ░▒▓█▓▒░ ░▒▓█▓▒░  ░▒▓█▓▒░ ░▒▓█▓▒░ ░▒▓█▓▒░ ░▒▓█▓▒░ ░▒▓█▓▒░            ░▒▓█▓▒░     ░▒▓█▓▒░        
 ░▒▓█▓▒░ ░▒▓█▓▒░ ░▒▓█▓▒░   ░▒▓██████▓▒░   ░▒▓█▓▒░ ░▒▓█▓▒░ ░▒▓████████▓▒░     ░▒▓█▓▒░     ░▒▓████████▓▒░ 
                                                                                             
-Description: A mullti-purpose LDAP tool written in Rust.
-Created By: Evasive_Ginger                                                                                           
+Description: A mullti-purpose LDAP/Kerberos tool written in Rust.
+Created By: Evasive_Ginger
+Cerberos Implementation: https://github.com/zer1t0/cerbero                                                                                           
                                          
 "#;
 
@@ -17,19 +18,19 @@ const VERSION: &str = "v0.2";
 
 // Imports
 use dialoguer::{theme::ColorfulTheme, Confirm, Select};
-pub mod args; //Local Lib
+pub mod args;
 pub mod commands;
 pub mod deep_queries;
-pub mod gettgt;
-pub mod help; //Local Lib
-pub mod ldap; //Local Lib
+pub mod help;
+pub mod kerberos;
+pub mod ldap;
 pub mod ldapping;
+pub mod proxy;
 pub mod spray;
+use crate::args::get_cerbero_args;
 use args::{
-    get_connect_arguments, get_spray_arguments, get_tgt_arguments, get_userenum_arguments,
-    run_nested_query_menu,
+    get_connect_arguments, get_spray_arguments, get_userenum_arguments, run_nested_query_menu,
 };
-use gettgt::*;
 use help::*;
 use spray::*;
 
@@ -37,10 +38,10 @@ fn main() {
     println!("{}", LOGO);
     loop {
         let options = vec![
-            "Connect",
-            "GetTGT",
-            "UserEnum",
-            "Password Spray",
+            "Connect (LDAP Reconissance)",
+            "Cerberos (Kerberos Protocol Attacks)",
+            "User Enumeration (LDAP Ping Method)",
+            "Password Spray (LDAP)",
             "Version",
             "Help",
             "Exit",
@@ -64,7 +65,7 @@ fn main() {
                             println!("\nSuccessfully connected to LDAP server.\n");
                         } else {
                             println!("Failed to connect to LDAP server. Check credentials or connection to server!");
-                            break;
+                            continue;
                         }
                         loop {
                             let cmd_options = vec![
@@ -76,6 +77,7 @@ fn main() {
                                 "Password Policy",
                                 "Deep-Queries",
                                 "Custom Ldap Query",
+                                "Help",
                                 "Back",
                             ];
                             let prompt_string = help::get_prompt_string(
@@ -251,7 +253,10 @@ fn main() {
                                         eprintln!("Error running custom LDAP query: {}", e);
                                     }
                                 }
-                                8 => break, // Return to main menu
+                                8 => {
+                                    show_help_connect();
+                                }
+                                9 => break, // Return to main menu
                                 _ => unreachable!(),
                             }
                         }
@@ -259,16 +264,33 @@ fn main() {
                     None => println!("Required arguments not provided!"),
                 }
             }
-
             1 => {
-                println!("You selected: Get TGT");
-                if let Some(args) = get_tgt_arguments() {
-                    if let Err(e) = get_tgt(args) {
-                        eprintln!("Error acquiring TGT: {}", e);
+                if let Some(cerbero_args) = get_cerbero_args() {
+                    let args: Vec<&str> = cerbero_args.split_whitespace().collect();
+
+                    match kerberos::cerberos::run_cerbero(&args) {
+                        Ok(output) => {
+                            let stdout_text = String::from_utf8_lossy(&output.stdout);
+                            let stderr_text = String::from_utf8_lossy(&output.stderr);
+
+                            // Print STDOUT only if it's not empty
+                            if !stdout_text.is_empty() {
+                                println!("\n[+] Cerbero executed successfully.\n");
+                                println!("{}", stdout_text);
+                            }
+
+                            // Print STDERR only if it contains additional information
+                            if !stderr_text.is_empty() && stderr_text != stdout_text {
+                                println!("\n[INFO] Cerbero logs:\n{}", stderr_text);
+                            }
+                        }
+                        Err(e) => {
+                            eprintln!("[!] Cerbero execution failed: {}", e);
+                        }
                     }
                 } else {
-                    println!("Failed to parse TGT arguments.");
-                };
+                    println!("[!] Failed to parse Cerbero arguments.");
+                }
             }
 
             2 => {
@@ -286,9 +308,6 @@ fn main() {
                         }
                         if args.timestamp_format {
                             println!("Timestamp formatting: Enabled");
-                        }
-                        if args.proxy.is_some() {
-                            println!("Proxy: Configured");
                         }
 
                         println!("\nStarting enumeration...");

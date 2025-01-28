@@ -8,7 +8,7 @@ pub fn custom_ldap_query(config: &mut LdapConfig) -> Result<(), Box<dyn Error>> 
     let (mut ldap, search_base) = ldap_connect(config)?;
 
     let mut rl = DefaultEditor::new()?;
-    rl.load_history("ldap_query_history.txt").ok(); // Load query history if it exists
+    rl.load_history(".ldap_query_history.txt").ok(); // Load query history if it exists
 
     println!("\nCustom LDAP Query");
     println!("-------------------");
