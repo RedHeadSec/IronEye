@@ -32,7 +32,7 @@ pub fn ldap_connect(config: &LdapConfig) -> Result<(LdapConn, String)> {
     let mut ldap = LdapConn::with_settings(settings, &ldap_url)?;
 
     // If Kerberos is enabled, use SASL GSSAPI for authentication
-    if config.use_kerberos {
+    if config.kerberos {
         println!("[*] Using Kerberos authentication for LDAP.");
         ldap.sasl_gssapi_bind(None)?.success()?; // Use GSSAPI (Kerberos) for authentication
     } else {
@@ -48,8 +48,7 @@ pub fn ldap_connect(config: &LdapConfig) -> Result<(LdapConn, String)> {
 
     // Optionally print a timestamp if enabled
     if config.timestamp_format {
-        let timestamp = Local::now().format("%Y-%m-%d %H:%M:%S").to_string();
-        print!("[{}] Successfully authenticated to LDAP.\n", timestamp);
+        print_timestamp();
     }
 
     // Perform a base search to verify the connection and retrieve the base DN
