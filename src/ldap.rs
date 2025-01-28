@@ -34,7 +34,7 @@ pub fn ldap_connect(config: &LdapConfig) -> Result<(LdapConn, String)> {
     // If Kerberos is enabled, use SASL GSSAPI for authentication
     if config.kerberos {
         println!("[*] Using Kerberos authentication for LDAP.");
-        ldap.sasl_gssapi_bind(None)?.success()?; // Use GSSAPI (Kerberos) for authentication
+        ldap.sasl_gssapi_bind(&config.dc_ip)?.success()?; // Use GSSAPI (Kerberos) for authentication
     } else {
         // If not using Kerberos, fallback to simple bind with username/password or hash
         let bind_dn = format!("{}@{}", config.username, config.domain);
