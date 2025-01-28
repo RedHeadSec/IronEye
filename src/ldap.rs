@@ -1,7 +1,7 @@
-use crate::proxy::ProxyConfig;
-use ldap3::{result::Result, LdapConn, LdapConnSettings, Scope, LdapError};
-use std::time::Duration;
 use crate::help::print_timestamp;
+use crate::proxy::ProxyConfig;
+use ldap3::{result::Result, LdapConn, LdapConnSettings, LdapError, Scope};
+use std::time::Duration;
 
 #[derive(Clone)]
 pub struct LdapConfig {

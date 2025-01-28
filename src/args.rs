@@ -388,10 +388,16 @@ pub fn get_spray_arguments() -> Option<SprayArgs> {
     })
 }
 
-pub fn get_cerbero_args() -> Option<String> {
+pub enum CerberoCommand {
+    Arguments(String), // For Cerbero argument strings
+    Export(String),    // For export commands (the file path)
+    None,              // For invalid input or user cancellations
+}
+
+pub fn get_cerbero_args() -> CerberoCommand {
     println!("\nCerbero Argument Examples:");
     println!("1. Press Enter to see the main help menu for Cerberos");
-    println!("2. Example:\nask --help \nasreproast --help\nbrute --help\nconvert --help\ncraft --help\nhash --help\nkerberoast --help\nlist --help\n");
+    println!("2. Example:\nask --help \nasreproast --help\nbrute --help\nconvert --help\ncraft --help\nhash --help\nkerberoast --help\nlist --help\nexport /path/to/ccache");
 
     // Initialize input editor
     let mut rl = DefaultEditor::new().expect("Failed to initialize input editor");
@@ -405,16 +411,29 @@ pub fn get_cerbero_args() -> Option<String> {
             rl.add_history_entry(input.as_str()).ok();
             rl.save_history(".cerbero_history.txt").ok();
 
-            // If the user enters nothing, return `--help`
-            if input.trim().is_empty() {
-                Some("--help".to_string())
+            let input = input.trim();
+
+            if input.is_empty() {
+                CerberoCommand::Arguments("--help".to_string()) // Default to "--help"
+            } else if input.starts_with("export ") {
+                let path = input.strip_prefix("export ").unwrap().trim(); // Extract file path
+                if path.is_empty() {
+                    eprintln!(
+                        "\x1b[31m[!] Invalid export command. Usage: export /path/to/ccache\x1b[0m"
+                    );
+                    CerberoCommand::None
+                } else {
+                    println!("\x1b[32m[+] Exporting KRB5CCNAME to: {}\x1b[0m", path);
+                    std::env::set_var("KRB5CCNAME", path); // Set the environment variable
+                    CerberoCommand::Export(path.to_string())
+                }
             } else {
-                Some(input.trim().to_string()) // Return the full argument string
+                CerberoCommand::Arguments(input.to_string()) // Return the entered Cerbero arguments
             }
         }
         Err(e) => {
             eprintln!("Error reading input: {}", e);
-            None
+            CerberoCommand::None
         }
     }
 }
