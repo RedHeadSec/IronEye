@@ -21,45 +21,38 @@ pub fn ldap_connect(config: &LdapConfig) -> Result<(LdapConn, String)> {
         .set_conn_timeout(Duration::from_secs(30))
         .set_no_tls_verify(true);
 
+    // Construct the LDAP URL
     let ldap_url = if config.secure_ldaps {
         format!("ldaps://{}", config.dc_ip)
     } else {
         format!("ldap://{}", config.dc_ip)
     };
 
+    // Create the LDAP connection
     let mut ldap = LdapConn::with_settings(settings, &ldap_url)?;
 
-    let bind_dn = format!("{}@{}", config.username, config.domain);
-
-    // Bind with either password or hash
-    let bind_result = if let Some(hash) = &config.hash {
-        ldap.simple_bind(&bind_dn, hash)
+    // If Kerberos is enabled, use SASL GSSAPI for authentication
+    if config.use_kerberos {
+        println!("[*] Using Kerberos authentication for LDAP.");
+        ldap.sasl_gssapi_bind(None)?.success()?; // Use GSSAPI (Kerberos) for authentication
     } else {
-        ldap.simple_bind(&bind_dn, &config.password)
-    };
+        // If not using Kerberos, fallback to simple bind with username/password or hash
+        let bind_dn = format!("{}@{}", config.username, config.domain);
 
-    match bind_result {
-        Ok(_) => {
-            if config.timestamp_format {
-                print_timestamp();
-            }
-        }
-        Err(err) => {
-            debug_ldap_error(&err);
-
-            if let Some(sub_error_code) = extract_sub_error_code(&err) {
-                println!(
-                    "[!] LDAP bind failed with sub-error code {}: {}",
-                    sub_error_code, err
-                );
-            } else {
-                println!("[!] LDAP bind error: {}", err);
-            }
-            return Err(err);
+        if let Some(hash) = &config.hash {
+            ldap.simple_bind(&bind_dn, hash)?.success()?;
+        } else {
+            ldap.simple_bind(&bind_dn, &config.password)?.success()?;
         }
     }
 
-    // Perform verification search and get search base
+    // Optionally print a timestamp if enabled
+    if config.timestamp_format {
+        let timestamp = Local::now().format("%Y-%m-%d %H:%M:%S").to_string();
+        print!("[{}] Successfully authenticated to LDAP.\n", timestamp);
+    }
+
+    // Perform a base search to verify the connection and retrieve the base DN
     let search_base = config
         .domain
         .split('.')
@@ -77,9 +70,10 @@ pub fn ldap_connect(config: &LdapConfig) -> Result<(LdapConn, String)> {
         .success()?;
 
     if results.is_empty() {
-        println!("Error - No Result from LDAP");
+        println!("[!] Warning: No results returned from the base search.");
     }
 
+    // Return both the connection and the search base
     Ok((ldap, search_base))
 }
 
