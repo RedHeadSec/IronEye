@@ -81,6 +81,6 @@ Example: --users users.txt --passwords passwords.txt --domain corp.local --dc-ip
 | Feature           | Description                                  | Status   |
 |------------------|----------------------------------|---------|
 | Kerberos Auth   | Supports Kerberos-based authentication | ✅ Working |
-| Proxy Support   | SOCKS4/5 proxy integration         | ⚠️ Partial  |
+| Proxy Support   | While native SOCKS support is desired, this tool works well with proxychains4.       | ❌ TBD  |
 | Multi-Platform  | Works on Linux, macOS, Windows    | ✅ Tested  |
-| Multi-Platform  | Works on Linux, macOS, Windows    | ❌ TBD |
+| Password Spray Threading | Thrading to be implemented    | ❌ TBD |
