@@ -14,7 +14,7 @@ Cerberos Implementation: https://github.com/zer1t0/cerbero
                                          
 "#;
 
-const VERSION: &str = "v0.2";
+const VERSION: &str = "v0.5";
 
 // Imports
 use dialoguer::{theme::ColorfulTheme, Confirm, Select};
