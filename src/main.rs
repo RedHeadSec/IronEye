@@ -27,7 +27,7 @@ pub mod ldap;
 pub mod ldapping;
 pub mod proxy;
 pub mod spray;
-use crate::args::get_cerbero_args;
+use crate::args::{get_cerbero_args, CerberoCommand};
 use args::{
     get_connect_arguments, get_spray_arguments, get_userenum_arguments, run_nested_query_menu,
 };
@@ -60,12 +60,28 @@ fn main() {
                 // Handle connection first
                 match get_connect_arguments() {
                     Some(mut ldap_config) => {
-                        // If connection successful, show sub-command menu
-                        if let Ok((_ldap, _search_base)) = crate::ldap::ldap_connect(&ldap_config) {
-                            println!("\nSuccessfully connected to LDAP server.\n");
-                        } else {
-                            println!("Failed to connect to LDAP server. Check credentials or connection to server!");
-                            continue;
+                        // If connection is successful, show sub-command menu
+                        match crate::ldap::ldap_connect(&ldap_config) {
+                            Ok((_ldap, _search_base)) => {
+                                println!("\nSuccessfully connected to LDAP server.\n");
+                            }
+                            Err(e) => {
+                                eprintln!(
+                                    "[!] Failed to connect to LDAP server: {}. Check credentials, Kerberos ticket, or connection.",
+                                    e
+                                );
+                                // Optionally add verbose debug info:
+                                if ldap_config.kerberos {
+                                    eprintln!(
+                                        "[DEBUG] Kerberos authentication was enabled. Ensure `KRB5CCNAME` is set and contains a valid ticket."
+                                    );
+                                } else {
+                                    eprintln!(
+                                        "[DEBUG] Using simple bind with username and password."
+                                    );
+                                }
+                                continue;
+                            }
                         }
                         loop {
                             let cmd_options = vec![
@@ -264,32 +280,43 @@ fn main() {
                     None => println!("Required arguments not provided!"),
                 }
             }
+
             1 => {
-                if let Some(cerbero_args) = get_cerbero_args() {
-                    let args: Vec<&str> = cerbero_args.split_whitespace().collect();
+                match get_cerbero_args() {
+                    CerberoCommand::Arguments(cerbero_args) => {
+                        // Convert `cerbero_args` into a `Vec<&str>` for `run_cerbero`
+                        let args_vec: Vec<&str> = cerbero_args.split_whitespace().collect();
 
-                    match kerberos::cerberos::run_cerbero(&args) {
-                        Ok(output) => {
-                            let stdout_text = String::from_utf8_lossy(&output.stdout);
-                            let stderr_text = String::from_utf8_lossy(&output.stderr);
-
-                            // Print STDOUT only if it's not empty
-                            if !stdout_text.is_empty() {
-                                println!("\n[+] Cerbero executed successfully.\n");
-                                println!("{}", stdout_text);
+                        match kerberos::cerberos::run_cerbero(&args_vec) {
+                            Ok(output) => {
+                                println!("[+] Cerbero executed successfully.\n");
+                                if !output.stdout.is_empty() {
+                                    println!(
+                                        "Cerberos Output:\n{}",
+                                        String::from_utf8_lossy(&output.stdout)
+                                    );
+                                }
+                                if !output.stderr.is_empty() {
+                                    eprintln!(
+                                        "Cerberos Output:\n{}",
+                                        String::from_utf8_lossy(&output.stderr)
+                                    );
+                                }
                             }
-
-                            // Print STDERR only if it contains additional information
-                            if !stderr_text.is_empty() && stderr_text != stdout_text {
-                                println!("\n[INFO] Cerbero logs:\n{}", stderr_text);
+                            Err(e) => {
+                                eprintln!("[!] Failed to execute Cerbero: {}", e);
                             }
-                        }
-                        Err(e) => {
-                            eprintln!("[!] Cerbero execution failed: {}", e);
                         }
                     }
-                } else {
-                    println!("[!] Failed to parse Cerbero arguments.");
+                    CerberoCommand::Export(path) => {
+                        // Handle the `export` command
+                        println!("[+] KRB5CCNAME environment variable set to: {}", path);
+                        std::env::set_var("KRB5CCNAME", path); // Set the KRB5CCNAME env var
+                    }
+                    CerberoCommand::None => {
+                        // Handle invalid or empty input
+                        eprintln!("[!] No valid Cerbero command provided.");
+                    }
                 }
             }
 
