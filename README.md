@@ -1,138 +1,77 @@
-# LdapShot
+# IronEye
 
-GOALS:
+IronEye is a Rust-based Active Directory enumeration and security assessment tool designed for use in internal network environments. It enables penetration testers, red teamers, and security researchers to interact with LDAP, Kerberos, and SMB services efficiently.
 
-Ldapper port with added features:
-- Export results to file functionality
-- Password Spraying Functionality
-- Custom Query 
-- Better Error Handling
-- More default queries such as what Ldeep has
+The tool supports both password and Kerberos authentication, allowing for credentialed LDAP queries, password spraying, TGT requests, and more.
 
+Key Features
+1. LDAP Enumeration
+Perform LDAP reconnaissance without authentication (LDAP Ping).
+Retrieve users, computers, groups, and organizational units (OUs).
+Query password policies, machine quotas, and domain trusts.
+Custom LDAP queries for advanced searches.
+Supports Kerberos authentication via GSSAPI.
+2. Kerberos Support
+Request a Ticket Granting Ticket (TGT) using credentials.
+Supports Kerberos password authentication and NTLM hashes.
+Uses the KRB5CCNAME environment variable for tickets.
+Can export and use ccache files (*.ccache).
+3. Password Spraying
+Perform efficient and controlled password spraying against LDAP.
+Detect locked or disabled accounts to avoid lockout issues.
+Supports proxying through SOCKS4 and SOCKS5.
+Handles jitter, delays, and thread control.
+4. Proxy Support
+Proxy all network connections via SOCKS4/SOCKS5.
+Ensures anonymity when interacting with LDAP, Kerberos, and SMB.
+Built-in helper functions to validate and parse proxy URLs.
+5. Cerbero Integration (For Kerberos Operations)
+Leverages Cerbero for AS-REP roasting, Kerberoasting, and password bruteforcing.
+Automates TGT requests, Kerberos ticket handling, and ticket export.
+Works across Linux, Windows, and macOS with architecture-specific binaries.
+Installation
+Linux/macOS
+Ensure you have Rust installed:
 
-Ldeep
-commands:
-  available commands
+bash
+Copy
+Edit
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+Clone and build IronEye:
 
-  {auth_policies,bitlockerkeys,computers,conf,delegations,domain_policy,fsmo,gmsa,gpo,groups,machines,ou,pkis,pso,sccm,shadow_principals,silos,smsa,subnets,templates,trusts,users,zones,from_guid,from_sid,laps,memberships,membersof,object,sddl,silo,zone,all,enum_users,search,whoami,add_to_group,change_uac,create_computer,create_user,modify_password,remove_from_group,unlock}
-    auth_policies       List the authentication policies configured in the Active Directory.
-    bitlockerkeys       Extract the bitlocker recovery keys.
-    computers           List the computer hostnames and resolve them if --resolve is specify.
-    conf                Dump the configuration partition of the Active Directory.
-    delegations         List accounts configured for any kind of delegation.
-    domain_policy       Return the domain policy.
-    fsmo                List FSMO roles.
-    gmsa                List the gmsa accounts and retrieve secrets(NT + kerberos keys) if possible.
-    gpo                 Return the list of Group policy objects.
-    groups              List the groups.
-    machines            List the machine accounts.
-    ou                  Return the list of organizational units with linked GPO.
-    pkis                List pkis.
-    pso                 List the Password Settings Objects.
-    sccm                List servers related to SCCM infrastructure (Primary/Secondary Sites and Distribution Points).
-    shadow_principals   List the shadow principals and the groups associated with.
-    silos               List the silos configured in the Active Directory.
-    smsa                List the smsa accounts and the machines they are associated with.
-    subnets             List sites and associated subnets.
-    templates           List certificate templates.
-    trusts              List the domain's trust relationships.
-    users               List users according to a filter.
-    zones               List the DNS zones configured in the Active Directory.
-    from_guid           Return the object associated with the given `guid`.
-    from_sid            Return the object associated with the given `sid`.
-    laps                Return the LAPS passwords. If a target is specified, only retrieve the LAPS password for this one.
-    memberships         List the group for which `account` belongs to.
-    membersof           List the members of `group`.
-    object              Return the records containing `object` in a CN.
-    sddl                Returns the SDDL of an object given it's CN.
-    silo                Get information about a specific `silo`.
-    zone                Return the records of a DNS zone.
-    all                 Collect and store computers, domain_policy, zones, gpo, groups, ou, users, trusts, pso information
-    enum_users          Anonymously enumerate users with LDAP pings.
-    search              Query the LDAP with `filter` and retrieve ALL or `attributes` if specified.
-    whoami              Return user identity.
-    add_to_group        Add `user` to `group`.
-    change_uac          Change user account control
-    create_computer     Create a computer account
-    create_user         Create a user account
-    modify_password     Change `user`'s password.
-    remove_from_group   Remove `user` from `group`.
-    unlock              Unlock `user`
+bash
+Copy
+Edit
+git clone https://github.com/your-repo/ironeye.git
+cd ironeye
+cargo build --release
+Windows
+Install Rust with MSVC toolchain:
+Download from Rustup.
+Clone and build:
+powershell
+Copy
+Edit
+git clone https://github.com/your-repo/ironeye.git
+cd ironeye
+cargo build --release
+Install MIT Kerberos for Windows if using Kerberos authentication.
+Usage
+Run the tool:
 
+bash
+Copy
+Edit
+./ironeye
+Select the appropriate module from the interactive menu.
 
-## Getting started
+1. LDAP Connect
+Connect to an LDAP server and query domain information.
 
-Blah
-
-## Add your files
-
-- [ ] [Create](https://docs.gitlab.com/ee/user/project/repository/web_editor.html#create-a-file) or [upload](https://docs.gitlab.com/ee/user/project/repository/web_editor.html#upload-a-file) files
-- [ ] [Add files using the command line](https://docs.gitlab.com/ee/gitlab-basics/add-file.html#add-a-file-using-the-command-line) or push an existing Git repository with the following command:
-
-```
-cd existing_repo
-git remote add origin https://git.lab.local/DevOps/ldapshot.git
-git branch -M main
-git push -uf origin main
-```
-
-## Integrate with your tools
-
-- [ ] [Set up project integrations](https://git.lab.local/DevOps/ldapshot/-/settings/integrations)
-
-## Collaborate with your team
-
-- [ ] [Invite team members and collaborators](https://docs.gitlab.com/ee/user/project/members/)
-- [ ] [Create a new merge request](https://docs.gitlab.com/ee/user/project/merge_requests/creating_merge_requests.html)
-- [ ] [Automatically close issues from merge requests](https://docs.gitlab.com/ee/user/project/issues/managing_issues.html#closing-issues-automatically)
-- [ ] [Enable merge request approvals](https://docs.gitlab.com/ee/user/project/merge_requests/approvals/)
-- [ ] [Set auto-merge](https://docs.gitlab.com/ee/user/project/merge_requests/merge_when_pipeline_succeeds.html)
-
-## Test and Deploy
-
-Use the built-in continuous integration in GitLab.
-
-- [ ] [Get started with GitLab CI/CD](https://docs.gitlab.com/ee/ci/quick_start/index.html)
-- [ ] [Analyze your code for known vulnerabilities with Static Application Security Testing (SAST)](https://docs.gitlab.com/ee/user/application_security/sast/)
-- [ ] [Deploy to Kubernetes, Amazon EC2, or Amazon ECS using Auto Deploy](https://docs.gitlab.com/ee/topics/autodevops/requirements.html)
-- [ ] [Use pull-based deployments for improved Kubernetes management](https://docs.gitlab.com/ee/user/clusters/agent/)
-- [ ] [Set up protected environments](https://docs.gitlab.com/ee/ci/environments/protected_environments.html)
-
-***
-
-## Name
-Choose a self-explaining name for your project.
-
-## Description
-Let people know what your project can do specifically. Provide context and add a link to any reference visitors might be unfamiliar with. A list of Features or a Background subsection can also be added here. If there are alternatives to your project, this is a good place to list differentiating factors.
-
-## Visuals
-Depending on what you are making, it can be a good idea to include screenshots or even a video (you'll frequently see GIFs rather than actual videos). Tools like ttygif can help, but check out Asciinema for a more sophisticated method.
-
-## Installation
-Within a particular ecosystem, there may be a common way of installing things, such as using Yarn, NuGet, or Homebrew. However, consider the possibility that whoever is reading your README is a novice and would like more guidance. Listing specific steps helps remove ambiguity and gets people to using your project as quickly as possible. If it only runs in a specific context like a particular programming language version or operating system or has dependencies that have to be installed manually, also add a Requirements subsection.
-
-## Usage
-Use examples liberally, and show the expected output if you can. It's helpful to have inline the smallest example of usage that you can demonstrate, while providing links to more sophisticated examples if they are too long to reasonably include in the README.
-
-## Support
-Tell people where they can go to for help. It can be any combination of an issue tracker, a chat room, an email address, etc.
-
-## Roadmap
-If you have ideas for releases in the future, it is a good idea to list them in the README.
-
-## Contributing
-State if you are open to contributions and what your requirements are for accepting them.
-
-For people who want to make changes to your project, it's helpful to have some documentation on how to get started. Perhaps there is a script that they should run or some environment variables that they need to set. Make these steps explicit. These instructions could also be useful to your future self.
-
-You can also document commands to lint the code or run tests. These steps help to ensure high code quality and reduce the likelihood that the changes inadvertently break something. Having instructions for running tests is especially helpful if it requires external setup, such as starting a Selenium server for testing in a browser.
-
-## Authors and acknowledgment
-Show your appreciation to those who have contributed to the project.
-
-## License
-For open source projects, say how it is licensed.
-
-## Project status
-If you have run out of energy or time for your project, put a note at the top of the README saying that development has slowed down or stopped completely. Someone may choose to fork your project or volunteer to step in as a maintainer or owner, allowing your project to keep going. You can also make an explicit request for maintainers.
+bash
+Copy
+Edit
+-u <username> -p <password> -d <domain> -i <dc-ip> [-s] [-t] [-k] [--proxy socks5://127.0.0.1:1080]
+-s → Use LDAPS instead of LDAP.
+-t → Enable timestamp logging.
+-k → Use Kerberos authentication (KRB5CCNAME must be set).
