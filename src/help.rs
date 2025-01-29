@@ -67,7 +67,7 @@ pub fn read_file_lines(filename: &str) -> Result<Vec<String>, Box<dyn Error>> {
         .collect())
 }
 
-pub fn print_timestamp() -> String {
+pub fn get_timestamp() -> String {
     let timestamp = Local::now().format("%Y-%m-%d %H:%M:%S").to_string();
     timestamp
 }

@@ -1,6 +1,6 @@
 use crate::args::SprayArgs;
 use crate::help::add_terminal_spacing;
-use crate::help::print_timestamp;
+use crate::help::get_timestamp;
 use crate::proxy::ProxyConfig;
 use chrono::Local;
 use ldap3::LdapConn;
@@ -97,7 +97,7 @@ pub fn start_password_spray(config: SprayConfig) -> Result<(), Box<dyn Error>> {
     println!("[*] Loaded {} passwords", passwords.len());
     println!("[*] Lockout Threshold: {} attempts", lockout_threshold);
     println!("[*] Lockout Window: {} seconds\n", lockout_window_seconds);
-    println!("[*] Starting password spray at {}\n", print_timestamp());
+    println!("[*] Starting password spray at {}\n", get_timestamp());
 
     let timestamp = Local::now().format("%Y%m%d_%H%M%S");
     let output_file = format!("found_credentials_{}.txt", timestamp);
@@ -223,7 +223,7 @@ pub fn start_password_spray(config: SprayConfig) -> Result<(), Box<dyn Error>> {
         }
     }
 
-    println!("\n[*] Password spray complete at {}\n", print_timestamp());
+    println!("\n[*] Password spray complete at {}\n", get_timestamp());
     if valid_credentials_found {
         println!(
             "[+] Valid credentials were found and saved to: {}",

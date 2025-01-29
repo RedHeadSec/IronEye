@@ -1,4 +1,4 @@
-use crate::help::print_timestamp;
+use crate::help::get_timestamp;
 use crate::proxy::ProxyConfig;
 use ldap3::{result::Result, LdapConn, LdapConnSettings, LdapError, Scope};
 use std::time::Duration;
@@ -110,7 +110,7 @@ pub fn ldap_connect(config: &LdapConfig) -> Result<(LdapConn, String)> {
 
     // Optionally print a timestamp if enabled
     if config.timestamp_format {
-        print_timestamp();
+        println!("[{}]\n",get_timestamp());
     }
 
     // Perform a base search to verify the connection and retrieve the base DN
