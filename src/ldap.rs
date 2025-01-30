@@ -49,7 +49,7 @@ pub fn ldap_connect(config: &LdapConfig) -> Result<(LdapConn, String)> {
 
     // Optionally print a timestamp if enabled
     if config.timestamp_format {
-        println!("[{}]\n",get_timestamp());
+        println!("\n[{}]\n",get_timestamp());
     }
 
     // Perform a base search to verify the connection and retrieve the base DN
