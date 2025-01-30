@@ -32,9 +32,15 @@ pub fn get_delegations(config: &mut LdapConfig) -> Result<(), Box<dyn Error>> {
 
     for entry in entries {
         let entry = SearchEntry::construct(entry);
-        let account_name = entry.attrs.get("sAMAccountName").and_then(|v| v.get(0)).map_or("", String::as_str);
+        let account_name = entry
+            .attrs
+            .get("sAMAccountName")
+            .and_then(|v| v.get(0))
+            .map_or("", String::as_str);
         let delegation_type = determine_delegation_type(&entry);
-        let delegated_services = entry.attrs.get("msDS-AllowedToDelegateTo")
+        let delegated_services = entry
+            .attrs
+            .get("msDS-AllowedToDelegateTo")
             .map(|v| v.join(", "))
             .unwrap_or_else(|| "None".to_string());
 
@@ -49,7 +55,9 @@ pub fn get_delegations(config: &mut LdapConfig) -> Result<(), Box<dyn Error>> {
     }
 
     wtr.flush()?;
-    println!("\nDelegations query completed successfully. Results saved to 'delegations_export.csv'.");
+    println!(
+        "\nDelegations query completed successfully. Results saved to 'delegations_export.csv'."
+    );
     Ok(())
 }
 
@@ -67,7 +75,10 @@ fn determine_delegation_type(entry: &SearchEntry) -> String {
         return "constrained without protocol transition".to_string();
     }
 
-    if entry.attrs.contains_key("msDS-AllowedToActOnBehalfOfOtherIdentity") {
+    if entry
+        .attrs
+        .contains_key("msDS-AllowedToActOnBehalfOfOtherIdentity")
+    {
         return "constrained with protocol transition".to_string();
     }
 

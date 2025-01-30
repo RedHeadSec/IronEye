@@ -32,6 +32,16 @@ pub fn ldap_connect(config: &LdapConfig) -> Result<(LdapConn, String)> {
     // Create the LDAP connection
     let mut ldap = LdapConn::with_settings(settings, &ldap_url)?;
 
+    // Add the Security Descriptor Control (DACL: 0x4)
+    let sd_control = RawControl {
+        ctype: "1.2.840.113556.1.4.801".to_string(), // Security Descriptor Control
+        crit: true, // Mark as critical (enforces control usage)
+        val: Some(vec![48, 3, 2, 1, 4]), // Request DACL (0x4)
+    };
+    
+    // Attach the control to the connection
+    ldap = ldap.with_controls(vec![sd_control]);
+
     // If Kerberos is enabled, use SASL GSSAPI for authentication
     if config.kerberos {
         println!("[*] Using Kerberos authentication for LDAP.");

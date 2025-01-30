@@ -1,12 +1,12 @@
 // src/args.rs
 use crate::deep_queries::computers;
+use crate::deep_queries::delegations;
 use crate::deep_queries::ou;
 use crate::deep_queries::pki;
 use crate::deep_queries::sccm;
 use crate::deep_queries::subnets;
 use crate::deep_queries::trusts;
 use crate::deep_queries::users;
-use crate::deep_queries::delegations;
 use crate::help::add_terminal_spacing;
 use crate::ldap::LdapConfig;
 use crate::proxy::{parse_proxy_url, ProxyConfig};
@@ -208,8 +208,8 @@ impl ConnectionArgs {
 }
 
 pub fn get_spray_arguments() -> Option<SprayArgs> {
-    println!("\nArgument format: --users <user/path> --passwords <pass/path> --domain <domain> --dc-ip <ip> [--threads <num>] [--jitter <ms>] [--delay <ms>] [--continue-on-success] [--verbose] [--timestamp] [--proxy <proxy_url>] [--lockout-threshold <num>] [--lockout-window <seconds>]");
-    println!("Example: --users users.txt --passwords passwords.txt --domain corp.local --dc-ip 192.168.1.10 --threads 10 --jitter 10 --delay 10 --continue-on-success --verbose --timestamp --proxy socks5://127.0.0.1:1080 --lockout-threshold 5 --lockout-window 600");
+    println!("\nArgument format: --users <user/path> --passwords <pass/path> --domain <domain> --dc-ip <ip> [--threads <num>] [--jitter <ms>] [--delay <ms>] [--continue-on-success] [--verbose] [--timestamp] [--lockout-threshold <num>] [--lockout-window <seconds>]");
+    println!("Example: --users users.txt --passwords passwords.txt --domain corp.local --dc-ip 192.168.1.10 --threads 10 --jitter 10 --delay 10 --continue-on-success --verbose --timestamp --lockout-threshold 5 --lockout-window 600");
     add_terminal_spacing(1);
 
     let mut rl = DefaultEditor::new().ok()?;

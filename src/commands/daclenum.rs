@@ -1,79 +1,68 @@
-use crate::help::add_terminal_spacing;
 use crate::ldap::LdapConfig;
 use ldap3::{controls::RawControl, Scope, SearchEntry};
 use std::error::Error;
 
-pub fn query_dacl(
-    config: &mut LdapConfig,
-    target: &str,
-    _principal: Option<&str>,
-) -> Result<(), Box<dyn Error>> {
+pub fn query_dacl(config: &mut LdapConfig, target: &str) -> Result<(), Box<dyn Error>> {
+    println!("\n[*] Starting LDAP DACL Query for: {}", target);
+
+    // Establish LDAP connection
     let (mut ldap, search_base) = crate::ldap::ldap_connect(config)?;
+    println!("[DEBUG] Connected to LDAP. Search Base: {}", search_base);
 
-    // Create the search filter for the target
-    let target_filter = if target.contains("=") {
-        format!("(distinguishedName={})", target)
-    } else {
-        format!("(|(sAMAccountName={})(cn={}))", target, target)
+    // Construct search filter (find user by sAMAccountName or CN)
+    let target_filter = format!("(|(sAMAccountName={})(cn={}))", target, target);
+    println!("[DEBUG] Using LDAP filter: {}", target_filter);
+
+    // Define LDAP control to request security descriptors (DACL)
+    let sd_control = RawControl {
+        ctype: "1.2.840.113556.1.4.801".to_string(), // Security Descriptor Control OID
+        crit: true,
+        val: Some(vec![48, 3, 2, 1, 4]), // 0x4 -> Request DACL only
     };
 
-    // Create security descriptor control
-    // From Go implementation: DACL_SECURITY_INFORMATION = 0x4
-    let sd_flags_control = RawControl {
-        ctype: "1.2.840.113556.1.4.801".to_string(),
-        crit: true,                      // Changed to true as per Go implementation
-        val: Some(vec![48, 3, 2, 1, 4]), // Changed to 4 (DACL only) as per Go implementation
-    };
+    println!("[DEBUG] Attaching Security Descriptor Control...");
 
-    // Add the control to the connection
-    ldap.with_controls(vec![sd_flags_control]);
+    // Attach control before running the search
+    ldap.with_controls(vec![sd_control]);
 
-    // Perform the search
-    println!("Searching for target: {}", target);
-    println!("Using filter: {}", target_filter);
-    println!("Base DN: {}", search_base);
-
+    // Execute LDAP search
     let (entries, _) = ldap
         .search(
             &search_base,
             Scope::Subtree,
             &target_filter,
-            vec!["nTSecurityDescriptor", "distinguishedName"], // Added distinguishedName for debugging
+            vec!["nTSecurityDescriptor", "distinguishedName"],
         )?
         .success()?;
 
+    println!("[DEBUG] LDAP Search executed. Entries found: {}", entries.len());
+
+    // Check if user exists
     if let Some(entry) = entries.first() {
         let entry = SearchEntry::construct(entry.clone());
-        println!("Found entry: {}", entry.dn);
+        println!("\n[+] Found user: {}", entry.dn);
 
-        println!("Available attributes:");
-        for (attr_name, values) in &entry.attrs {
-            println!("  {}: {} value(s)", attr_name, values.len());
-        }
-
+        // Check if `nTSecurityDescriptor` exists
         if let Some(security_descriptors) = entry.attrs.get("nTSecurityDescriptor") {
-            for sd in security_descriptors {
-                println!("Security Descriptor found ({} bytes)", sd.len());
-                println!("First 32 bytes of raw data:");
-                for (i, byte) in sd.as_bytes().iter().take(32).enumerate() {
-                    if i % 16 == 0 {
-                        print!("\n{:04x}: ", i);
-                    }
-                    print!("{:02x} ", byte);
+            println!("\n[+] Found `nTSecurityDescriptor` ({} bytes)", security_descriptors[0].len());
+
+            // Debugging: Print first 32 bytes of raw security descriptor
+            println!("[DEBUG] Raw Security Descriptor (first 32 bytes):");
+            for (i, byte) in security_descriptors[0].as_bytes().iter().take(32).enumerate() {
+                if i % 16 == 0 {
+                    print!("\n{:04x}: ", i);
                 }
-                println!("\n");
+                print!("{:02x} ", byte);
             }
+            println!("\n");
+
         } else {
-            println!("No nTSecurityDescriptor attribute found");
-            println!("Debug info:");
-            println!("1. Control OID: 1.2.840.113556.1.4.801");
-            println!("2. Control Value: {:?}", vec![48, 3, 2, 1, 4]);
-            println!("3. Control Critical: true");
-            println!("4. SSL Enabled: {}", config.secure_ldaps);
+            println!("\n[-] No `nTSecurityDescriptor` found for {}", entry.dn);
+            println!("[DEBUG] Possible Causes: Lack of permissions or incorrect control.");
         }
     } else {
-        println!("Target not found");
+        println!("\n[-] Target user not found.");
     }
-    add_terminal_spacing(2);
+
     Ok(())
 }

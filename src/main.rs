@@ -124,24 +124,9 @@ fn main() {
                                         println!("Target is required");
                                         continue;
                                     }
-
-                                    println!("Enter principal to filter by (optional, press Enter to skip): ");
-                                    let mut principal = String::new();
-                                    if let Err(e) = std::io::stdin().read_line(&mut principal) {
-                                        eprintln!("Error reading input: {}", e);
-                                        continue;
-                                    }
-                                    let principal = principal.trim();
-
-                                    if let Err(e) = commands::daclenum::query_dacl(
-                                        &mut ldap_config,
-                                        target,
-                                        if principal.is_empty() {
-                                            None
-                                        } else {
-                                            Some(principal)
-                                        },
-                                    ) {
+                                    if let Err(e) =
+                                        commands::daclenum::query_dacl(&mut ldap_config, target)
+                                    {
                                         eprintln!("Error: {}", e)
                                     }
                                 }

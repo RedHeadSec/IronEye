@@ -2,7 +2,7 @@ use crate::args::UserEnumArgs;
 use ldap3::{LdapConn, Scope, SearchEntry};
 use std::error::Error;
 use std::fs::File;
-use std::io::{BufRead, BufReader, Write};
+use std::io::{self, BufRead, BufReader, Write};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use std::thread;
@@ -89,12 +89,8 @@ fn brute_force_users(config: LdapConfig) {
                                 }
                                 // Add these lines after the user check:
                                 let count = progress.fetch_add(1, Ordering::SeqCst) + 1;
-                                println!(
-                                    "Progress: {}/{} users checked ({}%)",
-                                    count,
-                                    total_users,
-                                    (count as f64 / total_users as f64 * 100.0) as u32
-                                );
+                                print!("\rProgress: {}/{} users checked ({:.1}%)", count, total_users, (count as f64 / total_users as f64) * 100.0);
+                                io::stdout().flush().unwrap(); // Flush to ensure it prints immediately
                             }
                             Err(e) => {
                                 println!("LDAP Error for {}: {:?}", username, e);
