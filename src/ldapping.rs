@@ -81,7 +81,7 @@ fn brute_force_users(config: LdapConfig) {
                                 if exists {
                                     match results.lock() {
                                         Ok(mut results) => {
-                                            println!("Adding {} to results", username);
+                                            println!(" - Adding {} to results", username);
                                             results.push(username.clone());
                                         }
                                         Err(e) => eprintln!("Failed to lock results mutex: {}", e),
