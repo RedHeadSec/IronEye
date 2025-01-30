@@ -5,3 +5,4 @@ pub mod sccm;
 pub mod subnets;
 pub mod trusts;
 pub mod users;
+pub mod delegations;

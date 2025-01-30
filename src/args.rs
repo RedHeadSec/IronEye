@@ -6,6 +6,7 @@ use crate::deep_queries::sccm;
 use crate::deep_queries::subnets;
 use crate::deep_queries::trusts;
 use crate::deep_queries::users;
+use crate::deep_queries::delegations;
 use crate::help::add_terminal_spacing;
 use crate::ldap::LdapConfig;
 use crate::proxy::{parse_proxy_url, ProxyConfig};
@@ -544,6 +545,7 @@ pub fn run_nested_query_menu(ldap_config: &mut LdapConfig) -> Result<(), String>
             "Query All PKI Information",
             "Query All SCCM Information",
             "Query All Organization Units",
+            "Query All Delegations",
             "Back to Main Menu",
         ];
 
@@ -600,6 +602,12 @@ pub fn run_nested_query_menu(ldap_config: &mut LdapConfig) -> Result<(), String>
                 }
             }
             7 => {
+                // Call Delegations query
+                if let Err(e) = delegations::get_delegations(ldap_config) {
+                    eprintln!("Error running Delegations query: {}", e);
+                }
+            }
+            8 => {
                 // Back to main menu
                 println!("Returning to the main menu...");
                 break;
