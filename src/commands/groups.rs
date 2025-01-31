@@ -38,7 +38,7 @@ pub fn query_groups(
         while let Some(entry) = search.next()? {
             user_entry = Some(SearchEntry::construct(entry));
         }
-        let _ = search.result().success()?;
+        let _ = search.result().success()?; // Ensure search completes
 
         if let Some(user_entry) = user_entry {
             let header = format!("\nGroup Memberships for user: {}", user);
@@ -59,31 +59,42 @@ pub fn query_groups(
                 }
             }
 
-            // Get primary group
-            if let Some(primary_group_id) = user_entry.attrs.get("primaryGroupID").and_then(|v| v.first()) {
-                let adapters: Vec<Box<dyn Adapter<_, _>>> = vec![
-                    Box::new(EntriesOnly::new()),
-                    Box::new(PagedResults::new(500)),
-                ];
+            // Get primary group via objectSid
+            if let (Some(primary_group_id), Some(object_sid)) = (
+                user_entry.attrs.get("primaryGroupID").and_then(|v| v.first()),
+                user_entry.attrs.get("objectSid").and_then(|v| v.first()),
+            ) {
+                if let Ok(primary_group_rid) = primary_group_id.parse::<u32>() {
+                    if let Some(base_sid) = extract_base_sid(object_sid) {
+                        let full_primary_sid = format!("{}-{}", base_sid, primary_group_rid);
 
-                let mut search = ldap.streaming_search_with(
-                    adapters,
-                    &search_base,
-                    Scope::Subtree,
-                    &format!(
-                        "(&(objectClass=group)(objectCategory=group)(primaryGroupToken={}))",
-                        primary_group_id
-                    ),
-                    vec!["distinguishedName"],
-                )?;
+                        let primary_filter = format!(
+                            "(&(objectClass=group)(objectCategory=group)(objectSid={}))",
+                            full_primary_sid
+                        );
 
-                while let Some(entry) = search.next()? {
-                    let primary = SearchEntry::construct(entry);
-                    if let Some(dn) = primary.attrs.get("distinguishedName").and_then(|v| v.first()) {
-                        all_groups.insert(dn.clone());
+                        let adapters: Vec<Box<dyn Adapter<_, _>>> = vec![
+                            Box::new(EntriesOnly::new()),
+                            Box::new(PagedResults::new(500)), // Enable paging
+                        ];
+
+                        let mut search = ldap.streaming_search_with(
+                            adapters,
+                            &search_base,
+                            Scope::Subtree,
+                            &primary_filter,
+                            vec!["distinguishedName"],
+                        )?;
+
+                        while let Some(entry) = search.next()? {
+                            let primary = SearchEntry::construct(entry);
+                            if let Some(dn) = primary.attrs.get("distinguishedName").and_then(|v| v.first()) {
+                                all_groups.insert(dn.clone());
+                            }
+                        }
+                        let _ = search.result().success()?; // Ensure search completes
                     }
                 }
-                let _ = search.result().success()?;
             }
 
             // Fetch and print group details with pagination
@@ -116,7 +127,7 @@ pub fn query_groups(
                         export_data.push(group_details);
                     }
                 }
-                let _ = search.result().success()?;
+                let _ = search.result().success()?; // Ensure search completes
             }
         } else {
             println!("User not found");
@@ -163,7 +174,7 @@ pub fn query_groups(
                 export_data.push(group_details);
             }
         }
-        let _ = search.result().success()?;
+        let _ = search.result().success()?; // Ensure search completes
     }
 
     // Export to file if requested
@@ -173,7 +184,7 @@ pub fn query_groups(
 
         let mut file = File::create(&filename)?;
         for line in export_data {
-            write!(file, "{}", line)?;
+            writeln!(file, "{}", line)?;
         }
 
         println!("\nExported group information to: {}", filename);
@@ -246,4 +257,13 @@ fn get_group_type_string(group_type: i32) -> String {
     }
 
     types.join(" ")
+}
+
+fn extract_base_sid(sid: &str) -> Option<String> {
+    let parts: Vec<&str> = sid.rsplitn(2, '-').collect();
+    if parts.len() == 2 {
+        Some(parts[1].to_string()) // Base SID without the last RID
+    } else {
+        None
+    }
 }
