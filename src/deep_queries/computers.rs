@@ -71,9 +71,6 @@ pub fn get_computers(config: &mut LdapConfig) -> Result<(), Box<dyn Error>> {
 }
 
 // Helper function to perform the LDAP search for computer accounts
-use ldap3::adapters::{Adapter, EntriesOnly, PagedResults};
-use ldap3::{LdapConn, Scope, SearchEntry};
-use std::error::Error;
 
 fn query_computers(
     ldap: &mut LdapConn,
