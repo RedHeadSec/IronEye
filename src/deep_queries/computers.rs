@@ -1,6 +1,7 @@
 use crate::ldap::LdapConfig;
 use csv::Writer;
 use ldap3::{LdapConn, Scope, SearchEntry};
+use ldap3::adapters::{Adapter, EntriesOnly, PagedResults};
 use std::error::Error;
 
 pub fn get_computers(config: &mut LdapConfig) -> Result<(), Box<dyn Error>> {
@@ -70,12 +71,23 @@ pub fn get_computers(config: &mut LdapConfig) -> Result<(), Box<dyn Error>> {
 }
 
 // Helper function to perform the LDAP search for computer accounts
+use ldap3::adapters::{Adapter, EntriesOnly, PagedResults};
+use ldap3::{LdapConn, Scope, SearchEntry};
+use std::error::Error;
+
 fn query_computers(
     ldap: &mut LdapConn,
     search_base: &str,
 ) -> Result<Vec<SearchEntry>, Box<dyn Error>> {
     let search_filter = "(objectClass=computer)";
-    let result = ldap.search(
+
+    let adapters: Vec<Box<dyn Adapter<_, _>>> = vec![
+        Box::new(EntriesOnly::new()),
+        Box::new(PagedResults::new(500)), // Enable paging
+    ];
+
+    let mut search = ldap.streaming_search_with(
+        adapters,
         search_base,
         Scope::Subtree,
         search_filter,
@@ -87,7 +99,12 @@ fn query_computers(
         ], // Attributes to fetch
     )?;
 
-    let (entries, _) = result.success()?;
+    let mut entries = Vec::new();
+    while let Some(entry) = search.next()? {
+        entries.push(SearchEntry::construct(entry));
+    }
+    let _ = search.result().success()?; // Ensure search completes successfully
 
-    Ok(entries.into_iter().map(SearchEntry::construct).collect())
+    Ok(entries)
 }
+

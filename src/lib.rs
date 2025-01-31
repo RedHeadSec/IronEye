@@ -5,5 +5,4 @@ pub mod file_utils;
 pub mod help;
 pub mod kerberos;
 pub mod ldap;
-pub mod proxy;
 pub mod spray;

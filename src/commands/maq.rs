@@ -31,7 +31,7 @@ pub fn get_machine_account_quota(config: &mut LdapConfig) -> Result<(), Box<dyn 
         println!("\nMachine Account Quota for {}:", config.domain);
         println!("----------------------");
         println!("Users can add up to {} computers to the domain", quota);
-        println!("\n\nNote: This setting can also be changed via GPO or ACL assignment. If you have a quota > 0 but insufficent rights to create an account as a user or under one of these listed groups, then consider possible GPO/ACL restrictions.");
+        println!("\n\nNote: This setting can also be changed via GPO or ACL assignment. If you have a quota > 0 but insufficent rights to create an account as a user, then consider possible GPO/ACL restrictions.");
         println!("\nQuota Configuration Analysis:");
         println!("---------------------------");
         match quota {

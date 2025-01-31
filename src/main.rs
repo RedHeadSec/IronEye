@@ -25,7 +25,6 @@ pub mod help;
 pub mod kerberos;
 pub mod ldap;
 pub mod ldapping;
-pub mod proxy;
 pub mod spray;
 use crate::args::{get_cerbero_args, CerberoCommand};
 use args::{
