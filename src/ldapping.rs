@@ -27,9 +27,9 @@ pub fn run(args: &UserEnumArgs) -> Result<(), Box<dyn Error>> {
             .collect::<Vec<_>>()
             .join(","),
         file_path: args.userfile.clone(),
-        threads: 4, // default value
+        threads: 4, 
         output_file: args.output.clone(),
-        port: 389, // default value
+        port: 389, 
     };
 
     brute_force_users(config);
@@ -65,7 +65,6 @@ fn brute_force_users(config: LdapConfig) {
 
         let usernames = Arc::clone(&usernames);
         let results = Arc::clone(&results);
-        // Add this line:
         let progress = Arc::clone(&progress);
         let config = config.clone();
 
@@ -87,10 +86,9 @@ fn brute_force_users(config: LdapConfig) {
                                         Err(e) => eprintln!("Failed to lock results mutex: {}", e),
                                     }
                                 }
-                                // Add these lines after the user check:
                                 let count = progress.fetch_add(1, Ordering::SeqCst) + 1;
                                 print!("\rProgress: {}/{} users checked ({:.1}%)", count, total_users, (count as f64 / total_users as f64) * 100.0);
-                                io::stdout().flush().unwrap(); // Flush to ensure it prints immediately
+                                io::stdout().flush().unwrap(); // Flush so we are not filling up stdout with BS
                             }
                             Err(e) => {
                                 println!("LDAP Error for {}: {:?}", username, e);
@@ -128,7 +126,7 @@ fn brute_force_users(config: LdapConfig) {
     let found_users = {
         let lock_result = results.lock();
         match lock_result {
-            Ok(guard) => guard.clone(), // Clone the data and drop the lock
+            Ok(guard) => guard.clone(), 
             Err(e) => {
                 eprintln!("Failed to acquire lock on results: {}", e);
                 return;

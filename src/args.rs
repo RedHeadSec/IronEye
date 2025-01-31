@@ -9,7 +9,6 @@ use crate::deep_queries::trusts;
 use crate::deep_queries::users;
 use crate::help::add_terminal_spacing;
 use crate::ldap::LdapConfig;
-use crate::proxy::{parse_proxy_url, ProxyConfig};
 use dialoguer::theme::ColorfulTheme;
 use dialoguer::Select;
 use rustyline::DefaultEditor;
@@ -23,7 +22,6 @@ pub struct ConnectionArgs {
     pub timestamp_format: bool,
     pub secure_ldaps: bool,
     pub kerberos: bool,
-    pub proxy: Option<String>,
 }
 
 pub struct UserEnumArgs {
@@ -42,7 +40,6 @@ pub struct SprayArgs {
     pub dc_ip: Vec<String>,
     pub hash: Option<String>,
     pub timestamp_format: bool,
-    pub proxy: Option<ProxyConfig>,
     pub threads: u32,
     pub jitter: u32,
     pub delay: u64,
@@ -73,7 +70,6 @@ pub fn get_connect_arguments() -> Option<LdapConfig> {
             let mut secure_ldaps = false;
             let mut timestamp_format = false;
             let mut kerberos = false;
-            let mut proxy = None;
 
             let mut i = 0;
             while i < args.len() {
@@ -143,21 +139,6 @@ pub fn get_connect_arguments() -> Option<LdapConfig> {
                         }
                         i += 1;
                     }
-                    "--proxy" => {
-                        if i + 1 < args.len() {
-                            match parse_proxy_url(args[i + 1]) {
-                                Ok(parsed_proxy) => proxy = Some(parsed_proxy),
-                                Err(e) => {
-                                    eprintln!("Invalid proxy URL: {}", e);
-                                    return None;
-                                }
-                            }
-                            i += 2;
-                        } else {
-                            eprintln!("Missing value for --proxy argument!");
-                            return None;
-                        }
-                    }
                     _ => {
                         eprintln!("Unrecognized argument: {}", args[i]);
                         i += 1;
@@ -183,7 +164,6 @@ pub fn get_connect_arguments() -> Option<LdapConfig> {
                 secure_ldaps,
                 timestamp_format,
                 kerberos,
-                proxy,
             })
         }
         Err(e) => {
@@ -239,7 +219,6 @@ pub fn get_spray_arguments() -> Option<SprayArgs> {
     let mut continue_on_success = false;
     let mut verbose = false;
     let mut timestamp = false;
-    let mut proxy = None;
     let mut lockout_threshold = None;
     let mut lockout_window_seconds = None;
 
@@ -326,21 +305,6 @@ pub fn get_spray_arguments() -> Option<SprayArgs> {
                 timestamp = true;
                 i += 1;
             }
-            "--proxy" => {
-                if i + 1 < args.len() {
-                    match parse_proxy_url(args[i + 1]) {
-                        Ok(parsed_proxy) => proxy = Some(parsed_proxy),
-                        Err(e) => {
-                            println!("Invalid proxy URL: {}", e);
-                            return None;
-                        }
-                    }
-                    i += 2;
-                } else {
-                    println!("Error: --proxy requires a value");
-                    return None;
-                }
-            }
             "-lt" | "--lockout-threshold" => {
                 if i + 1 < args.len() {
                     lockout_threshold = Some(args[i + 1].parse().unwrap_or(3));
@@ -378,7 +342,6 @@ pub fn get_spray_arguments() -> Option<SprayArgs> {
         dc_ip: dc_ip.unwrap(),
         hash: None,
         timestamp_format: timestamp,
-        proxy,
         threads,
         jitter,
         delay,

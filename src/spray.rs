@@ -1,7 +1,6 @@
 use crate::args::SprayArgs;
 use crate::help::add_terminal_spacing;
 use crate::help::get_timestamp;
-use crate::proxy::ProxyConfig;
 use chrono::Local;
 use ldap3::LdapConn;
 use std::error::Error;
@@ -19,7 +18,6 @@ pub struct SprayConfig {
     pub dc_ip: Vec<String>, // Change from String to Vec<String>
     pub hash: Option<String>,
     pub timestamp_format: bool,
-    pub proxy: Option<ProxyConfig>,
     pub threads: u32,
     pub jitter: u32,
     pub delay: u64,
@@ -38,7 +36,6 @@ impl SprayConfig {
             dc_ip: args.dc_ip.clone(),
             hash: args.hash.clone(),
             timestamp_format: args.timestamp_format,
-            proxy: args.proxy.clone(),
             threads: args.threads,
             jitter: args.jitter,
             delay: args.delay,
@@ -117,11 +114,6 @@ pub fn start_password_spray(config: SprayConfig) -> Result<(), Box<dyn Error>> {
         for user in &users {
             let current_dc = &reachable_dcs[dc_index];
             dc_index = (dc_index + 1) % reachable_dcs.len(); // Rotate DCs
-
-            println!(
-                "[*] Attempting login: {}@{} on {}",
-                user, config.domain, current_dc
-            );
 
             match try_login(
                 &format!("ldap://{}", current_dc),
