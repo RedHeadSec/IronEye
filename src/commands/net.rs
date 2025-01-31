@@ -1,9 +1,9 @@
 // src/commands/net.rs
 
 use crate::help::add_terminal_spacing;
-use crate::ldap::LdapConfig;
+use crate::ldap::{LdapConfig,escape_filter};
 use chrono::DateTime;
-use ldap3::adapters::{Adapter, EntriesOnly, PagedResults};
+use ldap3::adapters::{Adapter, EntriesOnly, PagedResults,};
 use ldap3::{Scope, SearchEntry};
 use std::error::Error;
 
@@ -221,7 +221,7 @@ fn net_group(config: &mut LdapConfig, groupname: &str) -> Result<(), Box<dyn Err
         Scope::Subtree,
         &format!(
             "(&(objectCategory=group)(objectClass=group)(sAMAccountName={}))",
-            groupname
+            escape_filter(groupname)
         ),
         vec!["member", "description", "memberOf", "objectClass"],
     )?;
@@ -263,7 +263,7 @@ fn net_group(config: &mut LdapConfig, groupname: &str) -> Result<(), Box<dyn Err
                     adapters,
                     &search_base,
                     Scope::Subtree,
-                    &format!("(distinguishedName={})", member_dn),
+                    &format!("(distinguishedName={})", escape_filter(member_dn)),
                     vec!["sAMAccountName"],
                 )?;
 
@@ -340,3 +340,4 @@ fn print_uac_flags(uac: i64) {
     }
     println!("\t\t\t(If Enabled, Check Last Lockout Time)");
 }
+

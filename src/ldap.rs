@@ -136,4 +136,11 @@ pub fn ldap_connect(config: &LdapConfig) -> Result<(LdapConn, String)> {
     Ok((ldap, search_base))
 }
 
-
+pub fn escape_filter(input: &str) -> String {
+    input
+        .replace('\\', "\\5C")
+        .replace('*', "\\2A")
+        .replace('(', "\\28")
+        .replace(')', "\\29")
+        .replace('\0', "\\00")
+}
