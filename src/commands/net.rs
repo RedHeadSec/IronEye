@@ -3,6 +3,7 @@
 use crate::help::add_terminal_spacing;
 use crate::ldap::LdapConfig;
 use chrono::DateTime;
+use ldap3::adapters::{Adapter, EntriesOnly, PagedResults};
 use ldap3::{Scope, SearchEntry};
 use std::error::Error;
 
@@ -208,7 +209,14 @@ fn net_user(config: &mut LdapConfig, username: &str) -> Result<(), Box<dyn Error
 fn net_group(config: &mut LdapConfig, groupname: &str) -> Result<(), Box<dyn Error>> {
     let (mut ldap, search_base) = crate::ldap::ldap_connect(config)?;
 
-    let result = ldap.search(
+    let adapters: Vec<Box<dyn Adapter<_, _>>> = vec![
+        Box::new(EntriesOnly::new()),
+        Box::new(PagedResults::new(500)), // Enable paging
+    ];
+
+    // Paginated search for the group
+    let mut search = ldap.streaming_search_with(
+        adapters,
         &search_base,
         Scope::Subtree,
         &format!(
@@ -218,11 +226,13 @@ fn net_group(config: &mut LdapConfig, groupname: &str) -> Result<(), Box<dyn Err
         vec!["member", "description", "memberOf", "objectClass"],
     )?;
 
-    let (entries, _) = result.success()?;
+    let mut group_entry = None;
+    while let Some(entry) = search.next()? {
+        group_entry = Some(SearchEntry::construct(entry));
+    }
+    let _ = search.result().success()?; // Ensure search completes
 
-    if let Some(entry) = entries.first() {
-        let group_entry = SearchEntry::construct(entry.clone());
-
+    if let Some(group_entry) = group_entry {
         // Check if it's actually a group object
         if !group_entry
             .attrs
@@ -241,27 +251,29 @@ fn net_group(config: &mut LdapConfig, groupname: &str) -> Result<(), Box<dyn Err
         println!("\nPrimary Group Members");
         println!("-------------------------------------------------------------------------------");
 
-        // Get group members
+        // Get group members with paging
         if let Some(members) = group_entry.attrs.get("member") {
             for member_dn in members {
-                // For each member, get their sAMAccountName
-                let member_result = ldap.search(
+                let adapters: Vec<Box<dyn Adapter<_, _>>> = vec![
+                    Box::new(EntriesOnly::new()),
+                    Box::new(PagedResults::new(500)), // Paging for members
+                ];
+
+                let mut search = ldap.streaming_search_with(
+                    adapters,
                     &search_base,
                     Scope::Subtree,
                     &format!("(distinguishedName={})", member_dn),
                     vec!["sAMAccountName"],
                 )?;
 
-                if let Ok((member_entries, _)) = member_result.success() {
-                    if let Some(member_entry) = member_entries.first() {
-                        let member = SearchEntry::construct(member_entry.clone());
-                        if let Some(sam_name) =
-                            member.attrs.get("sAMAccountName").and_then(|v| v.first())
-                        {
-                            println!("{}", sam_name);
-                        }
+                while let Some(entry) = search.next()? {
+                    let member = SearchEntry::construct(entry);
+                    if let Some(sam_name) = member.attrs.get("sAMAccountName").and_then(|v| v.first()) {
+                        println!("{}", sam_name);
                     }
                 }
+                let _ = search.result().success()?;
             }
         } else {
             println!("No members found");
@@ -269,6 +281,7 @@ fn net_group(config: &mut LdapConfig, groupname: &str) -> Result<(), Box<dyn Err
     } else {
         println!("Group not found");
     }
+
     add_terminal_spacing(2);
     Ok(())
 }

@@ -3,6 +3,7 @@ use crate::help::add_terminal_spacing;
 use crate::ldap::LdapConfig;
 use chrono::{DateTime, Local, TimeZone, Utc};
 use dialoguer::{Confirm, Input};
+use ldap3::adapters::{Adapter, EntriesOnly, PagedResults};
 use ldap3::{LdapConn, Scope, SearchEntry};
 use std::error::Error;
 use std::fs::File;
@@ -97,7 +98,13 @@ pub fn get_service_principal_names(config: &mut LdapConfig) -> Result<(), Box<dy
 fn query_spns(ldap: &mut LdapConn, search_base: &str) -> Result<Vec<SearchEntry>, Box<dyn Error>> {
     let search_filter = "(&(servicePrincipalName=*)(!(objectClass=computer)))";
 
-    let result = ldap.search(
+    let adapters: Vec<Box<dyn Adapter<_, _>>> = vec![
+        Box::new(EntriesOnly::new()),
+        Box::new(PagedResults::new(500)), // Paging enabled
+    ];
+
+    let mut search = ldap.streaming_search_with(
+        adapters,
         search_base,
         Scope::Subtree,
         search_filter,
@@ -110,9 +117,13 @@ fn query_spns(ldap: &mut LdapConn, search_base: &str) -> Result<Vec<SearchEntry>
         ],
     )?;
 
-    let (entries, _) = result.success()?;
+    let mut entries = Vec::new();
+    while let Some(entry) = search.next()? {
+        entries.push(SearchEntry::construct(entry));
+    }
+    let _ = search.result().success()?; // Ensure search completes successfully
 
-    Ok(entries.into_iter().map(SearchEntry::construct).collect())
+    Ok(entries)
 }
 
 fn windows_timestamp_to_datetime(windows_time: i64) -> String {

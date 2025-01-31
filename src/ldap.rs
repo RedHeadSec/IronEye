@@ -31,7 +31,6 @@ pub fn ldap_connect(config: &LdapConfig) -> Result<(LdapConn, String)> {
 
     // Create the LDAP connection
     let mut ldap = LdapConn::with_settings(settings, &ldap_url)?;
-    
 
     // If Kerberos is enabled, use SASL GSSAPI for authentication
     if config.kerberos {

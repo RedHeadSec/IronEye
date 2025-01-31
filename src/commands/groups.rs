@@ -3,6 +3,7 @@ use crate::help::add_terminal_spacing;
 use crate::ldap::LdapConfig;
 use chrono::Local;
 use ldap3::{Scope, SearchEntry};
+use ldap3::adapters::{Adapter, EntriesOnly, PagedResults};
 use std::collections::HashSet;
 use std::error::Error;
 use std::fs::File;
@@ -19,29 +20,30 @@ pub fn query_groups(
     let mut export_data = Vec::new();
 
     if let Some(user) = username {
-        // First, get the user's DN and group memberships
-        let user_result = ldap.search(
+        let adapters: Vec<Box<dyn Adapter<_, _>>> = vec![
+            Box::new(EntriesOnly::new()),
+            Box::new(PagedResults::new(500)), // Set page size to 500
+        ];
+
+        // Paginated search for the user entry
+        let mut search = ldap.streaming_search_with(
+            adapters,
             &search_base,
             Scope::Subtree,
             &format!("(&(objectClass=user)(sAMAccountName={}))", user),
-            vec![
-                "memberOf",
-                "primaryGroupID",
-                "objectSid",
-                "distinguishedName",
-            ],
+            vec!["memberOf", "primaryGroupID", "objectSid", "distinguishedName"],
         )?;
 
-        let (entries, _) = user_result.success()?;
+        let mut user_entry = None;
+        while let Some(entry) = search.next()? {
+            user_entry = Some(SearchEntry::construct(entry));
+        }
+        let _ = search.result().success()?;
 
-        if let Some(entry) = entries.first() {
-            let user_entry = SearchEntry::construct(entry.clone());
-
+        if let Some(user_entry) = user_entry {
             let header = format!("\nGroup Memberships for user: {}", user);
             println!("{}", header);
-            println!(
-                "-------------------------------------------------------------------------------"
-            );
+            println!("-------------------------------------------------------------------------------");
 
             if export {
                 export_data.push(header);
@@ -58,12 +60,14 @@ pub fn query_groups(
             }
 
             // Get primary group
-            if let Some(primary_group_id) = user_entry
-                .attrs
-                .get("primaryGroupID")
-                .and_then(|v| v.first())
-            {
-                let primary_result = ldap.search(
+            if let Some(primary_group_id) = user_entry.attrs.get("primaryGroupID").and_then(|v| v.first()) {
+                let adapters: Vec<Box<dyn Adapter<_, _>>> = vec![
+                    Box::new(EntriesOnly::new()),
+                    Box::new(PagedResults::new(500)),
+                ];
+
+                let mut search = ldap.streaming_search_with(
+                    adapters,
                     &search_base,
                     Scope::Subtree,
                     &format!(
@@ -73,23 +77,24 @@ pub fn query_groups(
                     vec!["distinguishedName"],
                 )?;
 
-                if let Ok((primary_entries, _)) = primary_result.success() {
-                    if let Some(primary_entry) = primary_entries.first() {
-                        let primary = SearchEntry::construct(primary_entry.clone());
-                        if let Some(dn) = primary
-                            .attrs
-                            .get("distinguishedName")
-                            .and_then(|v| v.first())
-                        {
-                            all_groups.insert(dn.clone());
-                        }
+                while let Some(entry) = search.next()? {
+                    let primary = SearchEntry::construct(entry);
+                    if let Some(dn) = primary.attrs.get("distinguishedName").and_then(|v| v.first()) {
+                        all_groups.insert(dn.clone());
                     }
                 }
+                let _ = search.result().success()?;
             }
 
-            // For each group, get its details
+            // Fetch and print group details with pagination
             for group_dn in all_groups {
-                let group_result = ldap.search(
+                let adapters: Vec<Box<dyn Adapter<_, _>>> = vec![
+                    Box::new(EntriesOnly::new()),
+                    Box::new(PagedResults::new(500)),
+                ];
+
+                let mut search = ldap.streaming_search_with(
+                    adapters,
                     &search_base,
                     Scope::Subtree,
                     &format!("(distinguishedName={})", group_dn),
@@ -102,24 +107,29 @@ pub fn query_groups(
                     ],
                 )?;
 
-                if let Ok((group_entries, _)) = group_result.success() {
-                    if let Some(group_entry) = group_entries.first() {
-                        let entry = SearchEntry::construct(group_entry.clone());
-                        let group_details = get_group_details_string(&entry);
-                        print!("{}", group_details);
+                while let Some(entry) = search.next()? {
+                    let group_entry = SearchEntry::construct(entry);
+                    let group_details = get_group_details_string(&group_entry);
+                    print!("{}", group_details);
 
-                        if export {
-                            export_data.push(group_details);
-                        }
+                    if export {
+                        export_data.push(group_details);
                     }
                 }
+                let _ = search.result().success()?;
             }
         } else {
             println!("User not found");
         }
     } else {
-        // Query all groups in the domain
-        let result = ldap.search(
+        // Query all groups in the domain using paging
+        let adapters: Vec<Box<dyn Adapter<_, _>>> = vec![
+            Box::new(EntriesOnly::new()),
+            Box::new(PagedResults::new(500)),
+        ];
+
+        let mut search = ldap.streaming_search_with(
+            adapters,
             &search_base,
             Scope::Subtree,
             "(&(objectClass=group)(objectCategory=group))",
@@ -132,21 +142,16 @@ pub fn query_groups(
             ],
         )?;
 
-        let (entries, _) = result.success()?;
-
         let header = "\nAll Domain Groups:";
         println!("{}", header);
         println!("-------------------------------------------------------------------------------");
 
         if export {
             export_data.push(header.to_string());
-            export_data.push(
-                "-------------------------------------------------------------------------------"
-                    .to_string(),
-            );
+            export_data.push("-------------------------------------------------------------------------------".to_string());
         }
 
-        for entry in entries {
+        while let Some(entry) = search.next()? {
             let group_entry = SearchEntry::construct(entry);
             let group_details = get_group_details_string(&group_entry);
 
@@ -158,6 +163,7 @@ pub fn query_groups(
                 export_data.push(group_details);
             }
         }
+        let _ = search.result().success()?;
     }
 
     // Export to file if requested
@@ -176,6 +182,7 @@ pub fn query_groups(
     add_terminal_spacing(2);
     Ok(())
 }
+
 
 fn get_group_details_string(group_entry: &SearchEntry) -> String {
     let mut output = String::new();
