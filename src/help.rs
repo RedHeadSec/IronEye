@@ -7,9 +7,7 @@ pub fn show_help_main() {
     println!("\nHelp Information:");
     println!("1. 'Connect' - Connect to a ldap server and run queries. Use -k for Kerberos using KRB5CCNAME variable.");
     println!("2. 'Cerberos' - Kerberos Attacks using https://github.com/zer1t0/cerbero");
-    println!(
-        "3. 'UserEnum' - Enumerate valid users via ldap/kerberos/ldap ping in an internal domain."
-    );
+    println!("3. 'UserEnum' - Enumerate valid users via ldap/kerberos/ldap ping in an internal domain.");
     println!("4. 'Password Spray' - Perform Password Spraying against the internal domain.");
     println!("5. 'Version' - Shows Version.");
     println!("6. 'Help' - Shows this help message.");
@@ -31,10 +29,6 @@ pub fn show_help_connect() {
     println!("  7. 'Deep-Queries' - Perform predefined deep LDAP queries (e.g., users, computers, trusts).");
     println!("  8. 'Custom LDAP Query' - Execute a custom LDAP query by providing a filter and attributes.");
     println!("  9. 'Back' - Return to the main menu.");
-    println!("\nNotes:");
-    println!("  - Ensure you are connected to an LDAP server before running these commands.");
-    println!("  - Some submodules may require specific privileges or account permissions.");
-    println!("  - The 'Custom LDAP Query' option allows advanced users to provide their own filters and attributes.");
     println!("\n");
 }
 
