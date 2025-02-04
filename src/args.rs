@@ -12,8 +12,6 @@ use crate::ldap::LdapConfig;
 use dialoguer::theme::ColorfulTheme;
 use dialoguer::Select;
 use rustyline::DefaultEditor;
-use std::fs;
-use std::path::Path;
 
 pub struct ConnectionArgs {
     pub username: String,
@@ -383,29 +381,15 @@ pub fn get_cerbero_args() -> CerberoCommand {
                 CerberoCommand::Arguments("--help".to_string()) // Default to "--help"
             } else if input.starts_with("export ") {
                 let path = input.strip_prefix("export ").unwrap().trim(); // Extract file path
-
                 if path.is_empty() {
                     eprintln!(
                         "\x1b[31m[!] Invalid export command. Usage: export /path/to/ccache\x1b[0m"
                     );
                     CerberoCommand::None
                 } else {
-                    let path = Path::new(&path);
-
-                    // Check if the file exists and remove it before overwriting
-                    if path.exists() {
-                        if let Err(e) = fs::remove_file(path) {
-                            println!("\x1b[31m[-] Error removing existing file: {}\x1b[0m", e);
-                        }
-                    }
-
-                    println!(
-                        "\x1b[32m[+] Exporting KRB5CCNAME to: {}\x1b[0m",
-                        path.display()
-                    );
+                    println!("\x1b[32m[+] Exporting KRB5CCNAME to: {}\x1b[0m", path);
                     std::env::set_var("KRB5CCNAME", path); // Set the environment variable
-
-                    CerberoCommand::Export(path.to_str().unwrap_or_default().to_string())
+                    CerberoCommand::Export(path.to_string())
                 }
             } else {
                 CerberoCommand::Arguments(input.to_string()) // Return the entered Cerbero arguments
