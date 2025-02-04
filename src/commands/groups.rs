@@ -2,8 +2,8 @@
 use crate::help::add_terminal_spacing;
 use crate::ldap::LdapConfig;
 use chrono::Local;
-use ldap3::{Scope, SearchEntry};
 use ldap3::adapters::{Adapter, EntriesOnly, PagedResults};
+use ldap3::{Scope, SearchEntry};
 use std::collections::HashSet;
 use std::error::Error;
 use std::fs::File;
@@ -31,7 +31,12 @@ pub fn query_groups(
             &search_base,
             Scope::Subtree,
             &format!("(&(objectClass=user)(sAMAccountName={}))", user),
-            vec!["memberOf", "primaryGroupID", "objectSid", "distinguishedName"],
+            vec![
+                "memberOf",
+                "primaryGroupID",
+                "objectSid",
+                "distinguishedName",
+            ],
         )?;
 
         let mut user_entry = None;
@@ -43,7 +48,9 @@ pub fn query_groups(
         if let Some(user_entry) = user_entry {
             let header = format!("\nGroup Memberships for user: {}", user);
             println!("{}", header);
-            println!("-------------------------------------------------------------------------------");
+            println!(
+                "-------------------------------------------------------------------------------"
+            );
 
             if export {
                 export_data.push(header);
@@ -61,7 +68,10 @@ pub fn query_groups(
 
             // Get primary group via objectSid
             if let (Some(primary_group_id), Some(object_sid)) = (
-                user_entry.attrs.get("primaryGroupID").and_then(|v| v.first()),
+                user_entry
+                    .attrs
+                    .get("primaryGroupID")
+                    .and_then(|v| v.first()),
                 user_entry.attrs.get("objectSid").and_then(|v| v.first()),
             ) {
                 if let Ok(primary_group_rid) = primary_group_id.parse::<u32>() {
@@ -88,7 +98,11 @@ pub fn query_groups(
 
                         while let Some(entry) = search.next()? {
                             let primary = SearchEntry::construct(entry);
-                            if let Some(dn) = primary.attrs.get("distinguishedName").and_then(|v| v.first()) {
+                            if let Some(dn) = primary
+                                .attrs
+                                .get("distinguishedName")
+                                .and_then(|v| v.first())
+                            {
                                 all_groups.insert(dn.clone());
                             }
                         }
@@ -159,7 +173,10 @@ pub fn query_groups(
 
         if export {
             export_data.push(header.to_string());
-            export_data.push("-------------------------------------------------------------------------------".to_string());
+            export_data.push(
+                "-------------------------------------------------------------------------------"
+                    .to_string(),
+            );
         }
 
         while let Some(entry) = search.next()? {
@@ -193,7 +210,6 @@ pub fn query_groups(
     add_terminal_spacing(2);
     Ok(())
 }
-
 
 fn get_group_details_string(group_entry: &SearchEntry) -> String {
     let mut output = String::new();

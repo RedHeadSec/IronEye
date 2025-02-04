@@ -16,6 +16,7 @@ pub fn custom_ldap_query(config: &mut LdapConfig) -> Result<(), Box<dyn Error>> 
     println!("Examples:");
     println!("  (objectClass=user)");
     println!("  (objectCategory=computer)");
+    println!("  (|(cn=*admin*)(sAMAccountName=*admin*)(displayName=*admin*)(description=*admin*))");
     println!("Type 'run' to execute the query, or 'exit' to return to the menu.\n");
 
     let mut query_lines: Vec<String> = Vec::new();
@@ -64,7 +65,7 @@ pub fn custom_ldap_query(config: &mut LdapConfig) -> Result<(), Box<dyn Error>> 
         }
     }
 
-    rl.save_history("ldap_query_history.txt").ok(); // Save query history on exit
+    rl.save_history(".ldap_query_history.txt").ok(); // Save query history on exit
 
     Ok(())
 }

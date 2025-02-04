@@ -27,9 +27,9 @@ pub fn run(args: &UserEnumArgs) -> Result<(), Box<dyn Error>> {
             .collect::<Vec<_>>()
             .join(","),
         file_path: args.userfile.clone(),
-        threads: 4, 
+        threads: 4,
         output_file: args.output.clone(),
-        port: 389, 
+        port: 389,
     };
 
     brute_force_users(config);
@@ -87,14 +87,18 @@ fn brute_force_users(config: LdapConfig) {
                                     }
                                 }
                                 let count = progress.fetch_add(1, Ordering::SeqCst) + 1;
-                                print!("\rProgress: {}/{} users checked ({:.1}%)", count, total_users, (count as f64 / total_users as f64) * 100.0);
+                                print!(
+                                    "\rProgress: {}/{} users checked ({:.1}%)",
+                                    count,
+                                    total_users,
+                                    (count as f64 / total_users as f64) * 100.0
+                                );
                                 io::stdout().flush().unwrap(); // Flush so we are not filling up stdout with BS
                             }
                             Err(e) => {
                                 println!("LDAP Error for {}: {:?}", username, e);
                                 if e.to_string().contains("ResultCode: 201") {
                                     println!("Got ResultCode 201 for {}, continuing...", username);
-                                    // Add progress counter here too for failed attempts
                                     let count = progress.fetch_add(1, Ordering::SeqCst) + 1;
                                     println!(
                                         "Progress: {}/{} users checked ({}%)",
@@ -126,7 +130,7 @@ fn brute_force_users(config: LdapConfig) {
     let found_users = {
         let lock_result = results.lock();
         match lock_result {
-            Ok(guard) => guard.clone(), 
+            Ok(guard) => guard.clone(),
             Err(e) => {
                 eprintln!("Failed to acquire lock on results: {}", e);
                 return;

@@ -47,7 +47,7 @@ pub fn ldap_connect(config: &LdapConfig) -> Result<(LdapConn, String)> {
 
     // Optionally print a timestamp if enabled
     if config.timestamp_format {
-        println!("\n[{}]\n",get_timestamp());
+        println!("\n[{}]\n", get_timestamp());
     }
 
     // Perform a base search to verify the connection and retrieve the base DN
@@ -75,7 +75,6 @@ pub fn ldap_connect(config: &LdapConfig) -> Result<(LdapConn, String)> {
     Ok((ldap, search_base))
 }
 
-
 #[cfg(not(target_os = "linux"))]
 pub fn ldap_connect(config: &LdapConfig) -> Result<(LdapConn, String)> {
     let settings = LdapConnSettings::new()
@@ -101,14 +100,14 @@ pub fn ldap_connect(config: &LdapConfig) -> Result<(LdapConn, String)> {
             ),
         });
     } else {
-        // If not using Kerberos, fallback to simple bind with username/password or hash
+        // If not using Kerberos, fallback to simple bind with username/password
         let bind_dn = format!("{}@{}", config.username, config.domain);
         ldap.simple_bind(&bind_dn, &config.password)?.success()?;
     };
 
     // Optionally print a timestamp if enabled
     if config.timestamp_format {
-        println!("[{}]\n",get_timestamp());
+        println!("[{}]\n", get_timestamp());
     }
 
     // Perform a base search to verify the connection and retrieve the base DN

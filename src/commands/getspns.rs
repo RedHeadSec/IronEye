@@ -100,7 +100,7 @@ fn query_spns(ldap: &mut LdapConn, search_base: &str) -> Result<Vec<SearchEntry>
 
     let adapters: Vec<Box<dyn Adapter<_, _>>> = vec![
         Box::new(EntriesOnly::new()),
-        Box::new(PagedResults::new(500)), // Paging enabled
+        Box::new(PagedResults::new(500)),
     ];
 
     let mut search = ldap.streaming_search_with(

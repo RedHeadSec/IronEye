@@ -1,7 +1,7 @@
 use crate::ldap::LdapConfig;
 use csv::Writer;
-use ldap3::{LdapConn, Scope, SearchEntry};
 use ldap3::adapters::{Adapter, EntriesOnly, PagedResults};
+use ldap3::{LdapConn, Scope, SearchEntry};
 use std::error::Error;
 
 pub fn get_users(config: &mut LdapConfig) -> Result<(), Box<dyn Error>> {

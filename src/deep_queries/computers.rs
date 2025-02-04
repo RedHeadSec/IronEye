@@ -1,7 +1,7 @@
 use crate::ldap::LdapConfig;
 use csv::Writer;
-use ldap3::{LdapConn, Scope, SearchEntry};
 use ldap3::adapters::{Adapter, EntriesOnly, PagedResults};
+use ldap3::{LdapConn, Scope, SearchEntry};
 use std::error::Error;
 
 pub fn get_computers(config: &mut LdapConfig) -> Result<(), Box<dyn Error>> {
@@ -104,4 +104,3 @@ fn query_computers(
 
     Ok(entries)
 }
-

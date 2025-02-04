@@ -35,7 +35,10 @@ pub fn query_dacl(config: &mut LdapConfig, target: &str) -> Result<(), Box<dyn E
         )?
         .success()?;
 
-    println!("[DEBUG] LDAP Search executed. Entries found: {}", entries.len());
+    println!(
+        "[DEBUG] LDAP Search executed. Entries found: {}",
+        entries.len()
+    );
 
     // Check if user exists
     if let Some(entry) = entries.first() {
@@ -44,18 +47,25 @@ pub fn query_dacl(config: &mut LdapConfig, target: &str) -> Result<(), Box<dyn E
 
         // Check if `nTSecurityDescriptor` exists
         if let Some(security_descriptors) = entry.attrs.get("nTSecurityDescriptor") {
-            println!("\n[+] Found `nTSecurityDescriptor` ({} bytes)", security_descriptors[0].len());
+            println!(
+                "\n[+] Found `nTSecurityDescriptor` ({} bytes)",
+                security_descriptors[0].len()
+            );
 
             // Debugging: Print first 32 bytes of raw security descriptor
             println!("[DEBUG] Raw Security Descriptor (first 32 bytes):");
-            for (i, byte) in security_descriptors[0].as_bytes().iter().take(32).enumerate() {
+            for (i, byte) in security_descriptors[0]
+                .as_bytes()
+                .iter()
+                .take(32)
+                .enumerate()
+            {
                 if i % 16 == 0 {
                     print!("\n{:04x}: ", i);
                 }
                 print!("{:02x} ", byte);
             }
             println!("\n");
-
         } else {
             println!("\n[-] No `nTSecurityDescriptor` found for {}", entry.dn);
             println!("[DEBUG] Possible Causes: Lack of permissions or incorrect control.");
