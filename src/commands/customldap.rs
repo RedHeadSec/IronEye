@@ -16,7 +16,8 @@ pub fn custom_ldap_query(config: &mut LdapConfig) -> Result<(), Box<dyn Error>> 
     println!("Examples:");
     println!("  (objectClass=user)");
     println!("  (objectCategory=computer)");
-    println!("  (|(cn=*admin*)(sAMAccountName=*admin*)(displayName=*admin*)(description=*admin*))");
+    println!("  (|(cn=*admin*)(sAMAccountName=*admin*)(displayName=*admin*)(description=*admin*)) - Find certain attributes with 'admin' in them.");
+    println!("  (&(samAccountType=805306368)(userAccountControl:1.2.840.113556.1.4.803:=4194304)) - Find user accounts without Kerberos pre-authentication");
     println!("Type 'run' to execute the query, or 'exit' to return to the menu.\n");
 
     let mut query_lines: Vec<String> = Vec::new();

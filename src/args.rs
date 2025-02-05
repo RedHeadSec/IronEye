@@ -53,7 +53,7 @@ pub fn get_connect_arguments() -> Option<LdapConfig> {
     let mut rl = DefaultEditor::new().expect("Failed to initialize input editor");
     rl.load_history(".connect_history.txt").ok(); // Load history if it exists
 
-    println!("Enter Connect arguments (e.g., -u administrator -p 'Password123!' -d domain.local -i 10.10.10.10 [-s] [-t] [-k] [--proxy socks4/5://127.0.0.1:1080]):");
+    println!("Enter Connect arguments (e.g., -u administrator -p 'Password123!' -d domain.local -i 10.10.10.10 [-s] [-t] [-k]):");
 
     match rl.readline("> ") {
         Ok(line) => {
