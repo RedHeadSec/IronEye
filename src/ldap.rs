@@ -40,7 +40,7 @@ pub fn ldap_connect(config: &LdapConfig) -> Result<(LdapConn, String)> {
             Ok(ccache) => println!("[DEBUG] KRB5CCNAME is set: {}", ccache),
             Err(_) => {
                 eprintln!("[ERROR] KRB5CCNAME is NOT set! Kerberos may fail.");
-                return Err(Box::<dyn std::error::Error>::from("KRB5CCNAME is not set."));
+                return Err(LdapError::Network("KRB5CCNAME is not set.".to_string()));
             }
         }
         ldap.sasl_gssapi_bind(&config.dc_ip)?.success()?; // Use GSSAPI (Kerberos) for authentication
