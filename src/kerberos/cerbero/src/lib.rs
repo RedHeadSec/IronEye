@@ -12,14 +12,18 @@ use crate::core::{EmptyVault, FileVault, Vault};
 use crate::error::Result;
 use log::error;
 use stderrlog;
+use std::sync::Once;
 
-/// Initializes logging
+static INIT_LOGGER: Once = Once::new();
+
 pub fn init_log(verbosity: usize) {
-    stderrlog::new()
-        .module(module_path!())
-        .verbosity(verbosity)
-        .init()
-        .unwrap();
+    INIT_LOGGER.call_once(|| {
+        stderrlog::new()
+            .module(module_path!())
+            .verbosity(verbosity)
+            .init()
+            .expect("Failed to initialize logger");
+    });
 }
 
 /// Entry function for CLI execution, accepts command-line arguments
