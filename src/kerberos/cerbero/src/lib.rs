@@ -12,23 +12,14 @@ use crate::core::{EmptyVault, FileVault, Vault};
 use crate::error::Result;
 use log::error;
 use stderrlog;
-use std::sync::Once;
-use log::LevelFilter;
 
-static INIT_LOGGER: Once = Once::new();
-
+/// Initializes logging
 pub fn init_log(verbosity: usize) {
-    INIT_LOGGER.call_once(|| {
-        stderrlog::new()
-            .module(module_path!())
-            .verbosity(verbosity)
-            .timestamp(stderrlog::Timestamp::Second)
-            .init()
-            .expect("Failed to initialize logger");
-    });
-
-    // Explicitly set the log level in case the logger is not outputting
-    log::set_max_level(LevelFilter::Trace);
+    stderrlog::new()
+        .module(module_path!())
+        .verbosity(verbosity)
+        .init()
+        .unwrap();
 }
 
 /// Entry function for CLI execution, accepts command-line arguments
@@ -47,7 +38,7 @@ pub fn run(args: Arguments) -> Result<()> {
 
 /// Individual command implementations
 pub fn ask(args: args::ask::Arguments) -> Result<()> {
-    init_log(args.verbosity);
+    //init_log(args.verbosity);
     let creds_file = utils::get_ticket_file(args.out_file, &args.user.name, &args.credential_format);
     let mut vault = FileVault::new(creds_file);
     let kdccomm = KdcComm::new(args.kdcs, args.transport_protocol);
@@ -59,7 +50,7 @@ pub fn ask(args: args::ask::Arguments) -> Result<()> {
 }
 
 pub fn convert(args: args::convert::Arguments) -> Result<()> {
-    init_log(args.verbosity);
+    //init_log(args.verbosity);
     let in_file = args.in_file.unwrap_or_else(|| {
         utils::get_env_ticket_file().expect("Unable to detect input file, specify -i/--input or KRB5CCNAME")
     });
@@ -70,7 +61,7 @@ pub fn convert(args: args::convert::Arguments) -> Result<()> {
 }
 
 pub fn craft(args: args::craft::Arguments) -> Result<()> {
-    init_log(args.verbosity);
+    //init_log(args.verbosity);
     let creds_file = utils::get_ticket_file(args.credential_file, &args.user.name, &args.credential_format);
     let vault = FileVault::new(creds_file);
 
@@ -81,7 +72,7 @@ pub fn craft(args: args::craft::Arguments) -> Result<()> {
 }
 
 pub fn hash(args: args::hash::Arguments) -> Result<()> {
-    init_log(args.verbosity);
+    //init_log(args.verbosity);
     commands::hash(&args.password, args.user.as_ref())
 }
 
@@ -91,7 +82,7 @@ pub fn list(args: args::list::Arguments) -> Result<()> {
 }
 
 pub fn brute(args: args::brute::Arguments) -> Result<()> {
-    init_log(args.verbosity);
+    //init_log(args.verbosity);
     let usernames = utils::read_file_lines(&args.users).unwrap_or_else(|_| vec![args.users.clone()]);
     let passwords = utils::read_file_lines(&args.passwords).unwrap_or_else(|_| vec![args.passwords.clone()]);
 
@@ -102,7 +93,7 @@ pub fn brute(args: args::brute::Arguments) -> Result<()> {
 }
 
 pub fn asreproast(args: args::asreproast::Arguments) -> Result<()> {
-    init_log(args.verbosity);
+    //init_log(args.verbosity);
     let usernames = utils::read_file_lines(&args.users).unwrap_or_else(|_| vec![args.users.clone()]);
 
     let kdc_ip = args.kdc_ip.unwrap_or_else(|| resolve_host(&args.realm, Vec::new()).unwrap());
@@ -112,7 +103,7 @@ pub fn asreproast(args: args::asreproast::Arguments) -> Result<()> {
 }
 
 pub fn kerberoast(args: args::kerberoast::Arguments) -> Result<()> {
-    init_log(args.verbosity);
+    //init_log(args.verbosity);
     let kdccomm = KdcComm::new(args.kdcs, args.transport_protocol);
     let creds_file = args.creds_file.or_else(|| utils::get_env_ticket_file());
 
