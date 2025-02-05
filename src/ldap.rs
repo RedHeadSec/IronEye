@@ -38,7 +38,6 @@ pub fn ldap_connect(config: &LdapConfig) -> Result<(LdapConn, String)> {
             Ok(ccache) => println!("[DEBUG] KRB5CCNAME is set to: {}", ccache),
             Err(_) => println!("[DEBUG] KRB5CCNAME is NOT set."),
         }
-
         ldap.sasl_gssapi_bind(&config.dc_ip)?.success()?; // Use GSSAPI (Kerberos) for authentication
     } else {
         // If not using Kerberos, fallback to simple bind with username/password or hash
