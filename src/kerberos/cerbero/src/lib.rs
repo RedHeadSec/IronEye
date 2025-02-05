@@ -12,14 +12,22 @@ use crate::core::{EmptyVault, FileVault, Vault};
 use crate::error::Result;
 use log::{error, set_logger, set_max_level, LevelFilter};
 use stderrlog;
+use std::sync::Once;
 
-/// Initializes logging
+static INIT_LOGGER: Once = Once::new();
+
+/// Initializes logging only once
 pub fn init_log(verbosity: usize) {
-    stderrlog::new()
-        .module(module_path!())
-        .verbosity(verbosity)
-        .init()
-        .unwrap();
+    INIT_LOGGER.call_once(|| {
+        let _ = stderrlog::new()
+            .module(module_path!())
+            .verbosity(verbosity)
+            .timestamp(stderrlog::Timestamp::Second)
+            .init()
+            .ok(); // Prevents panic if logger is already set
+    });
+
+    log::set_max_level(LevelFilter::Trace); // Ensure logs are printed
 }
 
 fn reset_logger() {
