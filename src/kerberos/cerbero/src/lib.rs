@@ -13,6 +13,7 @@ use crate::error::Result;
 use log::error;
 use stderrlog;
 use std::sync::Once;
+use log::LevelFilter;
 
 static INIT_LOGGER: Once = Once::new();
 
@@ -21,9 +22,13 @@ pub fn init_log(verbosity: usize) {
         stderrlog::new()
             .module(module_path!())
             .verbosity(verbosity)
+            .timestamp(stderrlog::Timestamp::Second)
             .init()
             .expect("Failed to initialize logger");
     });
+
+    // Explicitly set the log level in case the logger is not outputting
+    log::set_max_level(LevelFilter::Trace);
 }
 
 /// Entry function for CLI execution, accepts command-line arguments

@@ -8,7 +8,6 @@ pub struct CerberoOutput {
 }
 
 pub fn run_cerbero(cerbero_args: &[&str]) -> Result<CerberoOutput, Box<dyn std::error::Error>> {
-    // Prepend a fake binary name so clap understands the command structure
     let mut full_args = vec!["cerbero"];
     full_args.extend_from_slice(cerbero_args);
 

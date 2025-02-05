@@ -270,11 +270,11 @@ fn main() {
                     CerberoCommand::Arguments(cerbero_args) => {
                         // Convert `cerbero_args` into a `Vec<&str>` for `run_cerbero`
                         let args_vec: Vec<&str> = cerbero_args.split_whitespace().collect();
-                
+
                         match kerberos::cerberos::run_cerbero(&args_vec) {
                             Ok(output) => {
                                 println!("[+] Cerbero executed successfully.\n");
-                
+
                                 if !output.stdout.is_empty() {
                                     println!("Cerbero Output:\n{}", output.stdout);
                                 }
