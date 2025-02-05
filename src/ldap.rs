@@ -1,7 +1,6 @@
 use crate::help::get_timestamp;
 use ldap3::{result::Result, LdapConn, LdapConnSettings, LdapError, Scope};
 use std::time::Duration;
-use std::env;
 
 #[derive(Clone)]
 pub struct LdapConfig {
@@ -34,10 +33,6 @@ pub fn ldap_connect(config: &LdapConfig) -> Result<(LdapConn, String)> {
     // If Kerberos is enabled, use SASL GSSAPI for authentication
     if config.kerberos {
         println!("[*] Using Kerberos authentication for LDAP.");
-        match env::var("KRB5CCNAME") {
-            Ok(ccache) => println!("[DEBUG] KRB5CCNAME is set to: {}", ccache),
-            Err(_) => println!("[DEBUG] KRB5CCNAME is NOT set."),
-        }
         ldap.sasl_gssapi_bind(&config.dc_ip)?.success()?; // Use GSSAPI (Kerberos) for authentication
     } else {
         // If not using Kerberos, fallback to simple bind with username/password or hash

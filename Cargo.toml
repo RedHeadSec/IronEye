@@ -21,6 +21,7 @@ krb5-sys = "0.3.0"
 socks = "0.3.4"
 log = "0.4"
 
+
 [target.'cfg(target_os = "linux")'.dependencies]
 ldap3 = { version = "0.11", features = ["gssapi"] }
 
