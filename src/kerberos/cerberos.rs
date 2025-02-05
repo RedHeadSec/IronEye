@@ -1,10 +1,37 @@
+use cerbero::{run, args::{args, ArgumentsParser}};
 use std::error::Error;
-use std::process::{Command, Output};
+use log::error;
 
-/// Run the Cerbero binary with provided arguments. This will eventually be refactored into a library.
-/// `cerbero_args` is a list of arguments that Cerbero expects.
-pub fn run_cerbero(cerbero_args: &[&str]) -> Result<Output, Box<dyn Error>> {
-    let output = Command::new("cerbero").args(cerbero_args).output()?;
-
-    Ok(output)
+pub struct CerberoOutput {
+    pub stdout: String,
+    pub stderr: String,
 }
+
+pub fn run_cerbero(cerbero_args: &[&str]) -> Result<CerberoOutput, Box<dyn std::error::Error>> {
+    // Prepend a fake binary name so clap understands the command structure
+    let mut full_args = vec!["cerbero"];
+    full_args.extend_from_slice(cerbero_args);
+
+    let matches = cerbero::args::args().get_matches_from_safe(&full_args)?;
+    let arguments = cerbero::args::ArgumentsParser::parse(&matches);
+
+    let result = cerbero::run(arguments);
+
+    match result {
+        Ok(_) => Ok(CerberoOutput {
+            stdout: "Cerbero executed successfully.".to_string(),
+            stderr: "".to_string(),
+        }),
+        Err(err) => {
+            let error_message = format!("{}", err);
+            log::error!("{}", error_message);
+            Ok(CerberoOutput {
+                stdout: "".to_string(),
+                stderr: error_message,
+            })
+        }
+    }
+}
+
+
+

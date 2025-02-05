@@ -361,7 +361,7 @@ pub enum CerberoCommand {
 pub fn get_cerbero_args() -> CerberoCommand {
     println!("\nCerbero Argument Examples:");
     println!("1. Press Enter to see the main help menu for Cerberos");
-    println!("2. Example:\nask --help \nasreproast --help\nbrute --help\nconvert --help\ncraft --help\nhash --help\nkerberoast --help\nlist --help\nexport /path/to/ccache");
+    println!("2. Example:\nask --help (If pulling a ticket using the same name, delete the old one else the new one will simply be appended to the expired ticket.)\nasreproast --help\nbrute --help\nconvert --help\ncraft --help\nhash --help\nkerberoast --help\nlist --help\nexport /path/to/ccache");
 
     // Initialize input editor
     let mut rl = DefaultEditor::new().expect("Failed to initialize input editor");
