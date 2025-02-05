@@ -1,4 +1,4 @@
-use cerbero::{run,init_log, args::{args, ArgumentsParser}};
+use cerbero::{run, args::{args, ArgumentsParser}};
 use std::error::Error;
 use log::error;
 
@@ -9,7 +9,6 @@ pub struct CerberoOutput {
 
 pub fn run_cerbero(cerbero_args: &[&str]) -> Result<CerberoOutput, Box<dyn std::error::Error>> {
     let mut full_args = vec!["cerbero"];
-    init_log(3); // Adjust verbosity as needed
     full_args.extend_from_slice(cerbero_args);
 
     let matches = cerbero::args::args().get_matches_from_safe(&full_args)?;
