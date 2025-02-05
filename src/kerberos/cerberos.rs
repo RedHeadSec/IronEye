@@ -10,6 +10,7 @@ pub struct CerberoOutput {
 }
 
 pub fn run_cerbero(cerbero_args: &[&str]) -> Result<CerberoOutput, Box<dyn std::error::Error>> {
+    init_log(3);
     let mut full_args = vec!["cerbero"]; // This acts as a [0] placeholder for Cerbero's clap implementation for arguments. 
     full_args.extend_from_slice(cerbero_args); // appends user agruments to be parsed by Clap. 
 
