@@ -1,6 +1,8 @@
-use cerbero::{run, args::{args, ArgumentsParser}};
+use cerbero::{run, init_log, args::{args, ArgumentsParser}};
 use std::error::Error;
 use log::error;
+use std::io;
+use std::io::Write;
 
 pub struct CerberoOutput {
     pub stdout: String,
@@ -8,13 +10,16 @@ pub struct CerberoOutput {
 }
 
 pub fn run_cerbero(cerbero_args: &[&str]) -> Result<CerberoOutput, Box<dyn std::error::Error>> {
-    let mut full_args = vec!["cerbero"];
-    full_args.extend_from_slice(cerbero_args);
+    let mut full_args = vec!["cerbero"]; // This acts as a [0] placeholder for Cerbero's clap implementation for arguments. 
+    full_args.extend_from_slice(cerbero_args); // appends user agruments to be parsed by Clap. 
 
     let matches = cerbero::args::args().get_matches_from_safe(&full_args)?;
     let arguments = cerbero::args::ArgumentsParser::parse(&matches);
 
     let result = cerbero::run(arguments);
+
+    let _ = io::stdout().flush();
+    let _ = io::stderr().flush();
 
     match result {
         Ok(_) => Ok(CerberoOutput {
