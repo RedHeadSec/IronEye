@@ -16,7 +16,7 @@ users_export.csv
 *history*
 results.txt
 *.csv
-
+proxychains*
 
 # Generated Kerberos tickets
 *.ticket
