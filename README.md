@@ -18,6 +18,7 @@ Authenticate using password
 -u tywin.lannister -p powerkingftw135 -d SEVENKINGDOMS.LOCAL -i 10.2.10.10
 ```
 Authenticate using Kerberos to LDAPS
+
 Note: Youll need to set up the KDC realm usually found at /etc/krb5.conf. A sample is provided. 
 ```bash
 -u robb.stark -d NORTH.SEVENKINGDOMS.LOCAL -i WINTERFELL.NORTH.SEVENKINGDOMS.LOCAL -k -s
