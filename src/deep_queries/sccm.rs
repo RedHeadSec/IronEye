@@ -95,12 +95,12 @@ fn query_sccm_distribution_points(
     base: &str,
 ) -> Result<Vec<String>, Box<dyn Error>> {
     // Filter for mSSMSManagementPoint objectClass
-    let search_filter = "(objectClass=mSSMSManagementPoint)";
+    let search_filter = "(&(objectclass=connectionPoint)(netbootserver=*))";
     let result = ldap.search(
         base,
         Scope::Subtree,
         search_filter,
-        vec!["dNSHostName", "cn"],
+        vec!["dNSHostName", "cn","distinguishedName"],
     )?;
 
     let (entries, _) = result.success()?;
