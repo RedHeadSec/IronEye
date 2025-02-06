@@ -50,7 +50,7 @@ fn query_sccm_primary_sites(
     ldap: &mut LdapConn,
     base: &str,
 ) -> Result<Vec<String>, Box<dyn Error>> {
-    let search_filter = "(objectClass=mSSMSSite)";
+    let search_filter = "(objectclass=mssmssite)";
     let result = ldap.search(base, Scope::Subtree, search_filter, vec!["cn"])?;
 
     let (entries, _) = result.success()?;
@@ -70,7 +70,7 @@ fn query_sccm_management_points(
     ldap: &mut LdapConn,
     base: &str,
 ) -> Result<Vec<String>, Box<dyn Error>> {
-    let search_filter = "(objectClass=mSSMSManagementPoint)";
+    let search_filter = "(objectclass=mssmsmanagementpoint)";
     let result = ldap.search(base, Scope::Subtree, search_filter, vec!["dNSHostName"])?;
 
     let (entries, _) = result.success()?;
@@ -94,7 +94,7 @@ fn query_sccm_distribution_points(
     ldap: &mut LdapConn,
     base: &str,
 ) -> Result<Vec<String>, Box<dyn Error>> {
-    // Filter for mSSMSManagementPoint objectClass
+    // Query for PXE enabled distribution points that are using Windows Deployment Services
     let search_filter = "(&(objectclass=connectionPoint)(netbootserver=*))";
     let result = ldap.search(
         base,
