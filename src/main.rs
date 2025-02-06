@@ -10,7 +10,7 @@ const LOGO: &str = r#"
                                                                                             
 Description: A mullti-purpose LDAP/Kerberos tool written in Rust.
 Created By: Evasive_Ginger
-Cerberos Implementation: https://github.com/zer1t0/cerbero                                                                                           
+Cerbero Implementation: https://github.com/zer1t0/cerbero                                                                                           
                                          
 "#;
 
@@ -38,7 +38,7 @@ fn main() {
     loop {
         let options = vec![
             "Connect (LDAP Reconissance)",
-            "Cerberos (Kerberos Protocol Attacks)",
+            "Cerbero (Kerberos Protocol Attacks)",
             "User Enumeration (LDAP Ping Method)",
             "Password Spray (LDAP)",
             "Version",
