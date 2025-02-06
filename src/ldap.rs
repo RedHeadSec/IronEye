@@ -1,5 +1,5 @@
 use crate::help::get_timestamp;
-use ldap3::{result::Result, LdapConn, LdapConnSettings, LdapError, Scope};
+use ldap3::{result::Result, LdapConn, LdapConnSettings, Scope};
 use std::time::Duration;
 
 #[derive(Clone)]

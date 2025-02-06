@@ -5,12 +5,12 @@ mod core;
 mod error;
 mod utils;
 
-use crate::args::{Arguments, ArgumentsParser};
+use crate::args::Arguments;
 use crate::communication::resolve_host;
 use crate::communication::{new_krb_channel, KdcComm};
 use crate::core::{EmptyVault, FileVault, Vault};
 use crate::error::Result;
-use log::{error, set_logger, set_max_level, LevelFilter};
+use log::{set_max_level, LevelFilter};
 use stderrlog;
 use std::sync::Once;
 

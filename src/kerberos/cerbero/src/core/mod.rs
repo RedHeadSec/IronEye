@@ -1,10 +1,10 @@
 mod cipher;
-pub use cipher::{generate_cipher_and_key, Cipher};
+pub use cipher::Cipher;
 
 pub mod forge;
 pub use forge::{
-    craft_ticket_info, new_nt_principal, new_principal_name,
-    new_principal_or_srv_inst, new_signed_pac, spn_to_service_parts, KrbUser,
+    craft_ticket_info, new_nt_principal,
+    new_principal_or_srv_inst, new_signed_pac, KrbUser,
     S4u,
 };
 
@@ -15,7 +15,6 @@ mod cred_format;
 pub use cred_format::CredFormat;
 
 pub mod keytab;
-pub use keytab::{load_file_keytab, env_keytab_file, KEYTAB_ENVVAR};
 
 mod ticket_cred;
 pub use ticket_cred::{TicketCred, TicketCreds};

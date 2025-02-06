@@ -1,10 +1,8 @@
 //! This module provide functionalities to create/parse kerberos structs
 
 mod kdc_req;
-pub use kdc_req::KdcReqBuilder;
 
 mod krb_cred;
-pub use krb_cred::new_krb_cred_info;
 
 mod krb_user;
 pub use krb_user::KrbUser;

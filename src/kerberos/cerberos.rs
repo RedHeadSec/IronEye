@@ -1,6 +1,4 @@
-use cerbero::{run, init_log, args::{args, ArgumentsParser}};
-use std::error::Error;
-use log::error;
+use cerbero::init_log;
 use std::io;
 use std::io::Write;
 
