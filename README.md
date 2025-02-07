@@ -5,7 +5,7 @@ The tool supports both password and Kerberos authentication, allowing for creden
 
 ## Install and Compile
 ```bash
-git clone X
+git clone https://gitlab.optivlabs.com/ross.farrington/ironeye.git OR git clone git@gitlab.optivlabs.com:ross.farrington/ironeye.git
 cargo build --release
 ```
 Once built, you'll need to download a compiled Cerbero bianry from here: https://github.com/RedHeadSec/cerbero.
