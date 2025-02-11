@@ -6,6 +6,7 @@ use std::io::{self, BufRead, BufReader, Write};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use std::thread;
+use crate::help::get_timestamp;
 
 #[derive(Clone)]
 pub struct LdapConfig {
@@ -31,7 +32,7 @@ pub fn run(args: &UserEnumArgs) -> Result<(), Box<dyn Error>> {
         output_file: args.output.clone(),
         port: 389,
     };
-
+    println!("\n[*] User enumeration started at {}\n", get_timestamp());
     brute_force_users(config);
     Ok(())
 }
@@ -145,7 +146,7 @@ fn brute_force_users(config: LdapConfig) {
         "[+] Success rate: {:.2}%",
         (found_users.len() as f64 / total_users as f64) * 100.0
     );
-
+    println!("\n[*] User enumeration complete at {}\n", get_timestamp());
     // Handle file output if specified
     if let Some(output_file) = config.output_file {
         println!("Writing results to: {}", output_file);
