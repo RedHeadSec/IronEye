@@ -147,6 +147,7 @@ pub fn resolve_sid_guid(
         &filter,
         vec!["sAMAccountName", "distinguishedName"],
     )?;
+    add_terminal_spacing(1);
     println!("Result for SID/GUID: {}", identifier);
     //println!("DEBUG - Filter: {}", filter);
     while let Ok(Some(entry)) = stream.next() {
