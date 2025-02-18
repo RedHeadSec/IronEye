@@ -1,5 +1,6 @@
 pub mod customldap;
-pub mod daclenum;
+pub mod from_sid_guid;
+pub mod get_sid_guid;
 pub mod getpasspol;
 pub mod getspns;
 pub mod groups;

@@ -1,3 +1,4 @@
+use crate::help::add_terminal_spacing;
 use crate::ldap::LdapConfig;
 use csv::Writer;
 use ldap3::adapters::{Adapter, EntriesOnly, PagedResults};
@@ -67,6 +68,7 @@ pub fn get_computers(config: &mut LdapConfig) -> Result<(), Box<dyn Error>> {
     wtr.flush()?;
 
     println!("\nComputers query completed successfully. Results saved to 'computers_export.csv'.");
+    add_terminal_spacing(1);
     Ok(())
 }
 

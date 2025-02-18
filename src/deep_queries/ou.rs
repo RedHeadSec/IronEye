@@ -1,3 +1,4 @@
+use crate::help::add_terminal_spacing;
 use crate::ldap::LdapConfig;
 use csv::Writer;
 use ldap3::{LdapConn, Scope, SearchEntry};
@@ -65,6 +66,7 @@ fn export_organizational_units_to_csv(entries: &[SearchEntry]) -> Result<(), Box
     }
 
     wtr.flush()?;
+    add_terminal_spacing(1);
     Ok(())
 }
 

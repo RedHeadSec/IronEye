@@ -84,7 +84,8 @@ fn main() {
                         }
                         loop {
                             let cmd_options = vec![
-                                "DACL Query (NOT IMPLEMENTED)",
+                                "Get SID/GUID",
+                                "From SID/GUID",
                                 "Get SPNs",
                                 "Query Groups",
                                 "Machine Quota",
@@ -112,7 +113,7 @@ fn main() {
                             add_terminal_spacing(2);
                             match cmd_selection {
                                 0 => {
-                                    println!("Enter target object (DN, samAccountName, or CN): ");
+                                    println!("Enter target object: ");
                                     let mut target = String::new();
                                     if let Err(e) = std::io::stdin().read_line(&mut target) {
                                         eprintln!("Error reading input: {}", e);
@@ -123,20 +124,41 @@ fn main() {
                                         println!("Target is required");
                                         continue;
                                     }
-                                    if let Err(e) =
-                                        commands::daclenum::query_dacl(&mut ldap_config, target)
-                                    {
+                                    if let Err(e) = commands::get_sid_guid::query_sid_guid(
+                                        &mut ldap_config,
+                                        target,
+                                    ) {
                                         eprintln!("Error: {}", e)
                                     }
                                 }
                                 1 => {
+                                    println!("SID Ex:  S-1-5-21-123456789-234567890-345678901-1001\nGUID Ex: 550e8400-e29b-41d4-a716-446655440000\n");
+                                    println!("Enter SID/GUID: ");
+                                    let mut target = String::new();
+                                    if let Err(e) = std::io::stdin().read_line(&mut target) {
+                                        eprintln!("Error reading input: {}", e);
+                                        continue;
+                                    }
+                                    let target = target.trim();
+                                    if target.is_empty() {
+                                        println!("SID/GUID is required");
+                                        continue;
+                                    }
+                                    if let Err(e) = commands::from_sid_guid::resolve_sid_guid(
+                                        &mut ldap_config,
+                                        target,
+                                    ) {
+                                        eprintln!("Error: {}", e)
+                                    }
+                                }
+                                2 => {
                                     if let Err(e) = commands::getspns::get_service_principal_names(
                                         &mut ldap_config,
                                     ) {
                                         eprintln!("Error: {}", e)
                                     }
                                 }
-                                2 => {
+                                3 => {
                                     println!("Enter username to see specific user's groups (or press Enter to see all groups): ");
                                     let mut input = String::new();
                                     if let Err(e) = std::io::stdin().read_line(&mut input) {
@@ -167,7 +189,7 @@ fn main() {
                                         eprintln!("Error: {}", e)
                                     }
                                 }
-                                3 => {
+                                4 => {
                                     if let Err(e) =
                                         commands::maq::get_machine_account_quota(&mut ldap_config)
                                     {
@@ -175,7 +197,7 @@ fn main() {
                                     }
                                 }
 
-                                4 => {
+                                5 => {
                                     println!("Enter the net command arguments (e.g., user administrator OR group \"Domain Admins\"): ");
                                     let mut input = String::new();
                                     if let Err(e) = std::io::stdin().read_line(&mut input) {
@@ -234,29 +256,29 @@ fn main() {
                                         eprintln!("Error: {}", e)
                                     }
                                 }
-                                5 => {
+                                6 => {
                                     if let Err(e) =
                                         commands::getpasspol::get_password_policy(&mut ldap_config)
                                     {
                                         eprintln!("Error: {}", e)
                                     }
                                 }
-                                6 => {
+                                7 => {
                                     if let Err(e) = run_nested_query_menu(&mut ldap_config) {
                                         eprintln!("Error: {}", e)
                                     }
                                 }
-                                7 => {
+                                8 => {
                                     if let Err(e) =
                                         commands::customldap::custom_ldap_query(&mut ldap_config)
                                     {
                                         eprintln!("Error running custom LDAP query: {}", e);
                                     }
                                 }
-                                8 => {
+                                9 => {
                                     show_help_connect();
                                 }
-                                9 => break, // Return to main menu
+                                10 => break, // Return to main menu
                                 _ => unreachable!(),
                             }
                         }

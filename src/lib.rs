@@ -1,7 +1,6 @@
 pub mod args;
 pub mod commands;
 pub mod deep_queries;
-pub mod file_utils;
 pub mod help;
 pub mod kerberos;
 pub mod ldap;

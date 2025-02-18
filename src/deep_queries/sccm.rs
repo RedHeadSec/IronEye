@@ -1,3 +1,4 @@
+use crate::help::add_terminal_spacing;
 use crate::ldap::LdapConfig;
 use ldap3::{LdapConn, Scope, SearchEntry};
 use std::error::Error;
@@ -41,7 +42,7 @@ pub fn get_sccm_info(config: &mut LdapConfig) -> Result<(), Box<dyn Error>> {
     if primary_sites.is_empty() && management_points.is_empty() && distribution_points.is_empty() {
         println!("No SCCM servers found.");
     }
-
+    add_terminal_spacing(1);
     Ok(())
 }
 
@@ -100,7 +101,7 @@ fn query_sccm_distribution_points(
         base,
         Scope::Subtree,
         search_filter,
-        vec!["dNSHostName", "cn","distinguishedName"],
+        vec!["dNSHostName", "cn", "distinguishedName"],
     )?;
 
     let (entries, _) = result.success()?;

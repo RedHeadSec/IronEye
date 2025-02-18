@@ -1,3 +1,4 @@
+use crate::help::add_terminal_spacing;
 use crate::ldap::LdapConfig;
 use ldap3::{LdapConn, Scope, SearchEntry};
 use std::error::Error;
@@ -38,6 +39,7 @@ pub fn get_trusts(config: &mut LdapConfig) -> Result<(), Box<dyn Error>> {
     }
 
     println!("\nTrusts query completed successfully.");
+    add_terminal_spacing(1);
     Ok(())
 }
 

@@ -1,3 +1,4 @@
+use crate::help::add_terminal_spacing;
 use crate::ldap::LdapConfig;
 use ldap3::{Scope, SearchEntry};
 use std::error::Error;
@@ -58,6 +59,7 @@ pub fn get_delegations(config: &mut LdapConfig) -> Result<(), Box<dyn Error>> {
     println!(
         "\nDelegations query completed successfully. Results saved to 'delegations_export.csv'."
     );
+    add_terminal_spacing(1);
     Ok(())
 }
 

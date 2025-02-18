@@ -1,6 +1,13 @@
 use crate::help::get_timestamp;
-use ldap3::{result::Result,LdapConn,LdapConnSettings,Scope,LdapError};
+use base64::decode;
+use byteorder::{LittleEndian, ReadBytesExt};
+use ldap3::adapters::{Adapter, EntriesOnly, PagedResults};
+use ldap3::controls::RawControl;
+use ldap3::{result::Result, LdapConn, LdapConnSettings, LdapError, Scope, SearchEntry};
+use std::error::Error;
+use std::io::{Cursor, Read};
 use std::time::Duration;
+use uuid::Uuid;
 
 #[derive(Clone)]
 pub struct LdapConfig {
@@ -123,7 +130,7 @@ pub fn ldap_connect(config: &LdapConfig) -> Result<(LdapConn, String)> {
             &search_base,
             Scope::Base,
             "(objectClass=*)",
-            vec!["defaultNamingContext"],
+            vec!["distinguishedName"],
         )?
         .success()?;
 
@@ -142,4 +149,146 @@ pub fn escape_filter(input: &str) -> String {
         .replace('(', "\\28")
         .replace(')', "\\29")
         .replace('\0', "\\00")
+}
+
+/// Convert a username to a SID
+pub fn extract_sid(search_entry: &SearchEntry) -> Option<String> {
+    //println!("[DEBUG] Streaming Entry DN: {}", search_entry.dn);
+    /*
+    // Print all binary attributes for debugging
+    for (attr, values) in &search_entry.bin_attrs {
+        println!("[DEBUG] Attribute: {}", attr);
+        for value in values {
+            // Try converting the raw bytes to text; if it fails, print a base64 version.
+            match std::str::from_utf8(value) {
+                Ok(text) => println!("         Value (as text): {}", text),
+                Err(_) => println!("         Value (binary, base64): {}", base64::encode(value)),
+            }
+        }
+    }
+    */
+    // Retrieve and convert the objectSid
+    if let Some(sid_values) = search_entry.bin_attrs.get("objectSid") {
+        //println!("[DEBUG] Found objectSid: {:?}", sid_values[0]);
+        Some(format_sid(&sid_values[0]))
+    } else {
+        println!("[DEBUG] `objectSid` attribute missing.");
+        None
+    }
+}
+
+pub fn format_guid(guid: &[u8]) -> String {
+    if guid.len() != 16 {
+        return String::from("Invalid GUID");
+    }
+
+    // Convert the first 4 bytes as a little-endian u32.
+    let data1 = u32::from_le_bytes([guid[0], guid[1], guid[2], guid[3]]);
+    // Next 2 bytes as a little-endian u16.
+    let data2 = u16::from_le_bytes([guid[4], guid[5]]);
+    // Next 2 bytes as a little-endian u16.
+    let data3 = u16::from_le_bytes([guid[6], guid[7]]);
+    // The remaining 8 bytes remain in their original order.
+    let data4 = &guid[8..10];
+    let data5 = &guid[10..16];
+
+    format!(
+        "{:08x}-{:04x}-{:04x}-{:02x}{:02x}-{:02x}{:02x}{:02x}{:02x}{:02x}{:02x}",
+        data1,
+        data2,
+        data3,
+        data4[0],
+        data4[1],
+        data5[0],
+        data5[1],
+        data5[2],
+        data5[3],
+        data5[4],
+        data5[5]
+    )
+}
+
+/// Converts raw SID bytes into a readable string.
+fn format_sid(raw_sid: &Vec<u8>) -> String {
+    let mut cursor = Cursor::new(raw_sid);
+    let revision = cursor.read_u8().unwrap();
+    let sub_auth_count = cursor.read_u8().unwrap();
+
+    let mut identifier_authority = [0u8; 6];
+    cursor.read_exact(&mut identifier_authority).unwrap();
+
+    let authority = u64::from_be_bytes([
+        0,
+        0,
+        identifier_authority[0],
+        identifier_authority[1],
+        identifier_authority[2],
+        identifier_authority[3],
+        identifier_authority[4],
+        identifier_authority[5],
+    ]);
+
+    let mut sid = format!("S-{}-{}", revision, authority);
+
+    for _ in 0..sub_auth_count {
+        let sub_auth = cursor.read_u32::<LittleEndian>().unwrap();
+        sid.push_str(&format!("-{}", sub_auth));
+    }
+
+    sid
+}
+
+pub fn format_sid_for_ldap(sid: &str) -> String {
+    let parts: Vec<&str> = sid.split('-').collect();
+    let mut binary_sid = vec![];
+
+    binary_sid.push(parts[1].parse::<u8>().unwrap()); // Revision
+    let identifier_authority = parts[2].parse::<u64>().unwrap();
+    binary_sid.extend_from_slice(&identifier_authority.to_be_bytes()[2..]); // 6-byte authority
+
+    for sub_auth in &parts[3..] {
+        let sub_auth_num = sub_auth.parse::<u32>().unwrap();
+        binary_sid.extend_from_slice(&sub_auth_num.to_le_bytes()); // 4-byte sub-auths
+    }
+
+    let mut ldap_sid = String::new();
+    for byte in binary_sid {
+        ldap_sid.push_str(&format!("\\{:02X}", byte));
+    }
+
+    ldap_sid
+}
+
+pub fn format_guid_for_ldap(guid: &str) -> String {
+    // Remove all non-hex characters (dashes, etc).
+    let cleaned: String = guid.chars().filter(|c| c.is_ascii_hexdigit()).collect();
+    assert!(
+        cleaned.len() == 32,
+        "GUID string must contain 32 hex digits"
+    );
+
+    // Decode the cleaned hex string into 16 bytes.
+    let bytes = hex::decode(cleaned).unwrap();
+
+    // The GUID consists of 5 fields:
+    // Data1: 4 bytes, Data2: 2 bytes, Data3: 2 bytes, Data4: 2 bytes, Data5: 6 bytes.
+    // For LDAP filters, the first three fields must be in little-endian order.
+    let mut reordered = Vec::with_capacity(16);
+    
+    // Data1 (first 4 bytes) reversed.
+    reordered.extend_from_slice(&bytes[0..4].iter().rev().cloned().collect::<Vec<u8>>());
+    // Data2 (next 2 bytes) reversed.
+    reordered.extend_from_slice(&bytes[4..6].iter().rev().cloned().collect::<Vec<u8>>());
+    // Data3 (next 2 bytes) reversed.
+    reordered.extend_from_slice(&bytes[6..8].iter().rev().cloned().collect::<Vec<u8>>());
+    // Data4 and Data5 (remaining 8 bytes) remain in order.
+    reordered.extend_from_slice(&bytes[8..16]);
+    
+    // Convert each byte to an escaped hex value.
+    let mut ldap_guid = String::new();
+    for byte in reordered {
+        ldap_guid.push_str(&format!("\\{:02X}", byte));
+    }
+    
+    ldap_guid
 }

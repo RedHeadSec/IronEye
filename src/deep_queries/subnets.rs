@@ -1,3 +1,4 @@
+use crate::help::add_terminal_spacing;
 use crate::ldap::LdapConfig;
 use ldap3::{LdapConn, Scope, SearchEntry};
 use std::error::Error;
@@ -62,6 +63,7 @@ pub fn get_subnets(config: &mut LdapConfig) -> Result<(), Box<dyn Error>> {
     wtr.flush()?;
 
     println!("\nSubnets query completed successfully. Results saved to 'subnets_export.csv'.");
+    add_terminal_spacing(1);
     Ok(())
 }
 

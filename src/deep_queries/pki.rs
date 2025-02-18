@@ -1,3 +1,4 @@
+use crate::help::add_terminal_spacing;
 use crate::ldap::LdapConfig;
 use ldap3::{LdapConn, Scope, SearchEntry};
 use std::error::Error;
@@ -86,9 +87,9 @@ pub fn get_pki_info(config: &mut LdapConfig) -> Result<(), Box<dyn Error>> {
     }
 
     if ca_count == 0 {
-        println!("No meaningful Certificate Authorities found.\n");
+        println!("No Certificate Authorities found.\n");
     }
-
+    add_terminal_spacing(1);
     Ok(())
 }
 

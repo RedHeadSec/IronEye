@@ -514,7 +514,7 @@ pub fn run_nested_query_menu(ldap_config: &mut LdapConfig) -> Result<(), String>
 
         // Display the menu using dialoguer
         let selection = Select::with_theme(&ColorfulTheme::default())
-            .with_prompt("\nSelect a predefined LDAP query")
+            .with_prompt("Select a predefined LDAP query")
             .items(&options)
             .default(0)
             .interact()
@@ -573,6 +573,7 @@ pub fn run_nested_query_menu(ldap_config: &mut LdapConfig) -> Result<(), String>
             8 => {
                 // Back to main menu
                 println!("Returning to the main menu...");
+                add_terminal_spacing(1);
                 break;
             }
             _ => unreachable!(),

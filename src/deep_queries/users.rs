@@ -1,3 +1,4 @@
+use crate::help::add_terminal_spacing;
 use crate::ldap::LdapConfig;
 use csv::Writer;
 use ldap3::adapters::{Adapter, EntriesOnly, PagedResults};
@@ -57,6 +58,7 @@ pub fn get_users(config: &mut LdapConfig) -> Result<(), Box<dyn Error>> {
     wtr.flush()?;
 
     println!("\nUsers query completed successfully. Results saved to 'users_export.csv'.");
+    add_terminal_spacing(1);
     Ok(())
 }
 

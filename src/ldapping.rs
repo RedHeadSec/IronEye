@@ -1,4 +1,5 @@
 use crate::args::UserEnumArgs;
+use crate::help::get_timestamp;
 use ldap3::{LdapConn, Scope, SearchEntry};
 use std::error::Error;
 use std::fs::File;
@@ -6,7 +7,6 @@ use std::io::{self, BufRead, BufReader, Write};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use std::thread;
-use crate::help::get_timestamp;
 
 #[derive(Clone)]
 pub struct LdapConfig {
