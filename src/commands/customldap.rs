@@ -11,8 +11,7 @@ pub fn custom_ldap_query(config: &mut LdapConfig) -> Result<(), Box<dyn Error>> 
     println!("\nCustom LDAP Query");
     println!("-------------------");
     println!("Enter your LDAP filter followed by attributes to return:");
-    println!("Examples: \n(objectClass=user) name cn description");
-    println!("  (objectClass=user)");
+    println!("Examples: \n  (objectClass=user) name cn description");
     println!("  (objectCategory=computer)");
     println!("  (|(cn=*admin*)(sAMAccountName=*admin*)(displayName=*admin*)(description=*admin*)) - Find certain attributes with 'admin' in them.");
     println!("  (&(samAccountType=805306368)(userAccountControl:1.2.840.113556.1.4.803:=4194304)) - Find user accounts without Kerberos pre-authentication");
