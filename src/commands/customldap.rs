@@ -45,7 +45,7 @@ pub fn custom_ldap_query(config: &mut LdapConfig) -> Result<(), Box<dyn Error>> 
                 let attributes = if input_parts.len() > 1 {
                     input_parts[1..].to_vec() // Remaining parts are attributes
                 } else {
-                    vec!["name"] // Default to "name" if no attributes specified
+                    vec!["*"] // Default to "name" if no attributes specified
                 };
 
                 println!("\nRunning query with filter: {}", filter);
