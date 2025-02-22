@@ -96,7 +96,6 @@ fn ldap_query(
 // Pretty print the LDAP query results
 fn print_ldap_results(entries: Vec<SearchEntry>) {
     for (i, entry) in entries.iter().enumerate() {
-        println!("\n[{}] Distinguished Name: {}", i + 1, entry.dn);
         for (attr, values) in &entry.attrs {
             println!("  {}: {}", attr, values.join(", "));
         }
