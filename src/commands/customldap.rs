@@ -1,5 +1,6 @@
 use crate::ldap::{ldap_connect, LdapConfig};
-use ldap3::{Scope, SearchEntry};
+use ldap3::adapters::{Adapter, EntriesOnly, PagedResults};
+use ldap3::{LdapConn, Scope, SearchEntry};
 use rustyline::DefaultEditor;
 use std::error::Error;
 
@@ -11,7 +12,7 @@ pub fn custom_ldap_query(config: &mut LdapConfig) -> Result<(), Box<dyn Error>> 
     println!("\nCustom LDAP Query");
     println!("-------------------");
     println!("Enter your LDAP filter followed by attributes to return:");
-    println!("Examples: \n  (objectClass=user) name cn description");
+    println!("Examples: \n  (objectCategory=user) samaccountname description");
     println!("  (objectCategory=computer)");
     println!("  (|(cn=*admin*)(sAMAccountName=*admin*)(displayName=*admin*)(description=*admin*)) - Find certain attributes with 'admin' in them.");
     println!("  (&(samAccountType=805306368)(userAccountControl:1.2.840.113556.1.4.803:=4194304)) - Find user accounts without Kerberos pre-authentication");
@@ -80,16 +81,27 @@ pub fn custom_ldap_query(config: &mut LdapConfig) -> Result<(), Box<dyn Error>> 
 }
 
 
-// Helper function to perform the LDAP query
 fn ldap_query(
     ldap: &mut ldap3::LdapConn,
     search_base: &str,
     filter: &str,
     attributes: &[&str],
 ) -> Result<Vec<SearchEntry>, Box<dyn Error>> {
-    let result = ldap.search(search_base, Scope::Subtree, filter, attributes)?;
-    let (entries, _) = result.success()?;
-    Ok(entries.into_iter().map(SearchEntry::construct).collect())
+    let adapters: Vec<Box<dyn Adapter<_, _>>> = vec![
+        Box::new(EntriesOnly::new()),   
+        Box::new(PagedResults::new(500)), 
+    ];
+
+    let mut search = ldap.streaming_search_with(adapters, search_base, Scope::Subtree, filter, attributes)?;
+
+    let mut entries = Vec::new();
+    while let Some(entry) = search.next()? {
+        entries.push(SearchEntry::construct(entry)); // Convert raw LDAP entry into SearchEntry
+    }
+    
+    let _ = search.result().success()?; // Ensure the search completes successfully
+
+    Ok(entries)
 }
 
 
