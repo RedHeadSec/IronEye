@@ -5,12 +5,8 @@ The tool supports both password and Kerberos authentication, allowing for creden
 
 ## Install and Compile
 ```bash
-git clone https://gitlab.optivlabs.com/ross.farrington/ironeye.git OR git clone git@gitlab.optivlabs.com:ross.farrington/ironeye.git
 cargo build --release
 ```
-Once built, you'll need to download a compiled Cerbero bianry from here: https://github.com/RedHeadSec/cerbero.
-Once downloaded, put in a folder under IronEye named `bin`. Make sure it has execute permissions.
-
 
 ## Connect Module
 Authenticate using password

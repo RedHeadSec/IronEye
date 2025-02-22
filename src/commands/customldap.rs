@@ -4,23 +4,21 @@ use rustyline::DefaultEditor;
 use std::error::Error;
 
 pub fn custom_ldap_query(config: &mut LdapConfig) -> Result<(), Box<dyn Error>> {
-    // Establish LDAP connection
     let (mut ldap, search_base) = ldap_connect(config)?;
-
     let mut rl = DefaultEditor::new()?;
-    rl.load_history(".ldap_query_history.txt").ok(); // Load query history if it exists
+    rl.load_history(".ldap_query_history.txt").ok();
 
     println!("\nCustom LDAP Query");
     println!("-------------------");
-    println!("Write your LDAP query filter below:");
-    println!("Examples:");
+    println!("Enter your LDAP filter followed by attributes to return:");
+    println!("Examples: \n(objectClass=user) name cn description");
     println!("  (objectClass=user)");
     println!("  (objectCategory=computer)");
     println!("  (|(cn=*admin*)(sAMAccountName=*admin*)(displayName=*admin*)(description=*admin*)) - Find certain attributes with 'admin' in them.");
     println!("  (&(samAccountType=805306368)(userAccountControl:1.2.840.113556.1.4.803:=4194304)) - Find user accounts without Kerberos pre-authentication");
     println!("Type 'run' to execute the query, or 'exit' to return to the menu.\n");
 
-    let mut query_lines: Vec<String> = Vec::new();
+    let mut query_line: Option<String> = None;
 
     loop {
         let input = rl.readline("> ")?;
@@ -32,55 +30,69 @@ pub fn custom_ldap_query(config: &mut LdapConfig) -> Result<(), Box<dyn Error>> 
                 break;
             }
             "run" => {
-                if query_lines.is_empty() {
+                if query_line.is_none() {
                     println!("Filter cannot be empty. Please provide a valid LDAP filter.");
                     continue;
                 }
 
-                let full_filter = query_lines.join("").replace("\n", "").trim().to_string();
-                println!("\nRunning query with filter: {}", full_filter);
+                // Extract filter and attributes
+                let input_parts: Vec<&str> = query_line.as_ref().unwrap().split_whitespace().collect();
+                if input_parts.is_empty() {
+                    println!("Invalid input. Please provide a valid LDAP filter.");
+                    continue;
+                }
 
-                if let Err(e) = validate_filter(&full_filter) {
+                let filter = input_parts[0].to_string(); // First part is the filter
+                let attributes = if input_parts.len() > 1 {
+                    input_parts[1..].to_vec() // Remaining parts are attributes
+                } else {
+                    vec!["name"] // Default to "name" if no attributes specified
+                };
+
+                println!("\nRunning query with filter: {}", filter);
+                println!("Returning attributes: {:?}", attributes);
+
+                if let Err(e) = validate_filter(&filter) {
                     println!("Invalid filter: {}", e);
                     continue;
                 }
 
-                // Perform the LDAP query
-                let entries = ldap_query(&mut ldap, &search_base, &full_filter)?;
+                let entries = ldap_query(&mut ldap, &search_base, &filter, &attributes)?;
 
                 if entries.is_empty() {
-                    println!("No results found for the given filter.");
+                    println!("No results found.");
                 } else {
                     println!("\nQuery Results:");
                     print_ldap_results(entries);
                 }
 
                 println!("\nQuery complete.\n");
-                query_lines.clear(); // Clear the query buffer after execution
+                query_line = None; // Reset after execution
             }
             _ => {
-                // Add input line to the query buffer
-                query_lines.push(trimmed_input.to_string());
-                rl.add_history_entry(trimmed_input).ok(); // Save to history
+                query_line = Some(trimmed_input.to_string());
+                rl.add_history_entry(trimmed_input).ok();
             }
         }
     }
 
-    rl.save_history(".ldap_query_history.txt").ok(); // Save query history on exit
-
+    rl.save_history(".ldap_query_history.txt").ok();
     Ok(())
 }
+
 
 // Helper function to perform the LDAP query
 fn ldap_query(
     ldap: &mut ldap3::LdapConn,
     search_base: &str,
     filter: &str,
+    attributes: &[&str],
 ) -> Result<Vec<SearchEntry>, Box<dyn Error>> {
-    let result = ldap.search(search_base, Scope::Subtree, filter, vec!["*"])?;
+    let result = ldap.search(search_base, Scope::Subtree, filter, attributes)?;
     let (entries, _) = result.success()?;
     Ok(entries.into_iter().map(SearchEntry::construct).collect())
 }
+
 
 // Pretty print the LDAP query results
 fn print_ldap_results(entries: Vec<SearchEntry>) {
