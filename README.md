@@ -30,8 +30,17 @@ Connection Arguments:
 
 
 ## Connect - Sub Modules
-![alt text](images/image-5.png)
+![alt text](images/sub_modules.png)
 
+- **Get SID/GUID** - Get the SID/GUID of a domain object
+- **From SID/GUID** - Find the CN/Name of a SID/GUID
+- **Get SPNs** - Pull and export all domain SPNs
+- **Query Groups** - Pull groups for a user or all user groups
+- **Machine Quota** - Get the MAQ for the domain
+- **Net Commands** - Net User/Group commands
+- **Password Policy** - Pull the domain password poilicies including fine-grained ones
+- **Deep-Queries** - Quereies for interesting domain assets or information
+- **Custom Ldap** - Run a custom LDAP query
 
 ## Cerberos Module
 Refer to https://github.com/zer1t0/cerbero for usage details/examples.
@@ -57,7 +66,7 @@ SUBCOMMANDS:
     list          Describe the credentials stored in a file
     export        Export file to KRB5CCNAME variable. (export /path/to/file.ccache)
 ```
-![alt text](images/image-2.png)
+![alt text](images/sub_modules.png)
 
 
 ## User Enumeration / Password Spray Modules
