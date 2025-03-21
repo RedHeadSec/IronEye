@@ -18,6 +18,9 @@ results.txt
 *.csv
 proxychains*
 
+# History Files
+*_history.txt
+
 # Generated Kerberos tickets
 *.ticket
 *_tgt.krb
