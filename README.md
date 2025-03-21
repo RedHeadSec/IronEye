@@ -66,7 +66,7 @@ SUBCOMMANDS:
     list          Describe the credentials stored in a file
     export        Export file to KRB5CCNAME variable. (export /path/to/file.ccache)
 ```
-![alt text](images/sub_modules.png)
+![alt text](images/image-2.png)
 
 
 ## User Enumeration / Password Spray Modules
