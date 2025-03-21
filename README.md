@@ -1,7 +1,7 @@
 # IronEye
 
 IronEye is a Rust-based Active Directory enumeration and security assessment tool designed for use in internal network environments. It enables penetration testers, red teamers, and security researchers to interact with LDAP, Kerberos, and SMB services efficiently.
-The tool supports both password and Kerberos authentication, allowing for credentialed LDAP queries, password spraying, TGT requests, and more.
+The tool supports both password and Kerberos authentication, allowing for credentialed LDAP queries, password spraying, TGT requests, and more. This project was my first ever real tool development project in Rust to force myself to stay interested and learn the language. Most of this is likely not prime l33t coding, the most efficent, or 100% bug free. Feel free to add PRs or give me pointers for improvement or modules. Use at your own risk and I always recommend testing in a lab environment prior to any authorized client work. 
 
 ## Install and Compile
 ```bash
@@ -15,7 +15,9 @@ Authenticate using password
 ```
 Authenticate using Kerberos to LDAPS
 
-Note: Youll need to set up the KDC realm usually found at /etc/krb5.conf. A sample is provided. 
+Note: Youll need to set up the KDC realm usually found at /etc/krb5.conf. A sample is provided.
+
+I'd LOVE to have this all setup within the tool similar to another awesome tool this took inspriation from: https://github.com/Synzack/ldapper which only needs the contents of the KRB5CCNAME file. Gave it several attempts but ran into implementation issues. Maybe someone smarter than I has an example or can PR for it.  
 ```bash
 -u robb.stark -d NORTH.SEVENKINGDOMS.LOCAL -i WINTERFELL.NORTH.SEVENKINGDOMS.LOCAL -k -s
 ```
@@ -44,6 +46,8 @@ Connection Arguments:
 
 ## Cerberos Module
 Refer to https://github.com/zer1t0/cerbero for usage details/examples.
+
+Fun Fact: I rewrote the original Cerbero code to be used in a library format for this program just to realize later that same day someone had already done it, but it was to late as I had already implemented it into the main code base. Oh 🐋! 
 ```bash
 Kerberos protocol attacker
 
@@ -87,7 +91,7 @@ Example: --users users.txt --passwords passwords.txt --domain corp.local --dc-ip
 
 | Feature           | Description                                  | Status   |
 |------------------|----------------------------------|---------|
-| Kerberos Auth   | Supports Kerberos-based authentication | ✅ Working |
-| Proxy Support   | While native SOCKS support is desired, this tool works well with proxychains4.       | ❌ TBD  |
-| Multi-Platform  | Works on Linux, macOS, Windows    | ✅ Tested  |
-| Password Spray Threading | Thrading to be implemented    | ❌ TBD |
+| Kerberos Auth   | Supports Kerberos-based authentication | ✅ Working (For Linux) - Does not work currently for MAC due to differences in dependencies - Not tested on Windows|
+| Threading Support   | Threading for the password spray has not been implemented yet.       | ❌ TBD  |
+| Proxy Support   | While native SOCKS support is desired, this tool works well with proxychains4 so currently is on the back burner.       | ❌ TBD  |
+| SMB Modules | Currently on the table but not under active implementation at this time   | ❌ TBD |
