@@ -1,0 +1,45 @@
+# Added by cargo
+#
+
+/target
+/statist*
+
+# Test files
+users.txt
+passwords.txt
+found_cred*
+*.krb
+*.ccache
+domain_groups*
+DS_STORE
+users_export.csv
+*history*
+results.txt
+*.csv
+proxychains*
+
+# Generated Kerberos tickets
+*.ticket
+*_tgt.krb
+*_tgt.ccache
+
+# Rust specific
+/target/
+**/*.rs.bk
+Cargo.lock
+
+# IDE specific
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS specific
+.DS_Store
+Thumbs.db
+
+# Logs and temp files
+*.log
+*.tmp
+temp/
+logs/
