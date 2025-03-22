@@ -82,10 +82,13 @@ Example: --userfile users.txt --domain corp.local --dc-ip 192.168.1.10 --output 
 
 Password Spray:
 ```
-Argument format: --users <user/path> --passwords <pass/path> --domain <domain> --dc-ip <ip> [--threads <num>] [--jitter <ms>] [--delay <ms>] [--continue-on-success] [--verbose] [--timestamp] [--proxy <proxy_url>] [--lockout-threshold <num>] [--lockout-window <seconds>]
+Argument format: --users <user/path> --passwords <pass/path> --domain <domain> --dc-ip <ip> [--threads <num>] [--jitter <ms>] [--delay <ms>] [--continue-on-success] [--verbose] [--timestamp] [--lockout-threshold <num>] [--lockout-window <seconds>]
 Example: --users users.txt --passwords passwords.txt --domain corp.local --dc-ip 192.168.1.10 --jitter 10 --delay 10 --continue-on-success --verbose --timestamp  --lockout-threshold 5 --lockout-window 600
 ```
-![alt text](images/image-4.png)
+![image](https://github.com/user-attachments/assets/17baadbe-a246-417c-96e1-61f37f5dc892)
+
+![image](https://github.com/user-attachments/assets/688f8265-1823-4a5d-a234-da336e2ac3b1)
+
 
 ## Current / Future Development
 
