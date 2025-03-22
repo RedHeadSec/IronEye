@@ -403,7 +403,7 @@ pub fn get_cerbero_args() -> CerberoCommand {
 }
 
 pub fn get_userenum_arguments() -> Option<UserEnumArgs> {
-    println!("\nArgument format: --userfile <path> --domain <domain> --dc-ip <ip> --output <filename> [--timestamp] [--proxy <proxy_url>]");
+    println!("\nArgument format: --userfile <path> --domain <domain> --dc-ip <ip> --output <filename> [--timestamp]");
     println!("Example: --userfile users.txt --domain corp.local --dc-ip 192.168.1.10 --output results.txt --timestamp");
     add_terminal_spacing(1);
 
