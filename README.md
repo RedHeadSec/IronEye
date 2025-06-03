@@ -5,6 +5,8 @@ The tool supports both password and Kerberos authentication, allowing for creden
 
 ## Install and Compile
 ```bash
+sudo apt install pkg-config libssl-dev
+sudo apt install libclang-dev clang
 cargo build --release
 ```
 
