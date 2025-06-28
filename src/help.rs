@@ -1,7 +1,8 @@
 use chrono::Local;
 use std::error::Error;
-use std::fs::File;
-use std::io::{BufRead, BufReader};
+use std::fs::{File, OpenOptions};
+use std::io::{BufRead,BufReader,Write,self};
+use std::path::Path;
 
 pub fn show_help_main() {
     println!("\nHelp Information:");
@@ -11,9 +12,10 @@ pub fn show_help_main() {
         "3. 'UserEnum' - Enumerate valid users via ldap/kerberos/ldap ping in an internal domain."
     );
     println!("4. 'Password Spray' - Perform Password Spraying against the internal domain.");
-    println!("5. 'Version' - Shows Version.");
-    println!("6. 'Help' - Shows this help message.");
-    println!("7. 'Exit' - Exits the program.");
+    println!("5. 'Generate a KRB5 Conf File.");
+    println!("6. 'Version' - Shows Version.");
+    println!("7. 'Help' - Shows this help message.");
+    println!("8. 'Exit' - Exits the program.");
 }
 
 pub fn show_help_connect() {
@@ -66,4 +68,62 @@ pub fn read_file_lines(filename: &str) -> Result<Vec<String>, Box<dyn Error>> {
 pub fn get_timestamp() -> String {
     let timestamp = Local::now().format("%Y-%m-%d %H:%M:%S").to_string();
     timestamp
+}
+
+pub struct ConfGenArgs {
+    pub host: String,
+    pub hostname: String,
+    pub domain: String,
+    pub is_dc: bool,
+}
+
+pub fn read_input(prompt: &str) -> String {
+    print!("{}", prompt);
+    let _ = io::stdout().flush();
+    let mut input = String::new();
+    io::stdin().read_line(&mut input).unwrap();
+    input.trim().to_string()
+}
+
+pub fn generate_conf_files(args: &ConfGenArgs) -> std::io::Result<()> {
+    let line = format!(
+        "{}    {} {}.{} {}\n",
+        args.host,
+        args.hostname,
+        args.hostname,
+        args.domain,
+        if args.is_dc { &args.domain } else { "" }
+    );
+
+    println!("\n[Generated hosts line]");
+    println!("{}", line.trim_end());
+
+    if args.is_dc {
+        let data = format!(
+            r#"[libdefaults]
+    dns_lookup_kdc = false
+    dns_lookup_realm = false
+    default_realm = {realm}
+
+[realms]
+    {realm} = {{
+        kdc = {hostname}.{domain}
+        admin_server = {hostname}.{domain}
+        default_domain = {domain}
+    }}
+
+[domain_realm]
+    .{domain} = {realm}
+    {domain} = {realm}
+"#,
+            realm = args.domain.to_uppercase(),
+            hostname = args.hostname.to_lowercase(),
+            domain = args.domain
+        );
+
+        println!("\n[Generated krb5.conf]");
+        println!("{}", data);
+    }
+
+    Ok(())
 }

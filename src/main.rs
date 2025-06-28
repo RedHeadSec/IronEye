@@ -14,7 +14,7 @@ Cerbero Implementation: https://github.com/zer1t0/cerbero
                                          
 "#;
 
-const VERSION: &str = "v1.0";
+const VERSION: &str = "v0.9";
 
 // Imports
 use dialoguer::{theme::ColorfulTheme, Confirm, Select};
@@ -41,6 +41,7 @@ fn main() {
             "Cerbero (Kerberos Protocol Attacks)",
             "User Enumeration (LDAP Ping Method)",
             "Password Spray (LDAP)",
+            "Generate KRB5 Conf",
             "Version",
             "Help",
             "Exit",
@@ -375,14 +376,36 @@ fn main() {
             }
 
             4 => {
-                println!("{}", VERSION);
+                println!("KRB5 Config Generator");
+
+                let host = read_input("Enter IP address (e.g. 10.0.0.1): ");
+                let hostname = read_input("Enter hostname (e.g. dc1): ");
+                let domain = read_input("Enter domain (e.g. example.local): ");
+
+                let is_dc_input = read_input("Is this a Domain Controller? (y/n): ");
+                let is_dc = is_dc_input.eq_ignore_ascii_case("y");
+
+                let args = ConfGenArgs {
+                    host,
+                    hostname,
+                    domain,
+                    is_dc
+                };
+
+                if let Err(e) = generate_conf_files(&args) {
+                    eprintln!("Error generating config files: {}", e);
+                }
             }
 
             5 => {
-                show_help_main();
+                println!("{}", VERSION);
             }
 
             6 => {
+                show_help_main();
+            }
+
+            7 => {
                 let confirm = Confirm::with_theme(&ColorfulTheme::default())
                     .with_prompt("Are you sure you want to quit?")
                     .interact()
