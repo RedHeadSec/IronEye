@@ -28,7 +28,8 @@ Connection Arguments:
 -u <user> -p <password> -d <domain -i <FQDN/IP> [-s <ldaps>] [-t <timestamp>] [-k <Kerberos Auth>]
 ```
 
-![alt text](images/image.png)
+![image](https://github.com/user-attachments/assets/48844bf1-bcf4-4f62-8209-b33f3c499828)
+
 
 ![alt text](images/image-3.png)
 
