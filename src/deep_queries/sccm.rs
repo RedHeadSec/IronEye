@@ -3,18 +3,33 @@ use crate::ldap::LdapConfig;
 use ldap3::{LdapConn, Scope, SearchEntry};
 use std::error::Error;
 
-pub fn get_sccm_info(config: &mut LdapConfig) -> Result<(), Box<dyn Error>> {
-    // Establish LDAP connection
+pub fn get_sccm_info(config: &mut LdapConfig) -> Result<(), Box<dyn std::error::Error>> {
     let (mut ldap, search_base) = crate::ldap::ldap_connect(config)?;
 
-    // Define the System Management container
-    let system_management_base = format!("CN=System Management,CN=System,{}", search_base);
+    let system_base = format!("CN=System,{}", search_base);
+    let system_management_base = format!("CN=System Management,{}", system_base);
+
+    // Check if base containers exist, otherwise skip
+    if !dn_exists(&mut ldap, &system_base)? {
+        crate::help::add_terminal_spacing(1);
+        println!("Skipping SCCM enumeration: 'CN=System' container not found.");
+        crate::help::add_terminal_spacing(1);
+        return Ok(());
+    }
+
+    if !dn_exists(&mut ldap, &system_management_base)? {
+        crate::help::add_terminal_spacing(1);
+        println!("Skipping SCCM enumeration: 'CN=System Management' container not found.");
+        crate::help::add_terminal_spacing(1);
+        return Ok(());
+    }
 
     // Perform queries for SCCM roles
     let primary_sites = query_sccm_primary_sites(&mut ldap, &system_management_base)?;
     let management_points = query_sccm_management_points(&mut ldap, &system_management_base)?;
     let distribution_points = query_sccm_distribution_points(&mut ldap, &system_management_base)?;
 
+    // Print results
     println!("\nSCCM Server Roles\n");
 
     if !primary_sites.is_empty() {
@@ -41,7 +56,8 @@ pub fn get_sccm_info(config: &mut LdapConfig) -> Result<(), Box<dyn Error>> {
     if primary_sites.is_empty() && management_points.is_empty() && distribution_points.is_empty() {
         println!("No SCCM servers found.");
     }
-    add_terminal_spacing(1);
+
+    crate::help::add_terminal_spacing(1);
     Ok(())
 }
 
@@ -123,4 +139,33 @@ fn query_sccm_distribution_points(
         .collect();
 
     Ok(distribution_points)
+}
+
+fn dn_exists(ldap: &mut LdapConn, dn: &str) -> Result<bool, Box<dyn std::error::Error>> {
+    let result = ldap.search(dn, Scope::Base, "(objectClass=*)", vec!["distinguishedName"]);
+    
+    match result {
+        Ok(response) => {
+            // Handle success() call errors (like rc=32 inside success)
+            match response.success() {
+                Ok((entries, _)) => Ok(!entries.is_empty()),
+                Err(e) => {
+                    let error_string = format!("{}", e);
+                    if error_string.contains("rc=32") {
+                        Ok(false)
+                    } else {
+                        Err(Box::new(e))
+                    }
+                }
+            }
+        }
+        Err(e) => {
+            let error_string = format!("{}", e);
+            if error_string.contains("rc=32") {
+                Ok(false)
+            } else {
+                Err(Box::new(e))
+            }
+        }
+    }
 }
