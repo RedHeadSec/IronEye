@@ -14,7 +14,7 @@ Cerbero Implementation: https://github.com/zer1t0/cerbero
                                          
 "#;
 
-const VERSION: &str = "v1.1";
+const VERSION: &str = "v0.9";
 
 // Imports
 use dialoguer::{theme::ColorfulTheme, Confirm, Select};
@@ -93,7 +93,7 @@ fn main() {
                                 "Net Commands",
                                 "Password Policy",
                                 "Deep-Queries",
-                                "Custom Ldap Query",
+                                "Custom Ldap Query (Bofhound Compatible)",
                                 "Help",
                                 "Back",
                             ];
@@ -389,7 +389,7 @@ fn main() {
                     host,
                     hostname,
                     domain,
-                    is_dc
+                    is_dc,
                 };
 
                 if let Err(e) = generate_conf_files(&args) {
