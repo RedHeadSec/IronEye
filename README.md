@@ -45,7 +45,14 @@ Connection Arguments:
 - **Net Commands** - Net User/Group commands
 - **Password Policy** - Pull the domain password poilicies including fine-grained ones
 - **Deep-Queries** - Quereies for interesting domain assets or information
-- **Custom Ldap** - Run a custom LDAP query
+- **Custom Ldap** - Run a custom LDAP query (Bofhound Compatible)
+
+<img width="1364" height="753" alt="image" src="https://github.com/user-attachments/assets/c5eae49e-546b-41d6-ab70-88f23a1b586c" /> <br>
+
+
+**Using https://github.com/coffeegist/bofhound:**
+<img width="695" height="855" alt="image" src="https://github.com/user-attachments/assets/beb0f125-6778-41ce-9eba-96a2aada34e2" />
+
 
 ## Cerberos Module
 Refer to https://github.com/zer1t0/cerbero for usage details/examples.
