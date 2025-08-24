@@ -6,7 +6,6 @@ use ldap3::{LdapConn, Scope, SearchEntry};
 use std::error::Error;
 
 pub fn get_users(config: &mut LdapConfig) -> Result<(), Box<dyn Error>> {
-    
     let (mut ldap, search_base) = crate::ldap::ldap_connect(config)?;
     let entries = query_users(&mut ldap, &search_base)?;
     let mut wtr = Writer::from_path("users_export.csv")?;

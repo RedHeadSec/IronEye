@@ -88,7 +88,7 @@ fn query_computers(
             "dNSHostName",
             "operatingSystem",
             "description",
-        ], 
+        ],
     )?;
 
     let mut entries = Vec::new();

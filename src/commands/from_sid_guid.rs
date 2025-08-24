@@ -1,5 +1,5 @@
 use crate::help::add_terminal_spacing;
-use crate::ldap::{ldap_connect,LdapConfig,format_guid_for_ldap};
+use crate::ldap::{format_guid_for_ldap, ldap_connect, LdapConfig};
 use ldap3::{
     adapters::{Adapter, EntriesOnly, PagedResults},
     Scope, SearchEntry,
@@ -65,13 +65,19 @@ const WELL_KNOWN_SIDS: &[(&str, &str)] = &[
     ("S-1-16-16384", "System Mandatory Level"),
     ("S-1-16-20480", "Protected Process Mandatory Level"),
     ("S-1-16-28672", "Secure Process Mandatory Level"),
-    ("S-1-5-32-554", "BUILTIN\\Pre-Windows 2000 Compatible Access"),
+    (
+        "S-1-5-32-554",
+        "BUILTIN\\Pre-Windows 2000 Compatible Access",
+    ),
     ("S-1-5-32-555", "BUILTIN\\Remote Desktop Users"),
     ("S-1-5-32-556", "BUILTIN\\Network Configuration Operators"),
     ("S-1-5-32-557", "BUILTIN\\Incoming Forest Trust Builders"),
     ("S-1-5-32-558", "BUILTIN\\Performance Monitor Users"),
     ("S-1-5-32-559", "BUILTIN\\Performance Log Users"),
-    ("S-1-5-32-560", "BUILTIN\\Windows Authorization Access Group"),
+    (
+        "S-1-5-32-560",
+        "BUILTIN\\Windows Authorization Access Group",
+    ),
     ("S-1-5-32-561", "BUILTIN\\Terminal Server License Servers"),
     ("S-1-5-32-562", "BUILTIN\\Distributed COM Users"),
     ("S-1-5-32-569", "BUILTIN\\Cryptographic Operators"),
@@ -81,7 +87,10 @@ const WELL_KNOWN_SIDS: &[(&str, &str)] = &[
     ("S-1-5-32-576", "BUILTIN\\RDS Endpoint Servers"),
     ("S-1-5-32-577", "BUILTIN\\RDS Management Servers"),
     ("S-1-5-32-578", "BUILTIN\\Hyper-V Administrators"),
-    ("S-1-5-32-579", "BUILTIN\\Access Control Assistance Operators"),
+    (
+        "S-1-5-32-579",
+        "BUILTIN\\Access Control Assistance Operators",
+    ),
     ("S-1-5-32-580", "BUILTIN\\Remote Management Users"),
 ];
 
@@ -119,8 +128,6 @@ pub fn resolve_sid_guid(
         let escaped_guid = format_guid_for_ldap(identifier);
         //println!("DEBUG - Escaped GUID: {}", escaped_guid);
         format!("(objectGUID={})", escaped_guid) // GUID search
-        
-
     } else {
         return Err("Invalid SID or GUID format".into());
     };

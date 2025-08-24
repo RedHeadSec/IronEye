@@ -1,18 +1,16 @@
 use chrono::Local;
 use std::error::Error;
 use std::fs::{File, OpenOptions};
-use std::io::{BufRead,BufReader,Write,self};
+use std::io::{self, BufRead, BufReader, Write};
 use std::path::Path;
 
 pub fn show_help_main() {
     println!("\nHelp Information:");
-    println!("1. 'Connect' - Connect to a ldap server and run queries. Use -k for Kerberos using KRB5CCNAME variable.");
+    println!("1. 'Connect' - Connect to a ldap server and run queries.");
     println!("2. 'Cerberos' - Kerberos Attacks using https://github.com/zer1t0/cerbero");
-    println!(
-        "3. 'UserEnum' - Enumerate valid users via ldap/kerberos/ldap ping in an internal domain."
-    );
+    println!("3. 'User Enumeration' - Enumerate valid users via ldap ping in an internal domain." );
     println!("4. 'Password Spray' - Perform Password Spraying against the internal domain.");
-    println!("5. 'Generate a KRB5 Conf File.");
+    println!("5. 'Generate KRB Conf' -  Generate a KRB5 configuration file.");
     println!("6. 'Version' - Shows Version.");
     println!("7. 'Help' - Shows this help message.");
     println!("8. 'Exit' - Exits the program.");
@@ -22,17 +20,16 @@ pub fn show_help_connect() {
     println!("\nHelp Information for 'Connect' Submodules:");
     println!("The 'Connect' module allows you to perform various LDAP-related actions after connecting to a server.");
     println!("\nAvailable Options:");
-    println!(
-        "  1. 'DACL Query' - (NOT IMPLEMENTED) Planned for querying Domain Access Control Lists."
-    );
-    println!("  2. 'Get SPNs' - Retrieve Service Principal Names (SPNs) for Kerberos services in the domain.");
-    println!("  3. 'Query Groups' - Enumerate groups and their memberships in the domain.");
-    println!("  4. 'Machine Quota' - Check the machine account quota for the domain.");
-    println!("  5. 'Net Commands' - Execute predefined or custom network commands.");
-    println!("  6. 'Password Policy' - Retrieve and display the domain's password policy.");
-    println!("  7. 'Deep-Queries' - Perform predefined deep LDAP queries (e.g., users, computers, trusts).");
-    println!("  8. 'Custom LDAP Query' - Execute a custom LDAP query by providing a filter and attributes.");
-    println!("  9. 'Back' - Return to the main menu.");
+    println!("  1. 'Get SID/GUID' - Get SID/GUID of AD object.");
+    println!("  2. 'From SID/GUID' - Resolve object from SID/GUID");
+    println!("  3. 'Get SPNs' - Retrieve Service Principal Names (SPNs) for Kerberos services in the domain.");
+    println!("  4. 'Query Groups' - Enumerate groups and their memberships in the domain.");
+    println!("  5. 'Machine Quota' - Check the machine account quota for the domain.");
+    println!("  6. 'Net Commands' - Execute predefined or custom network commands.");
+    println!("  7. 'Password Policy' - Retrieve and display the domain's password policy.");
+    println!("  8. 'Deep-Queries' - Perform predefined deep LDAP queries (e.g., users, computers, trusts).");
+    println!("  9. 'Custom LDAP Query' - Execute a custom LDAP query by providing a filter and attributes. BOFHound output compatiable!");
+    println!("  10. 'Back' - Return to the main menu.");
     println!("\n");
 }
 

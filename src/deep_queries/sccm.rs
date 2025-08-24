@@ -142,8 +142,13 @@ fn query_sccm_distribution_points(
 }
 
 fn dn_exists(ldap: &mut LdapConn, dn: &str) -> Result<bool, Box<dyn std::error::Error>> {
-    let result = ldap.search(dn, Scope::Base, "(objectClass=*)", vec!["distinguishedName"]);
-    
+    let result = ldap.search(
+        dn,
+        Scope::Base,
+        "(objectClass=*)",
+        vec!["distinguishedName"],
+    );
+
     match result {
         Ok(response) => {
             // Handle success() call errors (like rc=32 inside success)

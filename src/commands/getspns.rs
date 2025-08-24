@@ -121,7 +121,7 @@ fn query_spns(ldap: &mut LdapConn, search_base: &str) -> Result<Vec<SearchEntry>
     while let Some(entry) = search.next()? {
         entries.push(SearchEntry::construct(entry));
     }
-    let _ = search.result().success()?; 
+    let _ = search.result().success()?;
 
     Ok(entries)
 }

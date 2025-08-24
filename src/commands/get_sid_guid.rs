@@ -24,13 +24,8 @@ fn search_user(
     ];
 
     // Perform the search.
-    let mut stream = ldap.streaming_search_with(
-        adapters,
-        &search_base,
-        Scope::Subtree,
-        &filter,
-        vec!["*"],
-    )?;
+    let mut stream =
+        ldap.streaming_search_with(adapters, &search_base, Scope::Subtree, &filter, vec!["*"])?;
 
     // Return the first entry found, if any.
     while let Ok(Some(entry)) = stream.next() {
