@@ -97,7 +97,8 @@ Example: --users users.txt --passwords passwords.txt --domain corp.local --dc-ip
 ```
 ![image](https://github.com/user-attachments/assets/17baadbe-a246-417c-96e1-61f37f5dc892)
 
-![image](https://github.com/user-attachments/assets/688f8265-1823-4a5d-a234-da336e2ac3b1)
+<img width="1145" height="839" alt="image" src="https://github.com/user-attachments/assets/aa039041-92ac-4267-86a7-b47bb63aeae1" />
+
 
 
 ## Current / Future Development
@@ -105,6 +106,6 @@ Example: --users users.txt --passwords passwords.txt --domain corp.local --dc-ip
 | Feature           | Description                                  | Status   |
 |------------------|----------------------------------|---------|
 | Kerberos Auth   | Supports Kerberos-based authentication | ✅ Working (For Linux) - Does not work currently for MAC due to differences in dependencies - Not tested on Windows|
-| Threading Support   | Threading for the password spray has not been implemented yet.       | ❌ TBD  |
+| Threading Support   | Threading for the password spray has not been implemented yet.       |  ✅ Implemented 08/24/25 |
 | Proxy Support   | While native SOCKS support is desired, this tool works well with proxychains4 so currently is on the back burner.       | ❌ TBD  |
 | SMB Modules | Currently on the table but not under active implementation at this time   | ❌ TBD |
