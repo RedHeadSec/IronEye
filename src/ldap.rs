@@ -171,7 +171,7 @@ pub fn format_guid(guid: &[u8]) -> String {
 
 fn format_sid(raw_sid: &[u8]) -> String {
     let mut cursor = Cursor::new(raw_sid);
-    
+
     let revision = cursor.read_u8().unwrap_or(0);
     let sub_auth_count = cursor.read_u8().unwrap_or(0);
 
@@ -238,7 +238,7 @@ pub fn format_sid_for_ldap(sid: &str) -> String {
 
 pub fn format_guid_for_ldap(guid: &str) -> String {
     let cleaned: String = guid.chars().filter(|c| c.is_ascii_hexdigit()).collect();
-    
+
     if cleaned.len() != 32 {
         return String::new();
     }
@@ -248,14 +248,14 @@ pub fn format_guid_for_ldap(guid: &str) -> String {
     };
 
     let mut reordered = Vec::with_capacity(GUID_LENGTH);
-    
+
     // Reverse first three fields for little-endian
     reordered.extend(bytes[0..4].iter().rev());
     reordered.extend(bytes[4..6].iter().rev());
     reordered.extend(bytes[6..8].iter().rev());
     // Keep remaining bytes in order
     reordered.extend_from_slice(&bytes[8..16]);
-    
+
     reordered
         .iter()
         .map(|byte| format!("\\{:02X}", byte))

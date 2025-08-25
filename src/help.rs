@@ -8,7 +8,7 @@ pub fn show_help_main() {
     println!("\nHelp Information:");
     println!("1. 'Connect' - Connect to a ldap server and run queries.");
     println!("2. 'Cerberos' - Kerberos Attacks using https://github.com/zer1t0/cerbero");
-    println!("3. 'User Enumeration' - Enumerate valid users via ldap ping in an internal domain." );
+    println!("3. 'User Enumeration' - Enumerate valid users via ldap ping in an internal domain.");
     println!("4. 'Password Spray' - Perform Password Spraying against the internal domain.");
     println!("5. 'Generate KRB Conf' -  Generate a KRB5 configuration file.");
     println!("6. 'Version' - Shows Version.");

@@ -34,7 +34,7 @@ pub struct SprayArgs {
     pub jitter: u32,
     pub delay: u64,
     pub continue_on_success: bool,
-    pub verbose: bool,
+    pub verbose: u8,
     pub lockout_threshold: Option<u32>,
     pub lockout_window_seconds: Option<u32>,
 }
@@ -68,8 +68,14 @@ pub fn get_connect_arguments() -> Option<LdapConfig> {
 }
 
 pub fn get_spray_arguments() -> Option<SprayArgs> {
-    println!("\nArgument format: --users <user/path> --passwords <pass/path> --domain <domain> --dc-ip <ip> [options]");
-    println!("Example: --users users.txt --passwords passwords.txt --domain corp.local --dc-ip 192.168.1.10 --threads 10 --jitter 10 --delay 10 --continue-on-success --verbose --timestamp --lockout-threshold 5 --lockout-window 600");
+    println!("\nArgument format: --users <user/path> --passwords <pass/path> --domain <domain> --dc-ip <ip1,ip2,...> [options]");
+    println!("Example: --users users.txt --passwords passwords.txt --domain corp.local --dc-ip 192.168.1.10,192.168.1.11 --threads 10 --jitter 10 --delay 10 --continue-on-success --verbose 1 --timestamp --lockout-threshold 5 --lockout-window 600");
+    println!("\nVerbosity Levels:");
+    println!("  0 (default): Only successful logins, lockouts, and fatal errors");
+    println!(
+        "  1: All failed attempts in format [-] Failed login: user@domain with password: pass"
+    );
+    println!("  2: Full debug output with raw LDAP responses");
     add_terminal_spacing(1);
 
     let mut rl = create_editor(".spray_history.txt");
@@ -256,9 +262,13 @@ fn parse_spray_args(input: &str) -> Option<SprayArgs> {
                 config.continue_on_success = true;
                 i += 1;
             }
-            "--verbose" => {
-                config.verbose = true;
-                i += 1;
+            "-v" | "--verbose" => {
+                if i + 1 < args.len() && args[i + 1].parse::<u8>().is_ok() {
+                    config.verbose = get_numeric_arg(&args, &mut i, 1)?;
+                } else {
+                    config.verbose = 1;
+                    i += 1;
+                }
             }
             "-T" | "--timestamp" => {
                 config.timestamp_format = true;
@@ -385,7 +395,7 @@ struct SprayConfig {
     jitter: u32,
     delay: u64,
     continue_on_success: bool,
-    verbose: bool,
+    verbose: u8,
     timestamp_format: bool,
     lockout_threshold: Option<u32>,
     lockout_window_seconds: Option<u32>,
@@ -402,6 +412,10 @@ impl SprayConfig {
             return None;
         }
 
+        if self.verbose > 2 {
+            println!("Warning: Verbose level capped at 2");
+        }
+
         Some(SprayArgs {
             userfile: self.userfile,
             password: self.password,
@@ -413,7 +427,7 @@ impl SprayConfig {
             jitter: self.jitter,
             delay: self.delay,
             continue_on_success: self.continue_on_success,
-            verbose: self.verbose,
+            verbose: if self.verbose > 2 { 2 } else { self.verbose },
             lockout_threshold: self.lockout_threshold,
             lockout_window_seconds: self.lockout_window_seconds,
         })
