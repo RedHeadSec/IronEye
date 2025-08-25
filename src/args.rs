@@ -21,6 +21,7 @@ pub struct UserEnumArgs {
     pub dc_ip: String,
     pub output: Option<String>,
     pub timestamp_format: bool,
+    pub threads: u32,
 }
 
 pub struct SprayArgs {
@@ -35,8 +36,8 @@ pub struct SprayArgs {
     pub delay: u64,
     pub continue_on_success: bool,
     pub verbose: u8,
-    pub lockout_threshold: Option<u32>,
-    pub lockout_window_seconds: Option<u32>,
+    pub lockout_threshold: Option<u32>,      
+    pub lockout_window_seconds: Option<u32>, 
 }
 
 pub enum CerberoCommand {
@@ -69,13 +70,14 @@ pub fn get_connect_arguments() -> Option<LdapConfig> {
 
 pub fn get_spray_arguments() -> Option<SprayArgs> {
     println!("\nArgument format: --users <user/path> --passwords <pass/path> --domain <domain> --dc-ip <ip1,ip2,...> [options]");
-    println!("Example: --users users.txt --passwords passwords.txt --domain corp.local --dc-ip 192.168.1.10,192.168.1.11 --threads 10 --jitter 10 --delay 10 --continue-on-success --verbose 1 --timestamp --lockout-threshold 5 --lockout-window 600");
+    println!("Example: --users users.txt --passwords passwords.txt --domain corp.local --dc-ip 192.168.1.10,192.168.1.11 --threads 10 --jitter 500 --delay 2 --continue-on-success --verbose 1 --timestamp --lockout-threshold 5 --lockout-window 600");
+    println!("\nTiming Options:");
+    println!("  --delay <seconds>: Delay between attempts in seconds (e.g., --delay 2 = 2 second delay)");
+    println!("  --jitter <ms>: Random jitter in milliseconds added to delay (e.g., --jitter 500 = 0-500ms)");
     println!("\nVerbosity Levels:");
     println!("  0 (default): Only successful logins, lockouts, and fatal errors");
-    println!(
-        "  1: All failed attempts in format [-] Failed login: user@domain with password: pass"
-    );
-    println!("  2: Full debug output with raw LDAP responses");
+    println!("  1: All failed attempts in format [-] Failed login: user@domain with password: pass");
+    println!("  2: Full debug output with raw LDAP responses and thread details");
     add_terminal_spacing(1);
 
     let mut rl = create_editor(".spray_history.txt");
@@ -102,9 +104,7 @@ pub fn get_cerbero_args() -> CerberoCommand {
             } else if let Some(path) = input.strip_prefix("export ") {
                 let path = path.trim();
                 if path.is_empty() {
-                    eprintln!(
-                        "\x1b[31m[!] Invalid export command. Usage: export /path/to/ccache\x1b[0m"
-                    );
+                    eprintln!("\x1b[31m[!] Invalid export command. Usage: export /path/to/ccache\x1b[0m");
                     CerberoCommand::None
                 } else {
                     println!("\x1b[32m[+] Exporting KRB5CCNAME to: {}\x1b[0m", path);
@@ -123,8 +123,8 @@ pub fn get_cerbero_args() -> CerberoCommand {
 }
 
 pub fn get_userenum_arguments() -> Option<UserEnumArgs> {
-    println!("\nArgument format: --userfile <path> --domain <domain> --dc-ip <ip> --output <filename> [--timestamp]");
-    println!("Example: --userfile users.txt --domain corp.local --dc-ip 192.168.1.10 --output results.txt --timestamp");
+    println!("\nArgument format: --userfile <path> --domain <domain> --dc-ip <ip> [--output <filename>] [--threads <num>] [--timestamp]");
+    println!("Example: --userfile users.txt --domain corp.local --dc-ip 192.168.1.10 --output results.txt --threads 8 --timestamp");
     add_terminal_spacing(1);
 
     let mut rl = create_editor(".userenum_history.txt");
@@ -305,6 +305,9 @@ fn parse_userenum_args(input: &str) -> Option<UserEnumArgs> {
                 config.timestamp_format = true;
                 i += 1;
             }
+            "--threads" => {
+                config.threads = get_numeric_arg(&args, &mut i, 4)?;
+            }
             _ => {
                 println!("Unknown argument: {}", args[i]);
                 return None;
@@ -403,11 +406,7 @@ struct SprayConfig {
 
 impl SprayConfig {
     fn validate(self) -> Option<SprayArgs> {
-        if self.userfile.is_empty()
-            || self.password.is_empty()
-            || self.domain.is_empty()
-            || self.dc_ip.is_empty()
-        {
+        if self.userfile.is_empty() || self.password.is_empty() || self.domain.is_empty() || self.dc_ip.is_empty() {
             println!("Error: --users, --passwords, --domain, and --dc-ip are required");
             return None;
         }
@@ -441,6 +440,7 @@ struct UserEnumConfig {
     dc_ip: String,
     output: Option<String>,
     timestamp_format: bool,
+    threads: u32,
 }
 
 impl UserEnumConfig {
@@ -456,6 +456,7 @@ impl UserEnumConfig {
             dc_ip: self.dc_ip,
             output: self.output,
             timestamp_format: self.timestamp_format,
+            threads: if self.threads == 0 { 4 } else { self.threads },
         })
     }
 }
