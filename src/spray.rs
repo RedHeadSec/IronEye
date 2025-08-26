@@ -107,7 +107,6 @@ impl SprayState {
             valid_credentials: Vec::new(),
             total_attempts: 0,
             successful_attempts: 0,
-            last_attempt_time: None,
         }
     }
 }
