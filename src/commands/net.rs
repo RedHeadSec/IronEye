@@ -62,6 +62,27 @@ fn net_user(config: &mut LdapConfig, username: &str) -> Result<(), Box<dyn Error
             "displayName",
             "userPrincipalName",
             "objectClass",
+            // Additional fields for penetration testers
+            "badPwdCount",
+            "badPasswordTime",
+            "adminCount",
+            "whenCreated",
+            "whenChanged",
+            "memberOf",
+            "scriptPath",
+            "profilePath",
+            "homeDrive",
+            "telephoneNumber",
+            "title",
+            "department",
+            "company",
+            "manager",
+            "employeeID",
+            "info",
+            "comment",
+            "userWorkstations",
+            "logonHours",
+            "logonWorkstation",
         ],
     )?;
 
@@ -93,6 +114,11 @@ fn net_user(config: &mut LdapConfig, username: &str) -> Result<(), Box<dyn Error
             println!("Comment: \t\t{}", comment);
         }
 
+        // UPN
+        if let Some(upn) = user_entry.attrs.get("userPrincipalName").and_then(|v| v.first()) {
+            println!("User Principal Name: \t{}", upn);
+        }
+
         // User Account Control flags
         if let Some(uac) = user_entry
             .attrs
@@ -102,6 +128,41 @@ fn net_user(config: &mut LdapConfig, username: &str) -> Result<(), Box<dyn Error
         {
             println!("User Account Control: \t");
             print_uac_flags(uac);
+        }
+
+        // Security-relevant information
+        if let Some(bad_pwd_count) = user_entry
+            .attrs
+            .get("badPwdCount")
+            .and_then(|v| v.first())
+            .and_then(|v| v.parse::<i64>().ok())
+        {
+            println!("Bad Password Count: \t{}", bad_pwd_count);
+        }
+
+        if let Some(bad_pwd_time) = user_entry
+            .attrs
+            .get("badPasswordTime")
+            .and_then(|v| v.first())
+            .and_then(|v| v.parse::<i64>().ok())
+        {
+            if bad_pwd_time != 0 {
+                println!("Bad Password Time: \t{}", windows_time_to_string(bad_pwd_time));
+            } else {
+                println!("Bad Password Time: \tNever");
+            }
+        }
+
+        // Admin count (privileged account indicator)
+        if let Some(admin_count) = user_entry
+            .attrs
+            .get("adminCount")
+            .and_then(|v| v.first())
+            .and_then(|v| v.parse::<i64>().ok())
+        {
+            if admin_count > 0 {
+                println!("Admin Count: \t\t{} (Privileged Account)", admin_count);
+            }
         }
 
         // Lockout time
@@ -114,7 +175,7 @@ fn net_user(config: &mut LdapConfig, username: &str) -> Result<(), Box<dyn Error
             if lockout != 0 {
                 println!("Last Lockout Time: \t{}", windows_time_to_string(lockout));
             } else {
-                println!("Last Lockout Time:");
+                println!("Last Lockout Time: \tNever");
             }
         }
 
@@ -148,18 +209,74 @@ fn net_user(config: &mut LdapConfig, username: &str) -> Result<(), Box<dyn Error
             );
         }
 
-        // Home directory
+        // Creation and modification times
+        if let Some(created) = user_entry.attrs.get("whenCreated").and_then(|v| v.first()) {
+            println!("Created: \t\t{}", ldap_time_to_string(created));
+        }
+
+        if let Some(changed) = user_entry.attrs.get("whenChanged").and_then(|v| v.first()) {
+            println!("Last Changed: \t\t{}", ldap_time_to_string(changed));
+        }
+
+        // Directory information
         if let Some(home) = user_entry
             .attrs
             .get("homeDirectory")
             .and_then(|v| v.first())
         {
-            println!("Home Directory: \t\t{}", home);
+            println!("Home Directory: \t{}", home);
         } else {
-            println!("Home Directory:");
+            println!("Home Directory: \t");
         }
 
-        // Last logon
+        if let Some(home_drive) = user_entry.attrs.get("homeDrive").and_then(|v| v.first()) {
+            println!("Home Drive: \t\t{}", home_drive);
+        }
+
+        if let Some(script_path) = user_entry.attrs.get("scriptPath").and_then(|v| v.first()) {
+            println!("Logon Script: \t\t{}", script_path);
+        }
+
+        if let Some(profile_path) = user_entry.attrs.get("profilePath").and_then(|v| v.first()) {
+            println!("Profile Path: \t\t{}", profile_path);
+        }
+
+        // Contact information
+        if let Some(mail) = user_entry.attrs.get("mail").and_then(|v| v.first()) {
+            println!("Email: \t\t\t{}", mail);
+        }
+
+        if let Some(phone) = user_entry.attrs.get("telephoneNumber").and_then(|v| v.first()) {
+            println!("Phone: \t\t\t{}", phone);
+        }
+
+        // Organizational information
+        if let Some(title) = user_entry.attrs.get("title").and_then(|v| v.first()) {
+            println!("Title: \t\t\t{}", title);
+        }
+
+        if let Some(department) = user_entry.attrs.get("department").and_then(|v| v.first()) {
+            println!("Department: \t\t{}", department);
+        }
+
+        if let Some(company) = user_entry.attrs.get("company").and_then(|v| v.first()) {
+            println!("Company: \t\t{}", company);
+        }
+
+        if let Some(manager) = user_entry.attrs.get("manager").and_then(|v| v.first()) {
+            println!("Manager: \t\t{}", manager);
+        }
+
+        if let Some(employee_id) = user_entry.attrs.get("employeeID").and_then(|v| v.first()) {
+            println!("Employee ID: \t\t{}", employee_id);
+        }
+
+        // Additional info fields
+        if let Some(info) = user_entry.attrs.get("info").and_then(|v| v.first()) {
+            println!("Info: \t\t\t{}", info);
+        }
+
+        // Logon information
         if let Some(last_logon) = user_entry
             .attrs
             .get("lastLogon")
@@ -173,7 +290,6 @@ fn net_user(config: &mut LdapConfig, username: &str) -> Result<(), Box<dyn Error
             }
         }
 
-        // Logon count
         if let Some(count) = user_entry
             .attrs
             .get("logonCount")
@@ -183,22 +299,29 @@ fn net_user(config: &mut LdapConfig, username: &str) -> Result<(), Box<dyn Error
             println!("Logon Count: \t\t{}", count);
         }
 
-        // Email
-        if let Some(mail) = user_entry.attrs.get("mail").and_then(|v| v.first()) {
-            println!("Mail: \t\t\t{}", mail);
-        } else {
-            println!("Mail:");
+        if let Some(workstations) = user_entry.attrs.get("userWorkstations").and_then(|v| v.first()) {
+            println!("Workstations: \t\t{}", workstations);
         }
 
-        // SPNs
+        // SPNs (Kerberoastable accounts)
         if let Some(spns) = user_entry.attrs.get("servicePrincipalName") {
-            println!("SPN(s):");
+            println!("SPN(s) (Kerberoastable):");
             for spn in spns {
                 println!("\t\t\t{}", spn);
             }
         } else {
-            println!("SPN(s):");
+            println!("SPN(s): \t\tNone");
         }
+
+        // Group memberships
+        if let Some(groups) = user_entry.attrs.get("memberOf") {
+            println!("Group Memberships:");
+            for group in groups {
+                let group_name = extract_cn_from_dn(group);
+                println!("\t\t\t{}", group_name);
+            }
+        }
+
     } else {
         println!("User not found");
     }
@@ -223,7 +346,24 @@ fn net_group(config: &mut LdapConfig, groupname: &str) -> Result<(), Box<dyn Err
             "(&(objectCategory=group)(objectClass=group)(sAMAccountName={}))",
             escape_filter(groupname)
         ),
-        vec!["member", "description", "memberOf", "objectClass"],
+        vec![
+            "member", 
+            "description", 
+            "memberOf", 
+            "objectClass",
+            // Additional group attributes
+            "displayName",
+            "distinguishedName",
+            "groupType",
+            "whenCreated",
+            "whenChanged",
+            "info",
+            "managedBy",
+            "mail",
+            "adminCount",
+            "groupCategory",
+            "notes",
+        ],
     )?;
 
     let mut group_entry = None;
@@ -243,16 +383,92 @@ fn net_group(config: &mut LdapConfig, groupname: &str) -> Result<(), Box<dyn Err
             return Ok(());
         }
 
-        // Print group description if available
-        if let Some(desc) = group_entry.attrs.get("description").and_then(|v| v.first()) {
-            println!("Comment: {}", desc);
+        println!("\nGroup Information - {}:", groupname);
+        println!("-------------------------------------------------------------------------------");
+
+        // Basic group information
+        if let Some(display_name) = group_entry.attrs.get("displayName").and_then(|v| v.first()) {
+            println!("Display Name: \t\t{}", display_name);
         }
 
-        println!("\nPrimary Group Members");
+        if let Some(desc) = group_entry.attrs.get("description").and_then(|v| v.first()) {
+            println!("Description: \t\t{}", desc);
+        }
+
+        if let Some(dn) = group_entry.attrs.get("distinguishedName").and_then(|v| v.first()) {
+            println!("Distinguished Name: \t{}", dn);
+        }
+
+        // Group type information
+        if let Some(group_type) = group_entry
+            .attrs
+            .get("groupType")
+            .and_then(|v| v.first())
+            .and_then(|v| v.parse::<i64>().ok())
+        {
+            println!("Group Type: \t\t{} ({})", group_type, decode_group_type(group_type));
+        }
+
+        // Admin count (privileged group indicator)
+        if let Some(admin_count) = group_entry
+            .attrs
+            .get("adminCount")
+            .and_then(|v| v.first())
+            .and_then(|v| v.parse::<i64>().ok())
+        {
+            if admin_count > 0 {
+                println!("Admin Count: \t\t{} (Privileged Group)", admin_count);
+            }
+        }
+
+        // Management information
+        if let Some(managed_by) = group_entry.attrs.get("managedBy").and_then(|v| v.first()) {
+            let manager_name = extract_cn_from_dn(managed_by);
+            println!("Managed By: \t\t{}", manager_name);
+        }
+
+        if let Some(mail) = group_entry.attrs.get("mail").and_then(|v| v.first()) {
+            println!("Email: \t\t\t{}", mail);
+        }
+
+        // Creation and modification times
+        if let Some(created) = group_entry.attrs.get("whenCreated").and_then(|v| v.first()) {
+            println!("Created: \t\t{}", ldap_time_to_string(created));
+        }
+
+        if let Some(changed) = group_entry.attrs.get("whenChanged").and_then(|v| v.first()) {
+            println!("Last Changed: \t\t{}", ldap_time_to_string(changed));
+        }
+
+        // Additional info
+        if let Some(info) = group_entry.attrs.get("info").and_then(|v| v.first()) {
+            println!("Info: \t\t\t{}", info);
+        }
+
+        if let Some(notes) = group_entry.attrs.get("notes").and_then(|v| v.first()) {
+            println!("Notes: \t\t\t{}", notes);
+        }
+
+        println!("\nGroup Memberships (Groups this group belongs to):");
+        println!("-------------------------------------------------------------------------------");
+        if let Some(parent_groups) = group_entry.attrs.get("memberOf") {
+            for parent_group in parent_groups {
+                let group_name = extract_cn_from_dn(parent_group);
+                println!("{}", group_name);
+            }
+        } else {
+            println!("No parent group memberships");
+        }
+
+        println!("\nGroup Members:");
         println!("-------------------------------------------------------------------------------");
 
         // Get group members with paging
         if let Some(members) = group_entry.attrs.get("member") {
+            let mut user_count = 0;
+            let mut computer_count = 0;
+            let mut group_count = 0;
+
             for member_dn in members {
                 let adapters: Vec<Box<dyn Adapter<_, _>>> = vec![
                     Box::new(EntriesOnly::new()),
@@ -264,7 +480,7 @@ fn net_group(config: &mut LdapConfig, groupname: &str) -> Result<(), Box<dyn Err
                     &search_base,
                     Scope::Subtree,
                     &format!("(distinguishedName={})", escape_filter(member_dn)),
-                    vec!["sAMAccountName"],
+                    vec!["sAMAccountName", "objectClass", "userAccountControl"],
                 )?;
 
                 while let Some(entry) = search.next()? {
@@ -272,11 +488,49 @@ fn net_group(config: &mut LdapConfig, groupname: &str) -> Result<(), Box<dyn Err
                     if let Some(sam_name) =
                         member.attrs.get("sAMAccountName").and_then(|v| v.first())
                     {
-                        println!("{}", sam_name);
+                        let object_type = if let Some(object_classes) = member.attrs.get("objectClass") {
+                            if object_classes.contains(&"user".to_string()) {
+                                user_count += 1;
+                                if object_classes.contains(&"computer".to_string()) {
+                                    computer_count += 1;
+                                    "Computer"
+                                } else {
+                                    "User"
+                                }
+                            } else if object_classes.contains(&"group".to_string()) {
+                                group_count += 1;
+                                "Group"
+                            } else {
+                                "Unknown"
+                            }
+                        } else {
+                            "Unknown"
+                        };
+
+                        // Check if account is disabled
+                        let status = if let Some(uac) = member
+                            .attrs
+                            .get("userAccountControl")
+                            .and_then(|v| v.first())
+                            .and_then(|v| v.parse::<i64>().ok())
+                        {
+                            if uac & UF_ACCOUNTDISABLE != 0 {
+                                " (Disabled)"
+                            } else {
+                                ""
+                            }
+                        } else {
+                            ""
+                        };
+
+                        println!("{:<30} {:<10} {}", sam_name, object_type, status);
                     }
                 }
                 let _ = search.result().success()?;
             }
+
+            println!("\nMember Summary:");
+            println!("Users: {}, Computers: {}, Groups: {}", user_count, computer_count, group_count);
         } else {
             println!("No members found");
         }
@@ -288,12 +542,52 @@ fn net_group(config: &mut LdapConfig, groupname: &str) -> Result<(), Box<dyn Err
     Ok(())
 }
 
+fn extract_cn_from_dn(dn: &str) -> &str {
+    if let Some(cn_part) = dn.split(',').next() {
+        if cn_part.starts_with("CN=") {
+            &cn_part[3..] // Remove "CN=" prefix
+        } else {
+            cn_part
+        }
+    } else {
+        dn
+    }
+}
+
+fn decode_group_type(group_type: i64) -> &'static str {
+    match group_type {
+        -2147483646 => "Global Security Group",
+        -2147483644 => "Domain Local Security Group", 
+        -2147483640 => "Universal Security Group",
+        2 => "Global Distribution Group",
+        4 => "Domain Local Distribution Group",
+        8 => "Universal Distribution Group",
+        _ => "Unknown Group Type",
+    }
+}
+
 fn windows_time_to_string(windows_time: i64) -> String {
     let unix_time = (windows_time - 116444736000000000) / 10000000;
     if let Some(dt) = DateTime::from_timestamp(unix_time, 0) {
         dt.format("%m/%d/%Y %I:%M:%S %p").to_string()
     } else {
         "Invalid date".to_string()
+    }
+}
+
+fn ldap_time_to_string(ldap_time: &str) -> String {
+    // Parse LDAP generalized time format: YYYYMMDDHHMMSS.fZ
+    if ldap_time.len() >= 14 {
+        let year = &ldap_time[0..4];
+        let month = &ldap_time[4..6];
+        let day = &ldap_time[6..8];
+        let hour = &ldap_time[8..10];
+        let minute = &ldap_time[10..12];
+        let second = &ldap_time[12..14];
+        
+        format!("{}/{}/{} {}:{}:{}", month, day, year, hour, minute, second)
+    } else {
+        ldap_time.to_string()
     }
 }
 
