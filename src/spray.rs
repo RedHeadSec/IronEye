@@ -60,7 +60,6 @@ struct SprayState {
     valid_credentials: Vec<AttemptResult>,
     total_attempts: u32,
     successful_attempts: u32,
-    last_attempt_time: Option<Instant>,
 }
 
 #[derive(Debug)]
