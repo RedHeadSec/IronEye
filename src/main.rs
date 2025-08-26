@@ -5,7 +5,7 @@ const LOGO: &str = r#"
 ░▒▓█▓▒░ ░▒▓█▓▒░ ░▒▓█▓▒░  ░▒▓█▓▒░ ░▒▓█▓▒░ ░▒▓█▓▒░ ░▒▓█▓▒░ ░▒▓█▓▒░            ░▒▓█▓▒░     ░▒▓█▓▒░        
 ░▒▓█▓▒░ ░▒▓█▓▒░ ░▒▓█▓▒░   ░▒▓██████▓▒░   ░▒▓█▓▒░ ░▒▓█▓▒░ ░▒▓████████▓▒░     ░▒▓█▓▒░     ░▒▓████████▓▒░ 
 
-Multi-purpose LDAP/Kerberos tool | v1.0 | By: Evasive_Ginger
+Multi-purpose LDAP/Kerberos tool | By: Evasive_Ginger
 Cerbero Implementation: https://github.com/zer1t0/cerbero
 "#;
 
@@ -69,7 +69,7 @@ fn main() {
             2 => handle_user_enumeration(),
             3 => handle_password_spray(),
             4 => handle_krb5_config(),
-            5 => println!("v1.2"),
+            5 => println!("v1.3"), // Version
             6 => show_help_main(),
             7 => {
                 if confirm_exit() {

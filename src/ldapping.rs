@@ -9,7 +9,6 @@ use std::sync::{Arc, Mutex};
 use std::thread;
 
 const DEFAULT_LDAP_PORT: u16 = 389;
-const DEFAULT_THREAD_COUNT: usize = 4;
 const MAX_THREAD_COUNT: usize = 20;
 const NETLOGON_RESPONSE_CODE: u8 = 0x17;
 
