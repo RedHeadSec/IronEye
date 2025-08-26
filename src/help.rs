@@ -1,8 +1,7 @@
 use chrono::Local;
 use std::error::Error;
-use std::fs::{File, OpenOptions};
+use std::fs::File;
 use std::io::{self, BufRead, BufReader, Write};
-use std::path::Path;
 
 pub fn show_help_main() {
     println!("\nHelp Information:");

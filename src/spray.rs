@@ -182,7 +182,7 @@ pub fn start_password_spray(config: SprayConfig) -> Result<(), Box<dyn Error>> {
         }
     };
     
-    finalize_spray(&config, state, output_file)?;
+    finalize_spray(state, output_file)?;
     Ok(())
 }
 
@@ -305,7 +305,6 @@ fn execute_spray(
                 username: username.clone(),
                 password: password.clone(),
                 dc: selected_dc.clone(),
-                password_index,
             });
         }
 
@@ -344,7 +343,6 @@ struct WorkItem {
     username: String,
     password: String,
     dc: String,
-    password_index: usize,
 }
 
 fn process_password_batch_realtime(
@@ -681,7 +679,6 @@ fn create_output_file() -> Result<File, Box<dyn Error>> {
 }
 
 fn finalize_spray(
-    config: &SprayConfig,
     state: Arc<Mutex<SprayState>>,
     mut output_file: Option<File>,
 ) -> Result<(), Box<dyn Error>> {

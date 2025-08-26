@@ -1,4 +1,3 @@
-use crate::help::add_terminal_spacing;
 use crate::ldap::LdapConfig;
 use ldap3::{LdapConn, Scope, SearchEntry};
 use std::error::Error;
