@@ -399,8 +399,6 @@ fn process_password_batch_realtime(
                     domain: config_clone.domain.clone(),
                     dc: work_item.dc,
                     result: result.0,
-                    raw_error: result.1,
-                    timestamp: Instant::now(),
                 };
 
                 if result_tx_clone.send(attempt_result).is_err() {
