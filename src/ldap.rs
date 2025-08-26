@@ -169,7 +169,7 @@ pub fn format_guid(guid: &[u8]) -> String {
     )
 }
 
-fn format_sid(raw_sid: &[u8]) -> String {
+pub fn format_sid(raw_sid: &[u8]) -> String {
     let mut cursor = Cursor::new(raw_sid);
 
     let revision = cursor.read_u8().unwrap_or(0);
