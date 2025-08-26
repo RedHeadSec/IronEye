@@ -49,8 +49,6 @@ struct AttemptResult {
     domain: String,
     dc: String,
     result: LoginResult,
-    raw_error: Option<String>,
-    timestamp: Instant,
 }
 
 #[derive(Debug)]
