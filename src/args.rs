@@ -195,12 +195,12 @@ fn read_with_history(rl: &mut DefaultEditor, history_file: &str) -> Option<Strin
 }
 
 fn parse_connect_args(input: &str) -> Option<LdapConfig> {
-    let args: Vec<&str> = input.split_whitespace().collect();
+    let args = parse_shell_args(input);
     let mut config = ConnectConfig::default();
 
     let mut i = 0;
     while i < args.len() {
-        match args[i] {
+        match args[i].as_str() {
             "-u" | "--username" => config.username = get_arg_value(&args, &mut i)?,
             "-p" | "--password" => {
                 if config.kerberos {
@@ -242,12 +242,12 @@ fn parse_connect_args(input: &str) -> Option<LdapConfig> {
 }
 
 fn parse_spray_args(input: &str) -> Option<SprayArgs> {
-    let args: Vec<&str> = input.split_whitespace().collect();
+    let args = parse_shell_args(input);
     let mut config = SprayConfig::default();
 
     let mut i = 0;
     while i < args.len() {
-        match args[i] {
+        match args[i].as_str() {
             "-u" | "--users" => config.userfile = get_arg_value(&args, &mut i)?,
             "-p" | "--passwords" => config.password = get_arg_value(&args, &mut i)?,
             "-d" | "--domain" => config.domain = get_arg_value(&args, &mut i)?,
@@ -291,12 +291,12 @@ fn parse_spray_args(input: &str) -> Option<SprayArgs> {
 }
 
 fn parse_userenum_args(input: &str) -> Option<UserEnumArgs> {
-    let args: Vec<&str> = input.split_whitespace().collect();
+    let args = parse_shell_args(input);
     let mut config = UserEnumConfig::default();
 
     let mut i = 0;
     while i < args.len() {
-        match args[i] {
+        match args[i].as_str() {
             "-u" | "--userfile" => config.userfile = get_arg_value(&args, &mut i)?,
             "-d" | "--domain" => config.domain = get_arg_value(&args, &mut i)?,
             "-i" | "--dc-ip" => config.dc_ip = get_arg_value(&args, &mut i)?,
@@ -318,9 +318,46 @@ fn parse_userenum_args(input: &str) -> Option<UserEnumArgs> {
     config.validate()
 }
 
-fn get_arg_value(args: &[&str], index: &mut usize) -> Option<String> {
+fn parse_shell_args(input: &str) -> Vec<String> {
+    let mut args = Vec::new();
+    let mut current = String::new();
+    let mut in_single_quote = false;
+    let mut in_double_quote = false;
+    let mut chars = input.chars().peekable();
+
+    while let Some(c) = chars.next() {
+        match c {
+            '\'' if !in_double_quote => {
+                in_single_quote = !in_single_quote;
+            }
+            '"' if !in_single_quote => {
+                in_double_quote = !in_double_quote;
+            }
+            ' ' | '\t' if !in_single_quote && !in_double_quote => {
+                if !current.is_empty() {
+                    args.push(current.clone());
+                    current.clear();
+                }
+            }
+            '\\' if chars.peek().is_some() => {
+                current.push(chars.next().unwrap());
+            }
+            _ => {
+                current.push(c);
+            }
+        }
+    }
+
+    if !current.is_empty() {
+        args.push(current);
+    }
+
+    args
+}
+
+fn get_arg_value(args: &[String], index: &mut usize) -> Option<String> {
     if *index + 1 < args.len() {
-        let value = args[*index + 1].to_string();
+        let value = args[*index + 1].clone();
         *index += 2;
         Some(value)
     } else {
@@ -329,7 +366,7 @@ fn get_arg_value(args: &[&str], index: &mut usize) -> Option<String> {
     }
 }
 
-fn get_numeric_arg<T>(args: &[&str], index: &mut usize, default: T) -> Option<T>
+fn get_numeric_arg<T>(args: &[String], index: &mut usize, default: T) -> Option<T>
 where
     T: std::str::FromStr + Copy,
 {
