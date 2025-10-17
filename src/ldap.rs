@@ -1,13 +1,15 @@
 use crate::help::get_timestamp;
-use base64::decode;
+use crate::kerberos::ccache::{parse_ccache_file, validate_ccache};
+use crate::kerberos::env::{determine_ccache_path, restore_krb5ccname, set_krb5ccname_temp};
+use crate::kerberos::krb5conf::{create_temp_krb5_conf, generate_krb5_conf_from_ccache, restore_krb5_config_env, set_krb5_config_env};
 use byteorder::{LittleEndian, ReadBytesExt};
-use ldap3::adapters::{Adapter, EntriesOnly, PagedResults};
-use ldap3::controls::RawControl;
-use ldap3::{result::Result, LdapConn, LdapConnSettings, LdapError, Scope, SearchEntry};
-use std::error::Error;
+use ldap3::{LdapConn, LdapConnSettings, LdapError, Scope, SearchEntry};
 use std::io::{Cursor, Read};
 use std::time::Duration;
-use uuid::Uuid;
+
+const CONNECTION_TIMEOUT_SECS: u64 = 30;
+const GUID_LENGTH: usize = 16;
+const SID_AUTHORITY_BYTES: usize = 6;
 
 #[derive(Clone)]
 pub struct LdapConfig {
@@ -19,45 +21,107 @@ pub struct LdapConfig {
     pub secure_ldaps: bool,
     pub timestamp_format: bool,
     pub kerberos: bool,
+    pub ccache_path: Option<String>,
 }
 
 #[cfg(target_os = "linux")]
-pub fn ldap_connect(config: &LdapConfig) -> Result<(LdapConn, String)> {
+pub fn ldap_connect(config: &LdapConfig) -> Result<(LdapConn, String), LdapError> {
     let settings = LdapConnSettings::new()
-        .set_conn_timeout(Duration::from_secs(30))
+        .set_conn_timeout(Duration::from_secs(CONNECTION_TIMEOUT_SECS))
         .set_no_tls_verify(true);
 
-    // Construct the LDAP URL
     let ldap_url = if config.secure_ldaps {
         format!("ldaps://{}", config.dc_ip)
     } else {
         format!("ldap://{}", config.dc_ip)
     };
 
-    // Create the LDAP connection
     let mut ldap = LdapConn::with_settings(settings, &ldap_url)?;
 
-    // If Kerberos is enabled, use SASL GSSAPI for authentication
     if config.kerberos {
-        println!("[*] Using Kerberos authentication for LDAP.");
-        ldap.sasl_gssapi_bind(&config.dc_ip)?.success()?; // Use GSSAPI (Kerberos) for authentication
-    } else {
-        // If not using Kerberos, fallback to simple bind with username/password or hash
-        let bind_dn = format!("{}@{}", config.username, config.domain);
+        let ccache_to_use = determine_ccache_path(config.ccache_path.as_ref()).map_err(|e| {
+            LdapError::Io {
+                source: std::io::Error::new(std::io::ErrorKind::NotFound, e),
+            }
+        })?;
 
-        if let Some(hash) = &config.hash {
-            ldap.simple_bind(&bind_dn, hash)?.success()?;
-        } else {
-            ldap.simple_bind(&bind_dn, &config.password)?.success()?;
+        println!("[*] Using Kerberos authentication for LDAP.");
+        println!("[*] Ccache file: {}", ccache_to_use);
+
+        match parse_ccache_file(&ccache_to_use) {
+            Ok(ccache) => {
+                match validate_ccache(&ccache) {
+                    Ok(info) => {
+                        println!("[+] Valid TGT found for {}", info.principal);
+                        println!("[+] Ticket expires: {} ({} remaining)", info.end_time, info.time_remaining);
+
+                        if let Some(tgt) = crate::kerberos::ccache::find_tgt(&ccache) {
+                            let minutes_remaining = tgt.expires_in_minutes();
+                            if minutes_remaining < 60 {
+                                println!("[!] Warning: Ticket expires in less than 1 hour!");
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        eprintln!("[!] Ccache validation failed: {}", e);
+                        return Err(LdapError::Io {
+                            source: std::io::Error::new(
+                                std::io::ErrorKind::InvalidData,
+                                format!("Invalid ccache: {}", e),
+                            ),
+                        });
+                    }
+                }
+
+                // Generate krb5.conf from ccache
+                let krb5_conf = generate_krb5_conf_from_ccache(&ccache, &config.dc_ip)
+                    .map_err(|e| LdapError::Io {
+                        source: std::io::Error::new(
+                            std::io::ErrorKind::Other,
+                            format!("Failed to generate krb5.conf: {}", e),
+                        ),
+                    })?;
+                
+                let krb5_conf_path = create_temp_krb5_conf(&krb5_conf)
+                    .map_err(|e| LdapError::Io {
+                        source: e,
+                    })?;
+                
+                println!("[*] Generated temporary krb5.conf at {}", krb5_conf_path);
+                
+                let original_krb5_config = set_krb5_config_env(&krb5_conf_path);
+                let original_krb5ccname = set_krb5ccname_temp(&ccache_to_use);
+                
+                let bind_result = ldap.sasl_gssapi_bind(&config.dc_ip)?.success();
+                
+                restore_krb5ccname(original_krb5ccname);
+                restore_krb5_config_env(original_krb5_config);
+                
+                // Clean up temp file
+                let _ = std::fs::remove_file(krb5_conf_path);
+                
+                bind_result?;
+            }
+            Err(e) => {
+                eprintln!("[!] Failed to parse ccache file: {}", e);
+                return Err(LdapError::Io {
+                    source: std::io::Error::new(
+                        std::io::ErrorKind::InvalidData,
+                        format!("Failed to parse ccache: {}", e),
+                    ),
+                });
+            }
         }
+    } else {
+        let bind_dn = format!("{}@{}", config.username, config.domain);
+        let credential = config.hash.as_ref().unwrap_or(&config.password);
+        ldap.simple_bind(&bind_dn, credential)?.success()?;
     }
 
-    // Optionally print a timestamp if enabled
     if config.timestamp_format {
         println!("\n[{}]\n", get_timestamp());
     }
 
-    // Perform a base search to verify the connection and retrieve the base DN
     let search_base = config
         .domain
         .split('.')
@@ -78,46 +142,107 @@ pub fn ldap_connect(config: &LdapConfig) -> Result<(LdapConn, String)> {
         println!("[!] Warning: No results returned from the base search.");
     }
 
-    // Return both the connection and the search base
     Ok((ldap, search_base))
 }
 
-#[cfg(not(target_os = "linux"))]
-pub fn ldap_connect(config: &LdapConfig) -> Result<(LdapConn, String)> {
+#[cfg(target_os = "windows")]
+pub fn ldap_connect(config: &LdapConfig) -> Result<(LdapConn, String), LdapError> {
     let settings = LdapConnSettings::new()
-        .set_conn_timeout(Duration::from_secs(30))
+        .set_conn_timeout(Duration::from_secs(CONNECTION_TIMEOUT_SECS))
         .set_no_tls_verify(true);
 
-    // Construct the LDAP URL
     let ldap_url = if config.secure_ldaps {
         format!("ldaps://{}", config.dc_ip)
     } else {
         format!("ldap://{}", config.dc_ip)
     };
 
-    // Create the LDAP connection
     let mut ldap = LdapConn::with_settings(settings, &ldap_url)?;
 
     if config.kerberos {
-        println!("[!] KERBEROS AUTH IS NOT WORKING ON OSX FOR THIS MODULE. USE LINUX/WINDOWS OR PASSWORD!");
-        return Err(LdapError::Io {
-            source: std::io::Error::new(
-                std::io::ErrorKind::Other,
-                "Kerberos is not supported on this platform for this module",
-            ),
-        });
-    } else {
-        // If not using Kerberos, fallback to simple bind with username/password
-        let bind_dn = format!("{}@{}", config.username, config.domain);
-        ldap.simple_bind(&bind_dn, &config.password)?.success()?;
-    };
+        let ccache_to_use = determine_ccache_path(config.ccache_path.as_ref()).map_err(|e| {
+            LdapError::Io {
+                source: std::io::Error::new(std::io::ErrorKind::NotFound, e),
+            }
+        })?;
 
-    // Optionally print a timestamp if enabled
+        println!("[*] Using Kerberos authentication for LDAP.");
+        println!("[*] Ccache file: {}", ccache_to_use);
+
+        match parse_ccache_file(&ccache_to_use) {
+            Ok(ccache) => {
+                match validate_ccache(&ccache) {
+                    Ok(info) => {
+                        println!("[+] Valid TGT found for {}", info.principal);
+                        println!("[+] Ticket expires: {} ({} remaining)", info.end_time, info.time_remaining);
+
+                        if let Some(tgt) = crate::kerberos::ccache::find_tgt(&ccache) {
+                            let minutes_remaining = tgt.expires_in_minutes();
+                            if minutes_remaining < 60 {
+                                println!("[!] Warning: Ticket expires in less than 1 hour!");
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        eprintln!("[!] Ccache validation failed: {}", e);
+                        return Err(LdapError::Io {
+                            source: std::io::Error::new(
+                                std::io::ErrorKind::InvalidData,
+                                format!("Invalid ccache: {}", e),
+                            ),
+                        });
+                    }
+                }
+
+                // Generate krb5.conf from ccache
+                let krb5_conf = generate_krb5_conf_from_ccache(&ccache, &config.dc_ip)
+                    .map_err(|e| LdapError::Io {
+                        source: std::io::Error::new(
+                            std::io::ErrorKind::Other,
+                            format!("Failed to generate krb5.conf: {}", e),
+                        ),
+                    })?;
+                
+                let krb5_conf_path = create_temp_krb5_conf(&krb5_conf)
+                    .map_err(|e| LdapError::Io {
+                        source: e,
+                    })?;
+                
+                println!("[*] Generated temporary krb5.conf at {}", krb5_conf_path);
+                
+                let original_krb5_config = set_krb5_config_env(&krb5_conf_path);
+                let original_krb5ccname = set_krb5ccname_temp(&ccache_to_use);
+                
+                let bind_result = ldap.sasl_gssapi_bind(&config.dc_ip)?.success();
+                
+                restore_krb5ccname(original_krb5ccname);
+                restore_krb5_config_env(original_krb5_config);
+                
+                // Clean up temp file
+                let _ = std::fs::remove_file(krb5_conf_path);
+                
+                bind_result?;
+            }
+            Err(e) => {
+                eprintln!("[!] Failed to parse ccache file: {}", e);
+                return Err(LdapError::Io {
+                    source: std::io::Error::new(
+                        std::io::ErrorKind::InvalidData,
+                        format!("Failed to parse ccache: {}", e),
+                    ),
+                });
+            }
+        }
+    } else {
+        let bind_dn = format!("{}@{}", config.username, config.domain);
+        let credential = config.hash.as_ref().unwrap_or(&config.password);
+        ldap.simple_bind(&bind_dn, credential)?.success()?;
+    }
+
     if config.timestamp_format {
         println!("[{}]\n", get_timestamp());
     }
 
-    // Perform a base search to verify the connection and retrieve the base DN
     let search_base = config
         .domain
         .split('.')
@@ -138,7 +263,69 @@ pub fn ldap_connect(config: &LdapConfig) -> Result<(LdapConn, String)> {
         println!("[!] Warning: No results returned from the base search.");
     }
 
-    // Return both the connection and the search base
+    Ok((ldap, search_base))
+}
+
+#[cfg(target_os = "macos")]
+pub fn ldap_connect(config: &LdapConfig) -> Result<(LdapConn, String), LdapError> {
+    let settings = LdapConnSettings::new()
+        .set_conn_timeout(Duration::from_secs(CONNECTION_TIMEOUT_SECS))
+        .set_no_tls_verify(true);
+
+    let ldap_url = if config.secure_ldaps {
+        format!("ldaps://{}", config.dc_ip)
+    } else {
+        format!("ldap://{}", config.dc_ip)
+    };
+
+    let mut ldap = LdapConn::with_settings(settings, &ldap_url)?;
+
+    if config.kerberos {
+        println!("[!] Kerberos GSSAPI is not supported on macOS with Heimdal.");
+        println!("[!] Options:");
+        println!("    1. Use password authentication (-u -p)");
+        println!("    2. Run IronEye on Linux/Windows");
+        println!("    3. Install MIT Kerberos on macOS:");
+        println!("       brew install krb5");
+        println!("       export PATH=\"/opt/homebrew/opt/krb5/bin:$PATH\"");
+        println!("       export LDFLAGS=\"-L/opt/homebrew/opt/krb5/lib\"");
+        println!("       export CPPFLAGS=\"-I/opt/homebrew/opt/krb5/include\"");
+        println!("       cargo clean && cargo build --release");
+        return Err(LdapError::Io {
+            source: std::io::Error::new(
+                std::io::ErrorKind::Other,
+                "Kerberos GSSAPI not supported with macOS Heimdal Kerberos",
+            ),
+        });
+    } else {
+        let bind_dn = format!("{}@{}", config.username, config.domain);
+        ldap.simple_bind(&bind_dn, &config.password)?.success()?;
+    }
+
+    if config.timestamp_format {
+        println!("[{}]\n", get_timestamp());
+    }
+
+    let search_base = config
+        .domain
+        .split('.')
+        .map(|part| format!("DC={}", part))
+        .collect::<Vec<_>>()
+        .join(",");
+
+    let (results, _) = ldap
+        .search(
+            &search_base,
+            Scope::Base,
+            "(objectClass=*)",
+            vec!["distinguishedName"],
+        )?
+        .success()?;
+
+    if results.is_empty() {
+        println!("[!] Warning: No results returned from the base search.");
+    }
+
     Ok((ldap, search_base))
 }
 
@@ -151,25 +338,8 @@ pub fn escape_filter(input: &str) -> String {
         .replace('\0', "\\00")
 }
 
-/// Convert a username to a SID
 pub fn extract_sid(search_entry: &SearchEntry) -> Option<String> {
-    //println!("[DEBUG] Streaming Entry DN: {}", search_entry.dn);
-    /*
-    // Print all binary attributes for debugging
-    for (attr, values) in &search_entry.bin_attrs {
-        println!("[DEBUG] Attribute: {}", attr);
-        for value in values {
-            // Try converting the raw bytes to text; if it fails, print a base64 version.
-            match std::str::from_utf8(value) {
-                Ok(text) => println!("         Value (as text): {}", text),
-                Err(_) => println!("         Value (binary, base64): {}", base64::encode(value)),
-            }
-        }
-    }
-    */
-    // Retrieve and convert the objectSid
     if let Some(sid_values) = search_entry.bin_attrs.get("objectSid") {
-        //println!("[DEBUG] Found objectSid: {:?}", sid_values[0]);
         Some(format_sid(&sid_values[0]))
     } else {
         println!("[DEBUG] `objectSid` attribute missing.");
@@ -178,17 +348,13 @@ pub fn extract_sid(search_entry: &SearchEntry) -> Option<String> {
 }
 
 pub fn format_guid(guid: &[u8]) -> String {
-    if guid.len() != 16 {
-        return String::from("Invalid GUID");
+    if guid.len() != GUID_LENGTH {
+        return "Invalid GUID".to_string();
     }
 
-    // Convert the first 4 bytes as a little-endian u32.
     let data1 = u32::from_le_bytes([guid[0], guid[1], guid[2], guid[3]]);
-    // Next 2 bytes as a little-endian u16.
     let data2 = u16::from_le_bytes([guid[4], guid[5]]);
-    // Next 2 bytes as a little-endian u16.
     let data3 = u16::from_le_bytes([guid[6], guid[7]]);
-    // The remaining 8 bytes remain in their original order.
     let data4 = &guid[8..10];
     let data5 = &guid[10..16];
 
@@ -208,14 +374,16 @@ pub fn format_guid(guid: &[u8]) -> String {
     )
 }
 
-/// Converts raw SID bytes into a readable string.
-fn format_sid(raw_sid: &Vec<u8>) -> String {
+pub fn format_sid(raw_sid: &[u8]) -> String {
     let mut cursor = Cursor::new(raw_sid);
-    let revision = cursor.read_u8().unwrap();
-    let sub_auth_count = cursor.read_u8().unwrap();
 
-    let mut identifier_authority = [0u8; 6];
-    cursor.read_exact(&mut identifier_authority).unwrap();
+    let revision = cursor.read_u8().unwrap_or(0);
+    let sub_auth_count = cursor.read_u8().unwrap_or(0);
+
+    let mut identifier_authority = [0u8; SID_AUTHORITY_BYTES];
+    if cursor.read_exact(&mut identifier_authority).is_err() {
+        return "Invalid SID".to_string();
+    }
 
     let authority = u64::from_be_bytes([
         0,
@@ -231,8 +399,11 @@ fn format_sid(raw_sid: &Vec<u8>) -> String {
     let mut sid = format!("S-{}-{}", revision, authority);
 
     for _ in 0..sub_auth_count {
-        let sub_auth = cursor.read_u32::<LittleEndian>().unwrap();
-        sid.push_str(&format!("-{}", sub_auth));
+        if let Ok(sub_auth) = cursor.read_u32::<LittleEndian>() {
+            sid.push_str(&format!("-{}", sub_auth));
+        } else {
+            break;
+        }
     }
 
     sid
@@ -240,55 +411,56 @@ fn format_sid(raw_sid: &Vec<u8>) -> String {
 
 pub fn format_sid_for_ldap(sid: &str) -> String {
     let parts: Vec<&str> = sid.split('-').collect();
-    let mut binary_sid = vec![];
-
-    binary_sid.push(parts[1].parse::<u8>().unwrap()); // Revision
-    let identifier_authority = parts[2].parse::<u64>().unwrap();
-    binary_sid.extend_from_slice(&identifier_authority.to_be_bytes()[2..]); // 6-byte authority
-
-    for sub_auth in &parts[3..] {
-        let sub_auth_num = sub_auth.parse::<u32>().unwrap();
-        binary_sid.extend_from_slice(&sub_auth_num.to_le_bytes()); // 4-byte sub-auths
+    if parts.len() < 3 {
+        return String::new();
     }
 
-    let mut ldap_sid = String::new();
-    for byte in binary_sid {
-        ldap_sid.push_str(&format!("\\{:02X}", byte));
+    let mut binary_sid = Vec::new();
+
+    if let Ok(revision) = parts[1].parse::<u8>() {
+        binary_sid.push(revision);
+    } else {
+        return String::new();
     }
 
-    ldap_sid
+    if let Ok(identifier_authority) = parts[2].parse::<u64>() {
+        binary_sid.extend_from_slice(&identifier_authority.to_be_bytes()[2..]);
+    } else {
+        return String::new();
+    }
+
+    for sub_auth_str in &parts[3..] {
+        if let Ok(sub_auth) = sub_auth_str.parse::<u32>() {
+            binary_sid.extend_from_slice(&sub_auth.to_le_bytes());
+        }
+    }
+
+    binary_sid
+        .iter()
+        .map(|byte| format!("\\{:02X}", byte))
+        .collect()
 }
 
 pub fn format_guid_for_ldap(guid: &str) -> String {
-    // Remove all non-hex characters (dashes, etc).
     let cleaned: String = guid.chars().filter(|c| c.is_ascii_hexdigit()).collect();
-    assert!(
-        cleaned.len() == 32,
-        "GUID string must contain 32 hex digits"
-    );
 
-    // Decode the cleaned hex string into 16 bytes.
-    let bytes = hex::decode(cleaned).unwrap();
-
-    // The GUID consists of 5 fields:
-    // Data1: 4 bytes, Data2: 2 bytes, Data3: 2 bytes, Data4: 2 bytes, Data5: 6 bytes.
-    // For LDAP filters, the first three fields must be in little-endian order.
-    let mut reordered = Vec::with_capacity(16);
-    
-    // Data1 (first 4 bytes) reversed.
-    reordered.extend_from_slice(&bytes[0..4].iter().rev().cloned().collect::<Vec<u8>>());
-    // Data2 (next 2 bytes) reversed.
-    reordered.extend_from_slice(&bytes[4..6].iter().rev().cloned().collect::<Vec<u8>>());
-    // Data3 (next 2 bytes) reversed.
-    reordered.extend_from_slice(&bytes[6..8].iter().rev().cloned().collect::<Vec<u8>>());
-    // Data4 and Data5 (remaining 8 bytes) remain in order.
-    reordered.extend_from_slice(&bytes[8..16]);
-    
-    // Convert each byte to an escaped hex value.
-    let mut ldap_guid = String::new();
-    for byte in reordered {
-        ldap_guid.push_str(&format!("\\{:02X}", byte));
+    if cleaned.len() != 32 {
+        return String::new();
     }
-    
-    ldap_guid
+
+    let Ok(bytes) = hex::decode(cleaned) else {
+        return String::new();
+    };
+
+    let mut reordered = Vec::with_capacity(GUID_LENGTH);
+
+    reordered.extend(bytes[0..4].iter().rev());
+    reordered.extend(bytes[4..6].iter().rev());
+    reordered.extend(bytes[6..8].iter().rev());
+    reordered.extend_from_slice(&bytes[8..16]);
+
+    reordered
+        .iter()
+        .map(|byte| format!("\\{:02X}", byte))
+        .collect()
 }

@@ -4,7 +4,6 @@ version = "0.2.0"
 edition = "2021"
 
 [dependencies]
-cerbero = { path = "./src/kerberos/cerbero" }
 dialoguer = "0.10"
 clap = { version = "4.3", features = ["derive"] }
 chrono = "0.4"
@@ -13,6 +12,7 @@ base64 = "0.21"
 hex = "0.4" 
 lazy_static = "1.4.0"
 rand = "0.8"
+fastrand = "2.0"
 url = "2.5.0"
 tokio = { version = "1", features = ["full"] }
 csv = "1.1"
@@ -23,6 +23,9 @@ log = "0.4"
 byteorder = "1.4"
 uuid = { version = "1", features = ["v4"] }
 
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
+
 
 
 [target.'cfg(target_os = "linux")'.dependencies]
@@ -32,4 +35,4 @@ ldap3 = { version = "0.11", features = ["gssapi"] }
 ldap3 = { version = "0.11", features = ["gssapi"] }
 
 [target.'cfg(target_os = "macos")'.dependencies]
-ldap3 = { version = "0.11" } # No gssapi feature for macOS
+ldap3 = { version = "0.11" } # GSSAPI not supported with macOS Heimdal - see README for MIT Kerberos workaround
