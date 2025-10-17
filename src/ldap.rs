@@ -25,15 +25,15 @@ pub struct LdapConfig {
 }
 
 #[cfg(target_os = "linux")]
-pub fn ldap_connect(config: &LdapConfig) -> Result<(LdapConn, String), LdapError> {
+pub fn ldap_connect(config: &mut LdapConfig) -> Result<(LdapConn, String), LdapError> {
     let settings = LdapConnSettings::new()
         .set_conn_timeout(Duration::from_secs(CONNECTION_TIMEOUT_SECS))
         .set_no_tls_verify(true);
 
     let ldap_url = if config.secure_ldaps {
-        format!("ldaps://{}", config.dc_ip)
+        format!("ldaps://{}", config.dc_ip.to_lowercase())
     } else {
-        format!("ldap://{}", config.dc_ip)
+        format!("ldap://{}", config.dc_ip.to_lowercase())
     };
 
     let mut ldap = LdapConn::with_settings(settings, &ldap_url)?;
@@ -45,7 +45,27 @@ pub fn ldap_connect(config: &LdapConfig) -> Result<(LdapConn, String), LdapError
             }
         })?;
 
-        println!("[*] Using Kerberos authentication for LDAP.");
+        // Validate DC address for Kerberos
+        if config.dc_ip.parse::<std::net::IpAddr>().is_ok() {
+            eprintln!("[!] Error: Kerberos authentication requires a hostname/FQDN, not an IP address.");
+            eprintln!("[!] Current value: {}", config.dc_ip);
+            eprintln!("[!] Please use the DC's FQDN instead.");
+            eprintln!("[!] Example: -i dc01.redheadsec.local instead of -i {}", config.dc_ip);
+            return Err(LdapError::Io {
+                source: std::io::Error::new(
+                    std::io::ErrorKind::InvalidInput,
+                    "Kerberos requires hostname/FQDN, not IP address",
+                ),
+            });
+        }
+
+        // Normalize hostname to lowercase (Kerberos convention)
+        let normalized_dc = config.dc_ip.to_lowercase();
+        if normalized_dc != config.dc_ip {
+            //println!("[*] Normalized hostname: {} -> {}", config.dc_ip, normalized_dc);
+        }
+
+        //println!("[*] Using Kerberos authentication for LDAP.");
         println!("[*] Ccache file: {}", ccache_to_use);
 
         match parse_ccache_file(&ccache_to_use) {
@@ -73,8 +93,12 @@ pub fn ldap_connect(config: &LdapConfig) -> Result<(LdapConn, String), LdapError
                     }
                 }
 
-                // Generate krb5.conf from ccache
-                let krb5_conf = generate_krb5_conf_from_ccache(&ccache, &config.dc_ip)
+                // Extract username from ccache if not provided
+                if config.username.is_empty() && !ccache.default_principal.components.is_empty() {
+                    config.username = ccache.default_principal.components[0].clone();
+                }
+
+                let krb5_conf = generate_krb5_conf_from_ccache(&ccache, &normalized_dc)
                     .map_err(|e| LdapError::Io {
                         source: std::io::Error::new(
                             std::io::ErrorKind::Other,
@@ -87,17 +111,17 @@ pub fn ldap_connect(config: &LdapConfig) -> Result<(LdapConn, String), LdapError
                         source: e,
                     })?;
                 
-                println!("[*] Generated temporary krb5.conf at {}", krb5_conf_path);
+                //println!("[*] Generated temporary krb5.conf at {}", krb5_conf_path);
+                //println!("[*] Service Principal: ldap/{}@{}", normalized_dc, ccache.default_principal.realm);
                 
                 let original_krb5_config = set_krb5_config_env(&krb5_conf_path);
                 let original_krb5ccname = set_krb5ccname_temp(&ccache_to_use);
                 
-                let bind_result = ldap.sasl_gssapi_bind(&config.dc_ip)?.success();
+                let bind_result = ldap.sasl_gssapi_bind(&normalized_dc)?.success();
                 
                 restore_krb5ccname(original_krb5ccname);
                 restore_krb5_config_env(original_krb5_config);
                 
-                // Clean up temp file
                 let _ = std::fs::remove_file(krb5_conf_path);
                 
                 bind_result?;
@@ -146,15 +170,15 @@ pub fn ldap_connect(config: &LdapConfig) -> Result<(LdapConn, String), LdapError
 }
 
 #[cfg(target_os = "windows")]
-pub fn ldap_connect(config: &LdapConfig) -> Result<(LdapConn, String), LdapError> {
+pub fn ldap_connect(config: &mut LdapConfig) -> Result<(LdapConn, String), LdapError> {
     let settings = LdapConnSettings::new()
         .set_conn_timeout(Duration::from_secs(CONNECTION_TIMEOUT_SECS))
         .set_no_tls_verify(true);
 
     let ldap_url = if config.secure_ldaps {
-        format!("ldaps://{}", config.dc_ip)
+        format!("ldaps://{}", config.dc_ip.to_lowercase())
     } else {
-        format!("ldap://{}", config.dc_ip)
+        format!("ldap://{}", config.dc_ip.to_lowercase())
     };
 
     let mut ldap = LdapConn::with_settings(settings, &ldap_url)?;
@@ -165,6 +189,26 @@ pub fn ldap_connect(config: &LdapConfig) -> Result<(LdapConn, String), LdapError
                 source: std::io::Error::new(std::io::ErrorKind::NotFound, e),
             }
         })?;
+
+        // Validate DC address for Kerberos
+        if config.dc_ip.parse::<std::net::IpAddr>().is_ok() {
+            eprintln!("[!] Error: Kerberos authentication requires a hostname/FQDN, not an IP address.");
+            eprintln!("[!] Current value: {}", config.dc_ip);
+            eprintln!("[!] Please use the DC's FQDN instead.");
+            eprintln!("[!] Example: -i dc01.redheadsec.local instead of -i {}", config.dc_ip);
+            return Err(LdapError::Io {
+                source: std::io::Error::new(
+                    std::io::ErrorKind::InvalidInput,
+                    "Kerberos requires hostname/FQDN, not IP address",
+                ),
+            });
+        }
+
+        // Normalize hostname to lowercase (Kerberos convention)
+        let normalized_dc = config.dc_ip.to_lowercase();
+        if normalized_dc != config.dc_ip {
+            println!("[*] Normalized hostname: {} -> {}", config.dc_ip, normalized_dc);
+        }
 
         println!("[*] Using Kerberos authentication for LDAP.");
         println!("[*] Ccache file: {}", ccache_to_use);
@@ -194,8 +238,13 @@ pub fn ldap_connect(config: &LdapConfig) -> Result<(LdapConn, String), LdapError
                     }
                 }
 
+                // Extract username from ccache if not provided
+                if config.username.is_empty() && !ccache.default_principal.components.is_empty() {
+                    config.username = ccache.default_principal.components[0].clone();
+                }
+
                 // Generate krb5.conf from ccache
-                let krb5_conf = generate_krb5_conf_from_ccache(&ccache, &config.dc_ip)
+                let krb5_conf = generate_krb5_conf_from_ccache(&ccache, &normalized_dc)
                     .map_err(|e| LdapError::Io {
                         source: std::io::Error::new(
                             std::io::ErrorKind::Other,
@@ -209,11 +258,12 @@ pub fn ldap_connect(config: &LdapConfig) -> Result<(LdapConn, String), LdapError
                     })?;
                 
                 println!("[*] Generated temporary krb5.conf at {}", krb5_conf_path);
+                println!("[*] Service Principal: ldap/{}@{}", normalized_dc, ccache.default_principal.realm);
                 
                 let original_krb5_config = set_krb5_config_env(&krb5_conf_path);
                 let original_krb5ccname = set_krb5ccname_temp(&ccache_to_use);
                 
-                let bind_result = ldap.sasl_gssapi_bind(&config.dc_ip)?.success();
+                let bind_result = ldap.sasl_gssapi_bind(&normalized_dc)?.success();
                 
                 restore_krb5ccname(original_krb5ccname);
                 restore_krb5_config_env(original_krb5_config);
@@ -267,7 +317,7 @@ pub fn ldap_connect(config: &LdapConfig) -> Result<(LdapConn, String), LdapError
 }
 
 #[cfg(target_os = "macos")]
-pub fn ldap_connect(config: &LdapConfig) -> Result<(LdapConn, String), LdapError> {
+pub fn ldap_connect(config: &mut LdapConfig) -> Result<(LdapConn, String), LdapError> {
     let settings = LdapConnSettings::new()
         .set_conn_timeout(Duration::from_secs(CONNECTION_TIMEOUT_SECS))
         .set_no_tls_verify(true);

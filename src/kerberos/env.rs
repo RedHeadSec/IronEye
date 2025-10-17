@@ -1,4 +1,4 @@
-use crate::kerberos::ccache::{parse_krb5ccname, find_default_ccache, validate_ccache_location, CcacheLocation};
+use crate::kerberos::ccache::{parse_krb5ccname, find_default_ccache, validate_ccache_location};
 
 pub fn determine_ccache_path(explicit_path: Option<&String>) -> Result<String, String> {
     if let Some(path) = explicit_path {

@@ -3,14 +3,9 @@ use crate::ldap::LdapConfig;
 use ldap3::{LdapConn, Scope, SearchEntry};
 use std::error::Error;
 
-pub fn get_trusts(config: &mut LdapConfig) -> Result<(), Box<dyn Error>> {
-    // Establish LDAP connection
-    let (mut ldap, search_base) = crate::ldap::ldap_connect(config)?;
+pub fn get_trusts(ldap: &mut LdapConn, search_base: &str, _config: &LdapConfig) -> Result<(), Box<dyn Error>> {
+    let entries = query_trusts(ldap, search_base)?;
 
-    // Perform the Trusts query
-    let entries = query_trusts(&mut ldap, &search_base)?;
-
-    // Process and print the results
     for entry in entries {
         println!("\nTrust Relationship:");
         println!("-------------------");

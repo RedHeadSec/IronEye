@@ -64,8 +64,9 @@ pub fn get_connect_arguments() -> Option<LdapConfig> {
     let mut rl = create_editor(".connect_history.txt");
     println!("Enter Connect arguments:");
     println!("  Password Auth: -u <user> -p <pass> -d <domain> -i <dc_ip> [-s] [-t]");
-    println!("  Kerberos Auth: -k -d <domain> -i <dc_ip> [-c <ccache_path>] [-s] [-t]");
-    println!("  Example: -k -c /tmp/krb5cc_1000 -d domain.local -i 10.10.10.10");
+    println!("  Kerberos Auth: -k -d <domain> -i <dc_fqdn> [-c <ccache_path>] [-s] [-t]");
+    println!("  Example: -k -c /tmp/krb5cc_1000 -d domain.local -i dc01.domain.local");
+    println!("  Note: Kerberos requires FQDN/hostname, not IP address");
 
     let line = read_with_history(&mut rl, ".connect_history.txt")?;
     parse_connect_args(&line)
@@ -135,7 +136,7 @@ pub fn get_userenum_arguments() -> Option<UserEnumArgs> {
     parse_userenum_args(&args_input)
 }
 
-pub fn run_nested_query_menu(ldap_config: &mut LdapConfig) -> Result<(), String> {
+pub fn run_nested_query_menu(ldap: &mut ldap3::LdapConn, search_base: &str, ldap_config: &LdapConfig) -> Result<(), String> {
     const QUERY_OPTIONS: &[&str] = &[
         "Query Domain Trusts",
         "Query All Users",
@@ -157,14 +158,14 @@ pub fn run_nested_query_menu(ldap_config: &mut LdapConfig) -> Result<(), String>
             .map_err(|e| format!("Error displaying menu: {}", e))?;
 
         match selection {
-            0 => run_query(|| trusts::get_trusts(ldap_config)),
-            1 => run_query(|| users::get_users(ldap_config)),
-            2 => run_query(|| computers::get_computers(ldap_config)),
-            3 => run_query(|| subnets::get_subnets(ldap_config)),
-            4 => run_query(|| pki::get_pki_info(ldap_config)),
-            5 => run_query(|| sccm::get_sccm_info(ldap_config)),
-            6 => run_query(|| ou::get_organizational_units(ldap_config)),
-            7 => run_query(|| delegations::get_delegations(ldap_config)),
+            0 => run_query(|| trusts::get_trusts(ldap, search_base, ldap_config)),
+            1 => run_query(|| users::get_users(ldap, search_base, ldap_config)),
+            2 => run_query(|| computers::get_computers(ldap, search_base, ldap_config)),
+            3 => run_query(|| subnets::get_subnets(ldap, search_base, ldap_config)),
+            4 => run_query(|| pki::get_pki_info(ldap, search_base, ldap_config)),
+            5 => run_query(|| sccm::get_sccm_info(ldap, search_base, ldap_config)),
+            6 => run_query(|| ou::get_organizational_units(ldap, search_base, ldap_config)),
+            7 => run_query(|| delegations::get_delegations(ldap, search_base, ldap_config)),
             8 => {
                 println!("Returning to the main menu...");
                 add_terminal_spacing(1);

@@ -3,8 +3,7 @@ use crate::ldap::LdapConfig;
 use ldap3::{Scope, SearchEntry};
 use std::error::Error;
 
-pub fn get_delegations(config: &mut LdapConfig) -> Result<(), Box<dyn Error>> {
-    let (mut ldap, search_base) = crate::ldap::ldap_connect(config)?;
+pub fn get_delegations(ldap: &mut ldap3::LdapConn, search_base: &str, _config: &LdapConfig) -> Result<(), Box<dyn Error>> {
 
     // LDAP filter to find accounts with delegation privileges
     let delegation_filter = "(&(objectClass=User)(|(userAccountControl:1.2.840.113556.1.4.803:=524288)(msDS-AllowedToDelegateTo=*)(msDS-AllowedToActOnBehalfOfOtherIdentity=*)))";

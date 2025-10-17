@@ -5,17 +5,11 @@ use ldap3::adapters::{Adapter, EntriesOnly, PagedResults};
 use ldap3::{LdapConn, Scope, SearchEntry};
 use std::error::Error;
 
-pub fn get_computers(config: &mut LdapConfig) -> Result<(), Box<dyn Error>> {
-    // Establish LDAP connection
-    let (mut ldap, search_base) = crate::ldap::ldap_connect(config)?;
+pub fn get_computers(ldap: &mut LdapConn, search_base: &str, _config: &LdapConfig) -> Result<(), Box<dyn Error>> {
+    let entries = query_computers(ldap, search_base)?;
 
-    // Perform the Computers query
-    let entries = query_computers(&mut ldap, &search_base)?;
-
-    // Open a CSV writer
     let mut wtr = Writer::from_path("computers_export.csv")?;
 
-    // Write the header row
     wtr.write_record(&[
         "sAMAccountName",
         "dNSHostName",
@@ -26,7 +20,6 @@ pub fn get_computers(config: &mut LdapConfig) -> Result<(), Box<dyn Error>> {
     println!("\nComputers Query Results:");
     println!("------------------------");
 
-    // Write each computer's details to the CSV file and print them to the terminal
     for entry in entries {
         let sam_account_name = entry
             .attrs
@@ -49,7 +42,6 @@ pub fn get_computers(config: &mut LdapConfig) -> Result<(), Box<dyn Error>> {
             .and_then(|v| v.get(0))
             .map_or("", String::as_str);
 
-        // Write to the CSV file
         wtr.write_record(&[
             sam_account_name,
             dns_host_name,
@@ -57,7 +49,6 @@ pub fn get_computers(config: &mut LdapConfig) -> Result<(), Box<dyn Error>> {
             description,
         ])?;
 
-        // Print to the terminal
         println!(
             "sAMAccountName: {}, dNSHostName: {}, operatingSystem: {}, description: {}",
             sam_account_name, dns_host_name, operating_system, description
@@ -95,14 +86,14 @@ fn query_computers(
             "dNSHostName",
             "operatingSystem",
             "description",
-        ], // Attributes to fetch
+        ],
     )?;
 
     let mut entries = Vec::new();
     while let Some(entry) = search.next()? {
         entries.push(SearchEntry::construct(entry));
     }
-    let _ = search.result().success()?; // Ensure search completes successfully
+    let _ = search.result().success()?;
 
     Ok(entries)
 }

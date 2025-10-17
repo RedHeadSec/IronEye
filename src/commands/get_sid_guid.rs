@@ -1,6 +1,5 @@
 use crate::help::add_terminal_spacing;
 use crate::ldap::{extract_sid, format_guid, ldap_connect, LdapConfig};
-use base64;
 use ldap3::{
     adapters::{Adapter, EntriesOnly, PagedResults},
     Scope, SearchEntry,
@@ -9,11 +8,10 @@ use std::error::Error;
 
 /// Performs an LDAP search for the given user and returns a SearchEntry if found.
 fn search_user(
-    config: &mut LdapConfig,
+    ldap: &mut ldap3::LdapConn,
+    search_base: &str,
     object_name: &str,
 ) -> Result<Option<SearchEntry>, Box<dyn Error>> {
-    let (mut ldap, search_base) = ldap_connect(config)?;
-
     let filter = format!("(sAMAccountName={})", object_name);
     //println!("[DEBUG] Using LDAP Filter: {}", filter);
 
@@ -24,13 +22,8 @@ fn search_user(
     ];
 
     // Perform the search.
-    let mut stream = ldap.streaming_search_with(
-        adapters,
-        &search_base,
-        Scope::Subtree,
-        &filter,
-        vec!["*"],
-    )?;
+    let mut stream =
+        ldap.streaming_search_with(adapters, search_base, Scope::Subtree, &filter, vec!["*"])?;
 
     // Return the first entry found, if any.
     while let Ok(Some(entry)) = stream.next() {
@@ -40,10 +33,10 @@ fn search_user(
     Ok(None)
 }
 
-pub fn query_sid_guid(config: &mut LdapConfig, target: &str) -> Result<(), Box<dyn Error>> {
+pub fn query_sid_guid(ldap: &mut ldap3::LdapConn, search_base: &str, _config: &LdapConfig, target: &str) -> Result<(), Box<dyn Error>> {
     println!("\n[*] Starting SID/GUID Query for: {}", target);
 
-    match search_user(config, target)? {
+    match search_user(ldap, search_base, target)? {
         Some(search_entry) => {
             // Extract and print the SID.
             if let Some(sid) = extract_sid(&search_entry) {

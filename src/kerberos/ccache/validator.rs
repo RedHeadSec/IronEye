@@ -1,6 +1,5 @@
-use crate::kerberos::ccache::parser::ParseError;
 use crate::kerberos::ccache::types::*;
-use chrono::{DateTime, Local, TimeZone};
+use chrono::{Local, TimeZone};
 
 pub fn validate_ccache(ccache: &CcacheFile) -> Result<CcacheInfo, String> {
     if ccache.credentials.is_empty() {

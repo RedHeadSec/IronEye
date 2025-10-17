@@ -10,8 +10,7 @@ use std::error::Error;
 use std::fs::File;
 use std::io::{self, Write};
 
-pub fn custom_ldap_query(config: &mut LdapConfig) -> Result<(), Box<dyn Error>> {
-    let (mut ldap, search_base) = ldap_connect(config)?;
+pub fn custom_ldap_query(ldap: &mut LdapConn, search_base: &str, _config: &LdapConfig) -> Result<(), Box<dyn Error>> {
     let mut rl = DefaultEditor::new()?;
     rl.load_history(".ldap_query_history.txt").ok();
 
@@ -66,7 +65,7 @@ pub fn custom_ldap_query(config: &mut LdapConfig) -> Result<(), Box<dyn Error>> 
                     continue;
                 }
 
-                let entries = ldap_query(&mut ldap, &search_base, &filter, &attributes)?;
+                let entries = ldap_query(ldap, &search_base, &filter, &attributes)?;
 
                 let non_empty_entries: Vec<_> = entries
                     .into_iter()

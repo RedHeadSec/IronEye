@@ -1,5 +1,5 @@
 use crate::help::add_terminal_spacing;
-use crate::ldap::{ldap_connect,LdapConfig,format_guid_for_ldap};
+use crate::ldap::{format_guid_for_ldap, ldap_connect, LdapConfig};
 use ldap3::{
     adapters::{Adapter, EntriesOnly, PagedResults},
     Scope, SearchEntry,
@@ -111,7 +111,8 @@ fn validate_guid(guid: &str) -> bool {
 
 /// Resolves a given SID or GUID to a human-readable name.
 pub fn resolve_sid_guid(
-    config: &mut LdapConfig,
+    ldap: &mut ldap3::LdapConn,
+    search_base: &str,
     identifier: &str,
 ) -> Result<Option<String>, Box<dyn Error>> {
     let well_known_sids = get_well_known_sids();
@@ -128,13 +129,10 @@ pub fn resolve_sid_guid(
         let escaped_guid = format_guid_for_ldap(identifier);
         //println!("DEBUG - Escaped GUID: {}", escaped_guid);
         format!("(objectGUID={})", escaped_guid) // GUID search
-        
-
     } else {
         return Err("Invalid SID or GUID format".into());
     };
 
-    let (mut ldap, search_base) = ldap_connect(config)?;
     let adapters: Vec<Box<dyn Adapter<_, _>>> = vec![
         Box::new(EntriesOnly::new()),
         Box::new(PagedResults::new(400)),
@@ -142,7 +140,7 @@ pub fn resolve_sid_guid(
 
     let mut stream = ldap.streaming_search_with(
         adapters,
-        &search_base,
+        search_base,
         Scope::Subtree,
         &filter,
         vec!["sAMAccountName", "distinguishedName"],

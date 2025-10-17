@@ -9,9 +9,8 @@ use std::error::Error;
 use std::fs::File;
 use std::io::Write;
 
-pub fn get_service_principal_names(config: &mut LdapConfig) -> Result<(), Box<dyn Error>> {
-    let (mut ldap, search_base) = crate::ldap::ldap_connect(config)?;
-    let entries = query_spns(&mut ldap, &search_base)?;
+pub fn get_service_principal_names(ldap: &mut LdapConn, search_base: &str, config: &LdapConfig) -> Result<(), Box<dyn Error>> {
+    let entries = query_spns(ldap, search_base)?;
 
     let header = format!(
         "{:<50} {:<15} {:<30} {:<30} {}\n",
@@ -121,7 +120,7 @@ fn query_spns(ldap: &mut LdapConn, search_base: &str) -> Result<Vec<SearchEntry>
     while let Some(entry) = search.next()? {
         entries.push(SearchEntry::construct(entry));
     }
-    let _ = search.result().success()?; // Ensure search completes successfully
+    let _ = search.result().success()?;
 
     Ok(entries)
 }

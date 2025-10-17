@@ -5,23 +5,15 @@ use ldap3::adapters::{Adapter, EntriesOnly, PagedResults};
 use ldap3::{LdapConn, Scope, SearchEntry};
 use std::error::Error;
 
-pub fn get_users(config: &mut LdapConfig) -> Result<(), Box<dyn Error>> {
-    // Establish LDAP connection
-    let (mut ldap, search_base) = crate::ldap::ldap_connect(config)?;
-
-    // Perform the Users query
-    let entries = query_users(&mut ldap, &search_base)?;
-
-    // Open a CSV writer
+pub fn get_users(ldap: &mut LdapConn, search_base: &str, _config: &LdapConfig) -> Result<(), Box<dyn Error>> {
+    let entries = query_users(ldap, search_base)?;
     let mut wtr = Writer::from_path("users_export.csv")?;
 
-    // Write the header row
     wtr.write_record(&["sAMAccountName", "displayName", "mail", "description"])?;
 
     println!("\nUsers Query Results:");
     println!("--------------------");
 
-    // Write each user's details to the CSV file and print them to the terminal
     for entry in entries {
         let sam_account_name = entry
             .attrs
@@ -44,17 +36,14 @@ pub fn get_users(config: &mut LdapConfig) -> Result<(), Box<dyn Error>> {
             .and_then(|v| v.get(0))
             .map_or("", String::as_str);
 
-        // Write to the CSV file
         wtr.write_record(&[sam_account_name, display_name, mail, description])?;
 
-        // Print to the terminal
         println!(
             "sAMAccountName: {}, displayName: {}, mail: {}, description: {}",
             sam_account_name, display_name, mail, description
         );
     }
 
-    // Flush the writer to ensure all data is written to the file
     wtr.flush()?;
 
     println!("\nUsers query completed successfully. Results saved to 'users_export.csv'.");

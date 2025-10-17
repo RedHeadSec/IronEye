@@ -10,13 +10,12 @@ use std::fs::File;
 use std::io::Write;
 
 pub fn query_groups(
-    config: &mut LdapConfig,
+    ldap: &mut ldap3::LdapConn,
+    search_base: &str,
+    config: &LdapConfig,
     username: Option<&str>,
     export: bool,
 ) -> Result<(), Box<dyn Error>> {
-    let (mut ldap, search_base) = crate::ldap::ldap_connect(config)?;
-
-    // Create a vector to store output lines if exporting
     let mut export_data = Vec::new();
 
     if let Some(user) = username {

@@ -3,18 +3,15 @@ use crate::ldap::LdapConfig;
 use ldap3::{LdapConn, Scope, SearchEntry};
 use std::error::Error;
 
-pub fn get_subnets(config: &mut LdapConfig) -> Result<(), Box<dyn Error>> {
-    // Establish LDAP connection
-    let (mut ldap, _) = crate::ldap::ldap_connect(config)?;
-
+pub fn get_subnets(ldap: &mut LdapConn, _search_base: &str, _config: &LdapConfig) -> Result<(), Box<dyn Error>> {
     // Query RootDSE for configurationNamingContext
-    let config_base = get_configuration_naming_context(&mut ldap)?;
+    let config_base = get_configuration_naming_context(ldap)?;
 
     // Construct the Subnets search base
     let subnets_base = format!("CN=Subnets,CN=Sites,{}", config_base);
 
     // Perform the Subnets query
-    let entries = query_subnets(&mut ldap, &subnets_base)?;
+    let entries = query_subnets(ldap, &subnets_base)?;
 
     // Check if there are no results
     if entries.is_empty() {

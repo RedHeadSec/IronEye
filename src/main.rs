@@ -87,21 +87,24 @@ fn handle_connect() {
         return;
     };
 
-    if let Err(e) = crate::ldap::ldap_connect(&ldap_config) {
-        eprintln!("[!] Failed to connect to LDAP server: {}. Check credentials, Kerberos ticket, or connection.", e);
-        if ldap_config.kerberos {
-            eprintln!("[DEBUG] Kerberos authentication was enabled. Ensure `KRB5CCNAME` is set and contains a valid ticket.");
-        } else {
-            eprintln!("[DEBUG] Using simple bind with username and password.");
+    let (ldap, search_base) = match crate::ldap::ldap_connect(&mut ldap_config) {
+        Ok(conn) => conn,
+        Err(e) => {
+            eprintln!("[!] Failed to connect to LDAP server: {}. Check credentials, Kerberos ticket, or connection.", e);
+            if ldap_config.kerberos {
+                eprintln!("[DEBUG] Kerberos authentication was enabled. Ensure `KRB5CCNAME` is set and contains a valid ticket.");
+            } else {
+                eprintln!("[DEBUG] Using simple bind with username and password.");
+            }
+            return;
         }
-        return;
-    }
+    };
 
     println!("\nSuccessfully connected to LDAP server.\n");
-    run_command_menu(&mut ldap_config);
+    run_command_menu(&mut ldap_config, ldap, search_base);
 }
 
-fn run_command_menu(ldap_config: &mut crate::ldap::LdapConfig) {
+fn run_command_menu(ldap_config: &mut crate::ldap::LdapConfig, mut ldap: ldap3::LdapConn, search_base: String) {
     loop {
         let prompt = help::get_prompt_string(
             &ldap_config.username,
@@ -120,32 +123,32 @@ fn run_command_menu(ldap_config: &mut crate::ldap::LdapConfig) {
         add_terminal_spacing(2);
 
         match cmd_selection {
-            0 => handle_get_sid_guid(ldap_config),
-            1 => handle_from_sid_guid(ldap_config),
+            0 => handle_get_sid_guid(&mut ldap, &search_base, ldap_config),
+            1 => handle_from_sid_guid(&mut ldap, &search_base, ldap_config),
             2 => {
-                if let Err(e) = commands::getspns::get_service_principal_names(ldap_config) {
+                if let Err(e) = commands::getspns::get_service_principal_names(&mut ldap, &search_base, ldap_config) {
                     eprintln!("Error: {}", e);
                 }
             }
-            3 => handle_query_groups(ldap_config),
+            3 => handle_query_groups(&mut ldap, &search_base, ldap_config),
             4 => {
-                if let Err(e) = commands::maq::get_machine_account_quota(ldap_config) {
+                if let Err(e) = commands::maq::get_machine_account_quota(&mut ldap, &search_base, ldap_config) {
                     eprintln!("Error: {}", e);
                 }
             }
-            5 => handle_net_commands(ldap_config),
+            5 => handle_net_commands(&mut ldap, &search_base, ldap_config),
             6 => {
-                if let Err(e) = commands::getpasspol::get_password_policy(ldap_config) {
+                if let Err(e) = commands::getpasspol::get_password_policy(&mut ldap, &search_base, ldap_config) {
                     eprintln!("Error: {}", e);
                 }
             }
             7 => {
-                if let Err(e) = run_nested_query_menu(ldap_config) {
+                if let Err(e) = run_nested_query_menu(&mut ldap, &search_base, ldap_config) {
                     eprintln!("Error: {}", e);
                 }
             }
             8 => {
-                if let Err(e) = commands::customldap::custom_ldap_query(ldap_config) {
+                if let Err(e) = commands::customldap::custom_ldap_query(&mut ldap, &search_base, ldap_config) {
                     eprintln!("Error running custom LDAP query: {}", e);
                 }
             }
@@ -156,28 +159,28 @@ fn run_command_menu(ldap_config: &mut crate::ldap::LdapConfig) {
     }
 }
 
-fn handle_get_sid_guid(ldap_config: &mut crate::ldap::LdapConfig) {
+fn handle_get_sid_guid(ldap: &mut ldap3::LdapConn, search_base: &str, ldap_config: &crate::ldap::LdapConfig) {
     let target = read_input("Enter target object: ");
     if !target.is_empty() {
-        if let Err(e) = commands::get_sid_guid::query_sid_guid(ldap_config, &target) {
+        if let Err(e) = commands::get_sid_guid::query_sid_guid(ldap, search_base, ldap_config, &target) {
             eprintln!("Error: {}", e);
         }
     }
 }
 
-fn handle_from_sid_guid(ldap_config: &mut crate::ldap::LdapConfig) {
+fn handle_from_sid_guid(ldap: &mut ldap3::LdapConn, search_base: &str, _ldap_config: &crate::ldap::LdapConfig) {
     println!("SID Ex:  S-1-5-21-123456789-234567890-345678901-1001");
     println!("GUID Ex: 550e8400-e29b-41d4-a716-446655440000\n");
 
     let target = read_input("Enter SID/GUID: ");
     if !target.is_empty() {
-        if let Err(e) = commands::from_sid_guid::resolve_sid_guid(ldap_config, &target) {
+        if let Err(e) = commands::from_sid_guid::resolve_sid_guid(ldap, search_base, &target) {
             eprintln!("Error: {}", e);
         }
     }
 }
 
-fn handle_query_groups(ldap_config: &mut crate::ldap::LdapConfig) {
+fn handle_query_groups(ldap: &mut ldap3::LdapConn, search_base: &str, ldap_config: &crate::ldap::LdapConfig) {
     let username = read_input(
         "Enter username to see specific user's groups (or press Enter to see all groups): ",
     );
@@ -189,12 +192,12 @@ fn handle_query_groups(ldap_config: &mut crate::ldap::LdapConfig) {
         Some(username.as_str())
     };
 
-    if let Err(e) = commands::groups::query_groups(ldap_config, username, export) {
+    if let Err(e) = commands::groups::query_groups(ldap, search_base, ldap_config, username, export) {
         eprintln!("Error: {}", e);
     }
 }
 
-fn handle_net_commands(ldap_config: &mut crate::ldap::LdapConfig) {
+fn handle_net_commands(ldap: &mut ldap3::LdapConn, search_base: &str, ldap_config: &crate::ldap::LdapConfig) {
     let input = read_input(
         "Enter the net command arguments (e.g., user administrator OR group \"Domain Admins\"): ",
     );
@@ -214,7 +217,7 @@ fn handle_net_commands(ldap_config: &mut crate::ldap::LdapConfig) {
     }
 
     let name = args[1].trim_matches('"');
-    if let Err(e) = commands::net::net_command(ldap_config, &command_type, name) {
+    if let Err(e) = commands::net::net_command(ldap, search_base, ldap_config, &command_type, name) {
         eprintln!("Error: {}", e);
     }
 }

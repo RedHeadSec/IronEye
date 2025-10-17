@@ -5,11 +5,9 @@ use ldap3::adapters::{Adapter, EntriesOnly, PagedResults};
 use ldap3::{LdapConn, Scope, SearchEntry};
 use std::error::Error;
 
-pub fn get_password_policy(config: &mut LdapConfig) -> Result<(), Box<dyn Error>> {
-    let (mut ldap, search_base) = crate::ldap::ldap_connect(config)?;
-
-    let domain_policy_entries = query_password_policy(&mut ldap, &search_base)?;
-    let fgpp_entries = query_fine_grained_policies(&mut ldap, &search_base)?;
+pub fn get_password_policy(ldap: &mut LdapConn, search_base: &str, config: &LdapConfig) -> Result<(), Box<dyn Error>> {
+    let domain_policy_entries = query_password_policy(ldap, search_base)?;
+    let fgpp_entries = query_fine_grained_policies(ldap, search_base)?;
 
     // Display Default Domain Password Policy
     for entry in domain_policy_entries {

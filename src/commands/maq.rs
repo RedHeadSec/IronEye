@@ -4,10 +4,7 @@ use crate::ldap::LdapConfig;
 use ldap3::{Scope, SearchEntry};
 use std::error::Error;
 
-pub fn get_machine_account_quota(config: &mut LdapConfig) -> Result<(), Box<dyn Error>> {
-    let (mut ldap, search_base) = crate::ldap::ldap_connect(config)?;
-
-    // First query for the quota
+pub fn get_machine_account_quota(ldap: &mut ldap3::LdapConn, search_base: &str, config: &LdapConfig) -> Result<(), Box<dyn Error>> {
     let result = ldap.search(
         &search_base,
         Scope::Base,

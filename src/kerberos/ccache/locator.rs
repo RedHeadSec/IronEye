@@ -29,7 +29,8 @@ pub fn parse_krb5ccname(env_value: &str) -> Result<CcacheLocation, String> {
     } else if env_value.starts_with('/') {
         Ok(CcacheLocation::File(env_value.to_string()))
     } else {
-        Err(format!("Invalid KRB5CCNAME format: {}", env_value))
+        // Treat as relative path
+        Ok(CcacheLocation::File(env_value.to_string()))
     }
 }
 

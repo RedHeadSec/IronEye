@@ -4,10 +4,8 @@ use csv::Writer;
 use ldap3::{LdapConn, Scope, SearchEntry};
 use std::error::Error;
 
-pub fn get_organizational_units(config: &mut LdapConfig) -> Result<(), Box<dyn Error>> {
-    let (mut ldap, search_base) = crate::ldap::ldap_connect(config)?;
-
-    let entries = query_organizational_units(&mut ldap, &search_base)?;
+pub fn get_organizational_units(ldap: &mut LdapConn, search_base: &str, _config: &LdapConfig) -> Result<(), Box<dyn Error>> {
+    let entries = query_organizational_units(ldap, search_base)?;
 
     if entries.is_empty() {
         println!("No organizational units found.");
