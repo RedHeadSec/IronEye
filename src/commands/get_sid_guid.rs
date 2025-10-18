@@ -1,5 +1,5 @@
 use crate::help::add_terminal_spacing;
-use crate::ldap::{extract_sid, format_guid, ldap_connect, LdapConfig};
+use crate::ldap::{extract_sid, format_guid, LdapConfig};
 use ldap3::{
     adapters::{Adapter, EntriesOnly, PagedResults},
     Scope, SearchEntry,

@@ -1,4 +1,10 @@
+pub mod actions;
+pub mod add_computer;
+pub mod add_user_to_group;
 pub mod customldap;
+pub mod del_computer;
+pub mod disable_account;
+pub mod enable_account;
 pub mod from_sid_guid;
 pub mod get_sid_guid;
 pub mod getpasspol;
@@ -6,3 +12,5 @@ pub mod getspns;
 pub mod groups;
 pub mod maq;
 pub mod net;
+pub mod set_dontreqpreauth;
+pub mod set_spn;

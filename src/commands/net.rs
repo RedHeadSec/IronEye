@@ -37,7 +37,7 @@ pub fn net_command(
     }
 }
 
-fn net_user(ldap: &mut ldap3::LdapConn, search_base: &str, config: &LdapConfig, username: &str) -> Result<(), Box<dyn Error>> {
+fn net_user(ldap: &mut ldap3::LdapConn, search_base: &str, _config: &LdapConfig, username: &str) -> Result<(), Box<dyn Error>> {
 
     let result = ldap.search(
         &search_base,
@@ -330,7 +330,7 @@ fn net_user(ldap: &mut ldap3::LdapConn, search_base: &str, config: &LdapConfig, 
     Ok(())
 }
 
-fn net_group(ldap: &mut ldap3::LdapConn, search_base: &str, config: &LdapConfig, groupname: &str) -> Result<(), Box<dyn Error>> {
+fn net_group(ldap: &mut ldap3::LdapConn, search_base: &str, _config: &LdapConfig, groupname: &str) -> Result<(), Box<dyn Error>> {
 
     let adapters: Vec<Box<dyn Adapter<_, _>>> = vec![
         Box::new(EntriesOnly::new()),

@@ -1,4 +1,4 @@
-use crate::ldap::{ldap_connect, LdapConfig};
+use crate::ldap::LdapConfig;
 use base64::engine::general_purpose::STANDARD as BASE64;
 use base64::Engine;
 use chrono::Local;

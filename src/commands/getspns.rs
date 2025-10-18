@@ -9,7 +9,7 @@ use std::error::Error;
 use std::fs::File;
 use std::io::Write;
 
-pub fn get_service_principal_names(ldap: &mut LdapConn, search_base: &str, config: &LdapConfig) -> Result<(), Box<dyn Error>> {
+pub fn get_service_principal_names(ldap: &mut LdapConn, search_base: &str, _config: &LdapConfig) -> Result<(), Box<dyn Error>> {
     let entries = query_spns(ldap, search_base)?;
 
     let header = format!(

@@ -47,6 +47,7 @@ const CMD_OPTIONS: &[&str] = &[
     "Password Policy",
     "Deep-Queries",
     "Custom Ldap Query (Bofhound Compatible)",
+    "Actions",
     "Help",
     "Back",
 ];
@@ -152,8 +153,13 @@ fn run_command_menu(ldap_config: &mut crate::ldap::LdapConfig, mut ldap: ldap3::
                     eprintln!("Error running custom LDAP query: {}", e);
                 }
             }
-            9 => show_help_connect(),
-            10 => break,
+            9 => {
+                if let Err(e) = commands::actions::run_actions_menu(&mut ldap, &search_base, ldap_config) {
+                    eprintln!("Error in actions menu: {}", e);
+                }
+            }
+            10 => show_help_connect(),
+            11 => break,
             _ => unreachable!(),
         }
     }

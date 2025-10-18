@@ -12,7 +12,7 @@ use std::io::Write;
 pub fn query_groups(
     ldap: &mut ldap3::LdapConn,
     search_base: &str,
-    config: &LdapConfig,
+    _config: &LdapConfig,
     username: Option<&str>,
     export: bool,
 ) -> Result<(), Box<dyn Error>> {
