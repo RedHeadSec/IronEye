@@ -10,7 +10,11 @@ use std::error::Error;
 use std::fs::File;
 use std::io::{self, Write};
 
-pub fn custom_ldap_query(ldap: &mut LdapConn, search_base: &str, _config: &LdapConfig) -> Result<(), Box<dyn Error>> {
+pub fn custom_ldap_query(
+    ldap: &mut LdapConn,
+    search_base: &str,
+    _config: &LdapConfig,
+) -> Result<(), Box<dyn Error>> {
     let mut rl = DefaultEditor::new()?;
     rl.load_history(".ldap_query_history.txt").ok();
 

@@ -1,4 +1,3 @@
-// src/commands/getspns.rs
 use crate::help::add_terminal_spacing;
 use crate::ldap::LdapConfig;
 use chrono::{DateTime, Local, TimeZone, Utc};
@@ -9,7 +8,11 @@ use std::error::Error;
 use std::fs::File;
 use std::io::Write;
 
-pub fn get_service_principal_names(ldap: &mut LdapConn, search_base: &str, _config: &LdapConfig) -> Result<(), Box<dyn Error>> {
+pub fn get_service_principal_names(
+    ldap: &mut LdapConn,
+    search_base: &str,
+    _config: &LdapConfig,
+) -> Result<(), Box<dyn Error>> {
     let entries = query_spns(ldap, search_base)?;
 
     let header = format!(
@@ -18,7 +21,6 @@ pub fn get_service_principal_names(ldap: &mut LdapConn, search_base: &str, _conf
     );
     let mut output = String::from(&header);
 
-    // Print header
     println!(
         "{:<50} {:<15} {:<30} {:<30} {}",
         "SPN", "Username", "PasswordLastSet", "LastLogon", "Delegation"
@@ -31,7 +33,6 @@ pub fn get_service_principal_names(ldap: &mut LdapConn, search_base: &str, _conf
             .map(|s| s.clone())
             .unwrap_or_default();
 
-        // Fix: Create a String that lives long enough
         let sam_account_name = entry
             .attrs
             .get("sAMAccountName")
@@ -63,7 +64,6 @@ pub fn get_service_principal_names(ldap: &mut LdapConn, search_base: &str, _conf
             .map(|uac| check_delegation(uac))
             .unwrap_or_default();
 
-        // Print each SPN for this account
         for spn in spns {
             let line = format!(
                 "{:<50} {:<15} {:<30} {:<30} {}\n",
@@ -73,7 +73,6 @@ pub fn get_service_principal_names(ldap: &mut LdapConn, search_base: &str, _conf
             println!("{}", line.trim());
         }
     }
-    // Ask if user wants to export results
     add_terminal_spacing(1);
     if Confirm::new()
         .with_prompt("Would you like to export the results to a file?")
@@ -130,13 +129,10 @@ fn windows_timestamp_to_datetime(windows_time: i64) -> String {
         return "Never".to_string();
     }
 
-    // Windows timestamp is in 100-nanosecond intervals since January 1, 1601 UTC
-    // Need to convert to Unix timestamp (seconds since January 1, 1970 UTC)
     let unix_time = (windows_time - 116444736000000000) / 10000000;
 
     match Utc.timestamp_opt(unix_time, 0) {
         chrono::LocalResult::Single(dt) => {
-            // Convert to local time
             let local_time: DateTime<Local> = DateTime::from(dt);
             local_time.format("%Y-%m-%d %H:%M:%S").to_string()
         }

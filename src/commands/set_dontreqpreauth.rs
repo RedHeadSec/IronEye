@@ -1,7 +1,7 @@
-use ldap3::{LdapConn, Scope, Mod};
-use std::collections::HashSet;
-use crate::ldap::escape_filter;
 use crate::help::add_terminal_spacing;
+use crate::ldap::escape_filter;
+use ldap3::{LdapConn, Mod, Scope};
+use std::collections::HashSet;
 
 const UF_DONT_REQUIRE_PREAUTH: i32 = 0x400000;
 
@@ -15,12 +15,12 @@ pub fn set_dontreqpreauth(
 
     let escaped_target = escape_filter(target);
     let search_filter = format!("(sAMAccountName={})", escaped_target);
-    
+
     let (results, _) = match ldap.search(
         search_base,
         Scope::Subtree,
         &search_filter,
-        vec!["distinguishedName", "userAccountControl"]
+        vec!["distinguishedName", "userAccountControl"],
     ) {
         Ok(res) => match res.success() {
             Ok(r) => r,
@@ -45,8 +45,9 @@ pub fn set_dontreqpreauth(
 
     let entry = ldap3::SearchEntry::construct(results[0].clone());
     let target_dn = entry.dn;
-    
-    let current_uac = entry.attrs
+
+    let current_uac = entry
+        .attrs
         .get("userAccountControl")
         .and_then(|v| v.first())
         .and_then(|v| v.parse::<i32>().ok())
@@ -66,12 +67,18 @@ pub fn set_dontreqpreauth(
     let mut uac_set = HashSet::new();
     uac_set.insert(new_uac_str.as_str());
 
-    match ldap.modify(&target_dn, vec![Mod::Replace("userAccountControl", uac_set)]) {
+    match ldap.modify(
+        &target_dn,
+        vec![Mod::Replace("userAccountControl", uac_set)],
+    ) {
         Ok(result) => match result.success() {
             Ok(_) => {
                 println!("[+] Updated userAccountControl attribute successfully");
                 if enable {
-                    println!("[+] DONT_REQUIRE_PREAUTH enabled for {} (ASREPRoastable)", target);
+                    println!(
+                        "[+] DONT_REQUIRE_PREAUTH enabled for {} (ASREPRoastable)",
+                        target
+                    );
                 } else {
                     println!("[+] DONT_REQUIRE_PREAUTH disabled for {}", target);
                 }
@@ -80,14 +87,16 @@ pub fn set_dontreqpreauth(
             }
             Err(e) => {
                 eprintln!("[!] Failed to modify userAccountControl: {}", e);
-                
+
                 let error_string = format!("{:?}", e);
-                if error_string.contains("insufficientAccessRights") || error_string.contains("50") {
+                if error_string.contains("insufficientAccessRights") || error_string.contains("50")
+                {
                     eprintln!("[!] Insufficient access rights - you don't have permission to modify user accounts");
-                } else if error_string.contains("unwillingToPerform") || error_string.contains("53") {
+                } else if error_string.contains("unwillingToPerform") || error_string.contains("53")
+                {
                     eprintln!("[!] Server unwilling to perform - account may be protected");
                 }
-                
+
                 add_terminal_spacing(1);
                 Err(e.into())
             }

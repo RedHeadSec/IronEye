@@ -53,7 +53,10 @@ impl Credential {
     }
 
     pub fn is_tgt(&self) -> bool {
-        self.server.components.first().map_or(false, |s| s.starts_with("krbtgt"))
+        self.server
+            .components
+            .first()
+            .map_or(false, |s| s.starts_with("krbtgt"))
     }
 
     pub fn expires_in_minutes(&self) -> i64 {
@@ -61,7 +64,7 @@ impl Credential {
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap()
             .as_secs() as u32;
-        
+
         if self.end_time > now {
             ((self.end_time - now) / 60) as i64
         } else {

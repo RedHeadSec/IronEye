@@ -1,8 +1,8 @@
+use crate::help::add_terminal_spacing;
+use crate::ldap::{escape_filter, LdapConfig};
 use ldap3::{LdapConn, Scope};
 use rand::Rng;
 use std::collections::HashSet;
-use crate::ldap::{LdapConfig, escape_filter};
-use crate::help::add_terminal_spacing;
 
 pub fn generate_password(length: usize) -> String {
     const CHARSET: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789@.,";
@@ -52,12 +52,12 @@ pub fn add_computer(
 
     let escaped_name = escape_filter(&computer_name);
     let search_filter = format!("(sAMAccountName={})", escaped_name);
-    
+
     let (results, _) = match ldap.search(
         search_base,
         Scope::Subtree,
         &search_filter,
-        vec!["distinguishedName"]
+        vec!["distinguishedName"],
     ) {
         Ok(res) => match res.success() {
             Ok(r) => r,
@@ -87,10 +87,12 @@ pub fn add_computer(
         return Err("Computer account already exists".into());
     }
 
-    let password = password.map(String::from).unwrap_or_else(|| generate_password(15));
+    let password = password
+        .map(String::from)
+        .unwrap_or_else(|| generate_password(15));
     let computer_hostname = computer_name.trim_end_matches('$');
     let domain = get_domain_name(search_base);
-    
+
     let computer_dn = if let Some(target) = target_dn {
         format!("CN={},{}", computer_hostname, target)
     } else {
@@ -139,7 +141,7 @@ pub fn add_computer(
             ("name", name_set.clone()),
             ("cn", name_set.clone()),
             ("displayName", name_set),
-        ]
+        ],
     ) {
         Ok(r) => r,
         Err(e) => {
@@ -156,18 +158,24 @@ pub fn add_computer(
 
     match result.success() {
         Ok(_) => {
-            println!("[+] Computer {} added successfully to {}", computer_name, computer_dn);
+            println!(
+                "[+] Computer {} added successfully to {}",
+                computer_name, computer_dn
+            );
             println!("[*] Generated password: \"{}\"", password);
             println!("\n[!] Note: Rust ldap3 crate limitation - binary attributes (unicodePwd) not supported");
             println!("[!] Set password manually:");
             println!("    - PowerShell: Set-ADAccountPassword -Identity {} -Reset -NewPassword (ConvertTo-SecureString -AsPlainText '{}' -Force)", computer_hostname, password);
-            println!("    - net rpc password {} -U {}/{} -S {}", computer_name, config.domain, config.username, config.dc_ip);
+            println!(
+                "    - net rpc password {} -U {}/{} -S {}",
+                computer_name, config.domain, config.username, config.dc_ip
+            );
             add_terminal_spacing(1);
             Ok(())
         }
         Err(e) => {
             eprintln!("[!] Failed to add computer account: {}", e);
-            
+
             let error_string = format!("{:?}", e);
             if error_string.contains("insufficientAccessRights") || error_string.contains("50") {
                 eprintln!("[!] Insufficient access rights - you don't have permission to create computer objects");
@@ -181,7 +189,7 @@ pub fn add_computer(
                 eprintln!("[!] Constraint violation - AD schema validation failed");
                 eprintln!("[!] This may indicate an issue with attribute values or permissions");
             }
-            
+
             add_terminal_spacing(1);
             Err(e.into())
         }

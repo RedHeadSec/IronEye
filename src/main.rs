@@ -19,7 +19,10 @@ pub mod ldap;
 pub mod ldapping;
 pub mod spray;
 
-use crate::args::{get_cerbero_args, CerberoCommand, parse_shell_args, configure_socks_proxy, calculate_kerberos_hash};
+use crate::args::{
+    calculate_kerberos_hash, configure_socks_proxy, get_cerbero_args, parse_shell_args,
+    CerberoCommand,
+};
 use args::{
     get_connect_arguments, get_spray_arguments, get_userenum_arguments, run_nested_query_menu,
 };
@@ -105,7 +108,11 @@ fn handle_connect() {
     run_command_menu(&mut ldap_config, ldap, search_base);
 }
 
-fn run_command_menu(ldap_config: &mut crate::ldap::LdapConfig, mut ldap: ldap3::LdapConn, search_base: String) {
+fn run_command_menu(
+    ldap_config: &mut crate::ldap::LdapConfig,
+    mut ldap: ldap3::LdapConn,
+    search_base: String,
+) {
     loop {
         let prompt = help::get_prompt_string(
             &ldap_config.username,
@@ -127,19 +134,27 @@ fn run_command_menu(ldap_config: &mut crate::ldap::LdapConfig, mut ldap: ldap3::
             0 => handle_get_sid_guid(&mut ldap, &search_base, ldap_config),
             1 => handle_from_sid_guid(&mut ldap, &search_base, ldap_config),
             2 => {
-                if let Err(e) = commands::getspns::get_service_principal_names(&mut ldap, &search_base, ldap_config) {
+                if let Err(e) = commands::getspns::get_service_principal_names(
+                    &mut ldap,
+                    &search_base,
+                    ldap_config,
+                ) {
                     eprintln!("Error: {}", e);
                 }
             }
             3 => handle_query_groups(&mut ldap, &search_base, ldap_config),
             4 => {
-                if let Err(e) = commands::maq::get_machine_account_quota(&mut ldap, &search_base, ldap_config) {
+                if let Err(e) =
+                    commands::maq::get_machine_account_quota(&mut ldap, &search_base, ldap_config)
+                {
                     eprintln!("Error: {}", e);
                 }
             }
             5 => handle_net_commands(&mut ldap, &search_base, ldap_config),
             6 => {
-                if let Err(e) = commands::getpasspol::get_password_policy(&mut ldap, &search_base, ldap_config) {
+                if let Err(e) =
+                    commands::getpasspol::get_password_policy(&mut ldap, &search_base, ldap_config)
+                {
                     eprintln!("Error: {}", e);
                 }
             }
@@ -149,12 +164,16 @@ fn run_command_menu(ldap_config: &mut crate::ldap::LdapConfig, mut ldap: ldap3::
                 }
             }
             8 => {
-                if let Err(e) = commands::customldap::custom_ldap_query(&mut ldap, &search_base, ldap_config) {
+                if let Err(e) =
+                    commands::customldap::custom_ldap_query(&mut ldap, &search_base, ldap_config)
+                {
                     eprintln!("Error running custom LDAP query: {}", e);
                 }
             }
             9 => {
-                if let Err(e) = commands::actions::run_actions_menu(&mut ldap, &search_base, ldap_config) {
+                if let Err(e) =
+                    commands::actions::run_actions_menu(&mut ldap, &search_base, ldap_config)
+                {
                     eprintln!("Error in actions menu: {}", e);
                 }
             }
@@ -165,16 +184,26 @@ fn run_command_menu(ldap_config: &mut crate::ldap::LdapConfig, mut ldap: ldap3::
     }
 }
 
-fn handle_get_sid_guid(ldap: &mut ldap3::LdapConn, search_base: &str, ldap_config: &crate::ldap::LdapConfig) {
+fn handle_get_sid_guid(
+    ldap: &mut ldap3::LdapConn,
+    search_base: &str,
+    ldap_config: &crate::ldap::LdapConfig,
+) {
     let target = read_input("Enter target object: ");
     if !target.is_empty() {
-        if let Err(e) = commands::get_sid_guid::query_sid_guid(ldap, search_base, ldap_config, &target) {
+        if let Err(e) =
+            commands::get_sid_guid::query_sid_guid(ldap, search_base, ldap_config, &target)
+        {
             eprintln!("Error: {}", e);
         }
     }
 }
 
-fn handle_from_sid_guid(ldap: &mut ldap3::LdapConn, search_base: &str, _ldap_config: &crate::ldap::LdapConfig) {
+fn handle_from_sid_guid(
+    ldap: &mut ldap3::LdapConn,
+    search_base: &str,
+    _ldap_config: &crate::ldap::LdapConfig,
+) {
     println!("SID Ex:  S-1-5-21-123456789-234567890-345678901-1001");
     println!("GUID Ex: 550e8400-e29b-41d4-a716-446655440000\n");
 
@@ -186,7 +215,11 @@ fn handle_from_sid_guid(ldap: &mut ldap3::LdapConn, search_base: &str, _ldap_con
     }
 }
 
-fn handle_query_groups(ldap: &mut ldap3::LdapConn, search_base: &str, ldap_config: &crate::ldap::LdapConfig) {
+fn handle_query_groups(
+    ldap: &mut ldap3::LdapConn,
+    search_base: &str,
+    ldap_config: &crate::ldap::LdapConfig,
+) {
     let username = read_input(
         "Enter username to see specific user's groups (or press Enter to see all groups): ",
     );
@@ -198,12 +231,17 @@ fn handle_query_groups(ldap: &mut ldap3::LdapConn, search_base: &str, ldap_confi
         Some(username.as_str())
     };
 
-    if let Err(e) = commands::groups::query_groups(ldap, search_base, ldap_config, username, export) {
+    if let Err(e) = commands::groups::query_groups(ldap, search_base, ldap_config, username, export)
+    {
         eprintln!("Error: {}", e);
     }
 }
 
-fn handle_net_commands(ldap: &mut ldap3::LdapConn, search_base: &str, ldap_config: &crate::ldap::LdapConfig) {
+fn handle_net_commands(
+    ldap: &mut ldap3::LdapConn,
+    search_base: &str,
+    ldap_config: &crate::ldap::LdapConfig,
+) {
     let input = read_input(
         "Enter the net command arguments (e.g., user administrator OR group \"Domain Admins\"): ",
     );
@@ -223,7 +261,8 @@ fn handle_net_commands(ldap: &mut ldap3::LdapConn, search_base: &str, ldap_confi
     }
 
     let name = args[1].trim_matches('"');
-    if let Err(e) = commands::net::net_command(ldap, search_base, ldap_config, &command_type, name) {
+    if let Err(e) = commands::net::net_command(ldap, search_base, ldap_config, &command_type, name)
+    {
         eprintln!("Error: {}", e);
     }
 }

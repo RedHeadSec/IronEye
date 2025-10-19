@@ -99,17 +99,14 @@ fn get_well_known_sids() -> HashMap<&'static str, &'static str> {
     WELL_KNOWN_SIDS.iter().cloned().collect()
 }
 
-/// Validates whether a given SID format is correct.
 fn validate_sid(sid: &str) -> bool {
     sid.starts_with("S-1-") && sid.split('-').count() >= 3
 }
 
-/// Validates whether a given GUID format is correct.
 fn validate_guid(guid: &str) -> bool {
     uuid::Uuid::parse_str(guid).is_ok()
 }
 
-/// Resolves a given SID or GUID to a human-readable name.
 pub fn resolve_sid_guid(
     ldap: &mut ldap3::LdapConn,
     search_base: &str,
@@ -117,7 +114,6 @@ pub fn resolve_sid_guid(
 ) -> Result<Option<String>, Box<dyn Error>> {
     let well_known_sids = get_well_known_sids();
 
-    // Check for well-known SID
     if let Some(name) = well_known_sids.get(identifier) {
         return Ok(Some(name.to_string()));
     }

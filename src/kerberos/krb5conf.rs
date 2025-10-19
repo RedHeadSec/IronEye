@@ -2,13 +2,10 @@ use crate::kerberos::ccache::CcacheFile;
 use std::fs;
 use std::io::Write;
 
-pub fn generate_krb5_conf_from_ccache(
-    ccache: &CcacheFile,
-    dc_ip: &str,
-) -> Result<String, String> {
+pub fn generate_krb5_conf_from_ccache(ccache: &CcacheFile, dc_ip: &str) -> Result<String, String> {
     let realm = ccache.default_principal.realm.clone();
     let domain = realm.to_lowercase();
-    
+
     let kdc = if dc_ip.contains('.') && !dc_ip.contains(':') {
         dc_ip.to_string()
     } else {

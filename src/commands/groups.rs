@@ -1,4 +1,3 @@
-// src/commands/groups.rs
 use crate::help::add_terminal_spacing;
 use crate::ldap::LdapConfig;
 use chrono::Local;
@@ -21,10 +20,9 @@ pub fn query_groups(
     if let Some(user) = username {
         let adapters: Vec<Box<dyn Adapter<_, _>>> = vec![
             Box::new(EntriesOnly::new()),
-            Box::new(PagedResults::new(500)), // Set page size to 500
+            Box::new(PagedResults::new(500)),
         ];
 
-        // Paginated search for the user entry
         let mut search = ldap.streaming_search_with(
             adapters,
             &search_base,
@@ -42,7 +40,7 @@ pub fn query_groups(
         while let Some(entry) = search.next()? {
             user_entry = Some(SearchEntry::construct(entry));
         }
-        let _ = search.result().success()?; // Ensure search completes
+        let _ = search.result().success()?;
 
         if let Some(user_entry) = user_entry {
             let header = format!("\nGroup Memberships for user: {}", user);
@@ -58,14 +56,12 @@ pub fn query_groups(
 
             let mut all_groups = HashSet::new();
 
-            // Add direct memberships
             if let Some(groups) = user_entry.attrs.get("memberOf") {
                 for group_dn in groups {
                     all_groups.insert(group_dn.clone());
                 }
             }
 
-            // Get primary group via objectSid
             if let (Some(primary_group_id), Some(object_sid)) = (
                 user_entry
                     .attrs
@@ -84,7 +80,7 @@ pub fn query_groups(
 
                         let adapters: Vec<Box<dyn Adapter<_, _>>> = vec![
                             Box::new(EntriesOnly::new()),
-                            Box::new(PagedResults::new(500)), // Enable paging
+                            Box::new(PagedResults::new(500)),
                         ];
 
                         let mut search = ldap.streaming_search_with(
@@ -105,12 +101,11 @@ pub fn query_groups(
                                 all_groups.insert(dn.clone());
                             }
                         }
-                        let _ = search.result().success()?; // Ensure search completes
+                        let _ = search.result().success()?;
                     }
                 }
             }
 
-            // Fetch and print group details with pagination
             for group_dn in all_groups {
                 let adapters: Vec<Box<dyn Adapter<_, _>>> = vec![
                     Box::new(EntriesOnly::new()),
@@ -140,13 +135,12 @@ pub fn query_groups(
                         export_data.push(group_details);
                     }
                 }
-                let _ = search.result().success()?; // Ensure search completes
+                let _ = search.result().success()?;
             }
         } else {
             println!("User not found");
         }
     } else {
-        // Query all groups in the domain using paging
         let adapters: Vec<Box<dyn Adapter<_, _>>> = vec![
             Box::new(EntriesOnly::new()),
             Box::new(PagedResults::new(500)),
@@ -182,18 +176,15 @@ pub fn query_groups(
             let group_entry = SearchEntry::construct(entry);
             let group_details = get_group_details_string(&group_entry);
 
-            // Print to console
             print!("{}", group_details);
 
-            // Add to export data if needed
             if export {
                 export_data.push(group_details);
             }
         }
-        let _ = search.result().success()?; // Ensure search completes
+        let _ = search.result().success()?;
     }
 
-    // Export to file if requested
     if export {
         let timestamp = Local::now().format("%Y%m%d_%H%M%S");
         let filename = format!("domain_groups_{}.txt", timestamp);
@@ -277,7 +268,7 @@ fn get_group_type_string(group_type: i32) -> String {
 fn extract_base_sid(sid: &str) -> Option<String> {
     let parts: Vec<&str> = sid.rsplitn(2, '-').collect();
     if parts.len() == 2 {
-        Some(parts[1].to_string()) // Base SID without the last RID
+        Some(parts[1].to_string())
     } else {
         None
     }

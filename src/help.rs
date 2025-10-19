@@ -20,21 +20,21 @@ pub fn show_help_connect() {
     println!("\n1. Password Authentication:");
     println!("   -u <username> -p <password> -d <domain> -i <dc_ip>");
     println!("   Example: -u admin -p 'P@ssw0rd' -d corp.local -i 10.0.0.1\n");
-    
+
     println!("2. Kerberos with Explicit Ccache:");
     println!("   -k -c <ccache_path> -d <domain> -i <dc_ip>");
     println!("   Example: -k -c /tmp/krb5cc_1000 -d corp.local -i 10.0.0.1\n");
-    
+
     println!("3. Kerberos with KRB5CCNAME Environment Variable:");
     println!("   export KRB5CCNAME=/tmp/krb5cc_1000");
     println!("   Then use: -k -d <domain> -i <dc_ip>");
     println!("   Example: -k -d corp.local -i 10.0.0.1");
     println!("   Note: krb5.conf is auto-generated from ccache\n");
-    
+
     println!("4. Kerberos with Auto-Detection:");
     println!("   Searches: KRB5CCNAME → /tmp/krb5cc_$(uid) → default locations");
     println!("   Example: -k -d corp.local -i 10.0.0.1\n");
-    
+
     println!("Supported KRB5CCNAME Formats:");
     println!("   FILE:/path/to/ccache  - File-based cache (most common)");
     println!("   /path/to/ccache       - Plain path (assumed FILE:)");

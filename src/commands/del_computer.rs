@@ -1,6 +1,6 @@
-use ldap3::{LdapConn, Scope};
-use crate::ldap::escape_filter;
 use crate::help::add_terminal_spacing;
+use crate::ldap::escape_filter;
+use ldap3::{LdapConn, Scope};
 
 pub fn del_computer(
     ldap: &mut LdapConn,
@@ -17,12 +17,12 @@ pub fn del_computer(
 
     let escaped_name = escape_filter(&computer_name);
     let search_filter = format!("(sAMAccountName={})", escaped_name);
-    
+
     let (results, _) = match ldap.search(
         search_base,
         Scope::Subtree,
         &search_filter,
-        vec!["distinguishedName"]
+        vec!["distinguishedName"],
     ) {
         Ok(res) => match res.success() {
             Ok(r) => r,
@@ -47,7 +47,7 @@ pub fn del_computer(
 
     let entry = ldap3::SearchEntry::construct(results[0].clone());
     let computer_dn = entry.dn;
-    
+
     println!("[*] Found computer DN: {}", computer_dn);
 
     match ldap.delete(&computer_dn) {
@@ -59,14 +59,16 @@ pub fn del_computer(
             }
             Err(e) => {
                 eprintln!("[!] Failed to delete computer: {}", e);
-                
+
                 let error_string = format!("{:?}", e);
-                if error_string.contains("insufficientAccessRights") || error_string.contains("50") {
+                if error_string.contains("insufficientAccessRights") || error_string.contains("50")
+                {
                     eprintln!("[!] Insufficient access rights - you don't have permission to delete this object");
-                } else if error_string.contains("unwillingToPerform") || error_string.contains("53") {
+                } else if error_string.contains("unwillingToPerform") || error_string.contains("53")
+                {
                     eprintln!("[!] Server unwilling to perform - object may be protected");
                 }
-                
+
                 add_terminal_spacing(1);
                 Err(e.into())
             }

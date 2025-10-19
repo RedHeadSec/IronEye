@@ -1,6 +1,6 @@
+use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::PathBuf;
-use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ProxyConfig {
@@ -42,14 +42,14 @@ impl ProxyConfig {
 
     pub fn save(&self) -> Result<(), Box<dyn std::error::Error>> {
         let path = Self::config_path();
-        
+
         if let Some(parent) = path.parent() {
             fs::create_dir_all(parent)?;
         }
 
         let json = serde_json::to_string_pretty(self)?;
         fs::write(path, json)?;
-        
+
         Ok(())
     }
 

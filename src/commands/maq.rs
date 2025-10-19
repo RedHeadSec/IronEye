@@ -1,10 +1,13 @@
-// src/commands/maq.rs
 use crate::help::add_terminal_spacing;
 use crate::ldap::LdapConfig;
 use ldap3::{Scope, SearchEntry};
 use std::error::Error;
 
-pub fn get_machine_account_quota(ldap: &mut ldap3::LdapConn, search_base: &str, config: &LdapConfig) -> Result<(), Box<dyn Error>> {
+pub fn get_machine_account_quota(
+    ldap: &mut ldap3::LdapConn,
+    search_base: &str,
+    config: &LdapConfig,
+) -> Result<(), Box<dyn Error>> {
     let result = ldap.search(
         &search_base,
         Scope::Base,

@@ -1,4 +1,4 @@
-use crate::kerberos::ccache::{parse_krb5ccname, find_default_ccache, validate_ccache_location};
+use crate::kerberos::ccache::{find_default_ccache, parse_krb5ccname, validate_ccache_location};
 
 pub fn determine_ccache_path(explicit_path: Option<&String>) -> Result<String, String> {
     if let Some(path) = explicit_path {
@@ -7,7 +7,7 @@ pub fn determine_ccache_path(explicit_path: Option<&String>) -> Result<String, S
         }
         return Ok(path.clone());
     }
-    
+
     if let Ok(env_path) = std::env::var("KRB5CCNAME") {
         match parse_krb5ccname(&env_path) {
             Ok(location) => match validate_ccache_location(&location) {
@@ -17,11 +17,11 @@ pub fn determine_ccache_path(explicit_path: Option<&String>) -> Result<String, S
             Err(e) => return Err(e),
         }
     }
-    
+
     if let Some(default_path) = find_default_ccache() {
         return Ok(default_path);
     }
-    
+
     Err("No ccache file found. Use --ccache or set KRB5CCNAME".to_string())
 }
 

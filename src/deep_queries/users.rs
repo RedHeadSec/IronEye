@@ -5,7 +5,11 @@ use ldap3::adapters::{Adapter, EntriesOnly, PagedResults};
 use ldap3::{LdapConn, Scope, SearchEntry};
 use std::error::Error;
 
-pub fn get_users(ldap: &mut LdapConn, search_base: &str, _config: &LdapConfig) -> Result<(), Box<dyn Error>> {
+pub fn get_users(
+    ldap: &mut LdapConn,
+    search_base: &str,
+    _config: &LdapConfig,
+) -> Result<(), Box<dyn Error>> {
     let entries = query_users(ldap, search_base)?;
     let mut wtr = Writer::from_path("users_export.csv")?;
 
@@ -51,13 +55,12 @@ pub fn get_users(ldap: &mut LdapConn, search_base: &str, _config: &LdapConfig) -
     Ok(())
 }
 
-// Helper function to perform the LDAP search for user accounts
 fn query_users(ldap: &mut LdapConn, search_base: &str) -> Result<Vec<SearchEntry>, Box<dyn Error>> {
     let search_filter = "(objectClass=user)";
 
     let adapters: Vec<Box<dyn Adapter<_, _>>> = vec![
         Box::new(EntriesOnly::new()),
-        Box::new(PagedResults::new(500)), // Enable paging with a page size of 500
+        Box::new(PagedResults::new(500)),
     ];
 
     let mut search = ldap.streaming_search_with(
@@ -65,14 +68,14 @@ fn query_users(ldap: &mut LdapConn, search_base: &str) -> Result<Vec<SearchEntry
         search_base,
         Scope::Subtree,
         search_filter,
-        vec!["sAMAccountName", "displayName", "mail", "description"], // Includes "description"
+        vec!["sAMAccountName", "displayName", "mail", "description"],
     )?;
 
     let mut entries = Vec::new();
     while let Some(entry) = search.next()? {
         entries.push(SearchEntry::construct(entry));
     }
-    let _ = search.result().success()?; // Ensure search completes successfully
+    let _ = search.result().success()?;
 
     Ok(entries)
 }

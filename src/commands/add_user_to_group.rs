@@ -1,7 +1,7 @@
-use ldap3::{LdapConn, Scope, Mod};
-use std::collections::HashSet;
-use crate::ldap::escape_filter;
 use crate::help::add_terminal_spacing;
+use crate::ldap::escape_filter;
+use ldap3::{LdapConn, Mod, Scope};
+use std::collections::HashSet;
 
 pub fn add_user_to_group(
     ldap: &mut LdapConn,
@@ -13,12 +13,12 @@ pub fn add_user_to_group(
 
     let escaped_user = escape_filter(user);
     let user_filter = format!("(sAMAccountName={})", escaped_user);
-    
+
     let (user_results, _) = match ldap.search(
         search_base,
         Scope::Subtree,
         &user_filter,
-        vec!["distinguishedName"]
+        vec!["distinguishedName"],
     ) {
         Ok(res) => match res.success() {
             Ok(r) => r,
@@ -46,12 +46,12 @@ pub fn add_user_to_group(
 
     let escaped_group = escape_filter(group);
     let group_filter = format!("(sAMAccountName={})", escaped_group);
-    
+
     let (group_results, _) = match ldap.search(
         search_base,
         Scope::Subtree,
         &group_filter,
-        vec!["distinguishedName"]
+        vec!["distinguishedName"],
     ) {
         Ok(res) => match res.success() {
             Ok(r) => r,
@@ -89,16 +89,22 @@ pub fn add_user_to_group(
             }
             Err(e) => {
                 eprintln!("[!] Failed to add user to group: {}", e);
-                
+
                 let error_string = format!("{:?}", e);
-                if error_string.contains("insufficientAccessRights") || error_string.contains("50") {
+                if error_string.contains("insufficientAccessRights") || error_string.contains("50")
+                {
                     eprintln!("[!] Insufficient access rights - you don't have permission to modify this group");
-                } else if error_string.contains("attributeOrValueExists") || error_string.contains("20") {
+                } else if error_string.contains("attributeOrValueExists")
+                    || error_string.contains("20")
+                {
                     eprintln!("[!] User is already a member of this group");
-                } else if error_string.contains("unwillingToPerform") || error_string.contains("53") {
-                    eprintln!("[!] Server unwilling to perform - group may be protected or read-only");
+                } else if error_string.contains("unwillingToPerform") || error_string.contains("53")
+                {
+                    eprintln!(
+                        "[!] Server unwilling to perform - group may be protected or read-only"
+                    );
                 }
-                
+
                 add_terminal_spacing(1);
                 Err(e.into())
             }

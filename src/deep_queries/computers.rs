@@ -5,7 +5,11 @@ use ldap3::adapters::{Adapter, EntriesOnly, PagedResults};
 use ldap3::{LdapConn, Scope, SearchEntry};
 use std::error::Error;
 
-pub fn get_computers(ldap: &mut LdapConn, search_base: &str, _config: &LdapConfig) -> Result<(), Box<dyn Error>> {
+pub fn get_computers(
+    ldap: &mut LdapConn,
+    search_base: &str,
+    _config: &LdapConfig,
+) -> Result<(), Box<dyn Error>> {
     let entries = query_computers(ldap, search_base)?;
 
     let mut wtr = Writer::from_path("computers_export.csv")?;
@@ -73,7 +77,7 @@ fn query_computers(
 
     let adapters: Vec<Box<dyn Adapter<_, _>>> = vec![
         Box::new(EntriesOnly::new()),
-        Box::new(PagedResults::new(500)), // Enable paging
+        Box::new(PagedResults::new(500)),
     ];
 
     let mut search = ldap.streaming_search_with(

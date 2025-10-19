@@ -1,7 +1,7 @@
-use std::process::{Command, Stdio};
-use std::path::PathBuf;
-use std::env;
 use super::proxy_config::ProxyConfig;
+use std::env;
+use std::path::PathBuf;
+use std::process::{Command, Stdio};
 
 pub struct KerbtoolOutput {
     pub stdout: String,
@@ -18,7 +18,7 @@ pub struct KerbtoolConfig {
 impl KerbtoolConfig {
     pub fn new() -> Result<Self, Box<dyn std::error::Error>> {
         let binary_path = Self::find_kerbtool_binary()?;
-        
+
         Ok(Self {
             binary_path,
             socks_host: None,
@@ -46,12 +46,15 @@ impl KerbtoolConfig {
             }
         }
 
-        Err("Kerbtool binary not found. Expected in ./bin/kerbtool, ./kerbtool, or /kerbtool".into())
+        Err(
+            "Kerbtool binary not found. Expected in ./bin/kerbtool, ./kerbtool, or /kerbtool"
+                .into(),
+        )
     }
 
     pub fn build_command(&self, args: &[&str]) -> Command {
         let mut cmd = Command::new(&self.binary_path);
-        
+
         for arg in args {
             cmd.arg(arg);
         }
@@ -65,7 +68,7 @@ impl KerbtoolConfig {
 
         cmd.stdout(Stdio::piped());
         cmd.stderr(Stdio::piped());
-        
+
         cmd
     }
 }
@@ -80,30 +83,38 @@ pub fn run_kerbtool(kerbtool_args: &[&str]) -> Result<KerbtoolOutput, Box<dyn st
     }
 
     let mut config = KerbtoolConfig::new()?;
-    
-    let proxychains_active = env::var("PROXYCHAINS_CONF_FILE").is_ok() 
-        || env::var("LD_PRELOAD").map(|v| v.contains("proxychains")).unwrap_or(false);
-    
-    let has_socks_in_args = kerbtool_args.iter()
+
+    let proxychains_active = env::var("PROXYCHAINS_CONF_FILE").is_ok()
+        || env::var("LD_PRELOAD")
+            .map(|v| v.contains("proxychains"))
+            .unwrap_or(false);
+
+    let has_socks_in_args = kerbtool_args
+        .iter()
         .any(|arg| arg.starts_with("--socks-host") || *arg == "--socks-host");
-    
+
     if proxychains_active {
         println!("[*] Proxychains detected - Kerbtool will inherit proxy settings");
     } else if !has_socks_in_args {
         let proxy_config = ProxyConfig::load();
         if proxy_config.is_enabled() {
-            println!("[*] Applying SOCKS proxy: {}:{}", proxy_config.get_host(), proxy_config.get_port());
-            config = config.with_socks(
-                proxy_config.get_host().to_string(),
+            println!(
+                "[*] Applying SOCKS proxy: {}:{}",
+                proxy_config.get_host(),
                 proxy_config.get_port()
             );
+            config =
+                config.with_socks(proxy_config.get_host().to_string(), proxy_config.get_port());
         }
     }
 
     let mut cmd = config.build_command(kerbtool_args);
-    
+
     let output = cmd.output().map_err(|e| {
-        format!("Failed to execute kerbtool binary at {:?}: {}", config.binary_path, e)
+        format!(
+            "Failed to execute kerbtool binary at {:?}: {}",
+            config.binary_path, e
+        )
     })?;
 
     Ok(KerbtoolOutput {

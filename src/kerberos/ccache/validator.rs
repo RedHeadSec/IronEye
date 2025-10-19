@@ -5,16 +5,16 @@ pub fn validate_ccache(ccache: &CcacheFile) -> Result<CcacheInfo, String> {
     if ccache.credentials.is_empty() {
         return Err("No credentials found in ccache".to_string());
     }
-    
+
     let tgt = find_tgt(ccache).ok_or("No TGT found in ccache")?;
-    
+
     if tgt.is_expired() {
         return Err(format!(
             "TGT has expired (ended at {})",
             format_timestamp(tgt.end_time)
         ));
     }
-    
+
     Ok(CcacheInfo {
         principal: ccache.default_principal.to_string(),
         end_time: format_timestamp(tgt.end_time),
@@ -38,7 +38,7 @@ pub fn format_duration(seconds: u64) -> String {
     let hours = seconds / 3600;
     let minutes = (seconds % 3600) / 60;
     let secs = seconds % 60;
-    
+
     if hours > 0 {
         format!("{}h {}m", hours, minutes)
     } else if minutes > 0 {
@@ -54,13 +54,13 @@ pub fn get_credential_summary(cred: &Credential) -> String {
     } else {
         "Valid"
     };
-    
+
     let cred_type = if cred.is_tgt() {
         "TGT"
     } else {
         "Service Ticket"
     };
-    
+
     format!(
         "{}: {} → {} [{}] (expires: {})",
         cred_type,

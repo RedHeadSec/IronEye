@@ -31,19 +31,19 @@ pub fn run(args: &UserEnumArgs) -> Result<(), Box<dyn Error>> {
         output_file: args.output.clone(),
         port: DEFAULT_LDAP_PORT,
     };
-    
+
     if args.timestamp_format {
         println!("\n[{}]", get_timestamp());
     }
     println!("\n[*] User enumeration started\n");
-    
+
     enumerate_users(config)?;
-    
+
     if args.timestamp_format {
         println!("[{}]", get_timestamp());
     }
     println!("[*] User enumeration complete\n");
-    
+
     Ok(())
 }
 
@@ -64,15 +64,18 @@ fn enumerate_users(config: LdapConfig) -> Result<(), Box<dyn Error>> {
 
     let total_users = usernames.len();
     let thread_count = determine_thread_count(total_users, config.threads);
-    
-    println!("[*] Processing {} usernames with {} threads", total_users, thread_count);
+
+    println!(
+        "[*] Processing {} usernames with {} threads",
+        total_users, thread_count
+    );
     println!("[*] Target: {}\n", config.dc);
-    
+
     let valid_users = process_usernames_threaded(&config, usernames, thread_count)?;
-    
+
     display_results(total_users, &valid_users);
     write_results_if_requested(&config, &valid_users)?;
-    
+
     Ok(())
 }
 
@@ -90,7 +93,7 @@ fn load_usernames(file_path: &str) -> Result<Vec<String>, Box<dyn Error>> {
 fn determine_thread_count(total_users: usize, requested_threads: usize) -> usize {
     std::cmp::min(
         std::cmp::min(requested_threads, MAX_THREAD_COUNT),
-        total_users
+        total_users,
     )
 }
 
@@ -250,7 +253,7 @@ fn display_results(total_users: usize, valid_users: &[String]) {
     println!("\n[+] Users checked: {}", total_users);
     println!("[+] Valid users found: {}", valid_users.len());
     println!("[+] Success rate: {:.2}%", success_rate);
-    
+
     // Print valid users to stdout if any were found
     if !valid_users.is_empty() {
         println!("\n[+] Valid users:");

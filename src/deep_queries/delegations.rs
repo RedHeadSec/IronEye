@@ -3,12 +3,13 @@ use crate::ldap::LdapConfig;
 use ldap3::{Scope, SearchEntry};
 use std::error::Error;
 
-pub fn get_delegations(ldap: &mut ldap3::LdapConn, search_base: &str, _config: &LdapConfig) -> Result<(), Box<dyn Error>> {
-
-    // LDAP filter to find accounts with delegation privileges
+pub fn get_delegations(
+    ldap: &mut ldap3::LdapConn,
+    search_base: &str,
+    _config: &LdapConfig,
+) -> Result<(), Box<dyn Error>> {
     let delegation_filter = "(&(objectClass=User)(|(userAccountControl:1.2.840.113556.1.4.803:=524288)(msDS-AllowedToDelegateTo=*)(msDS-AllowedToActOnBehalfOfOtherIdentity=*)))";
 
-    // Attributes we want to fetch
     let attributes = vec![
         "sAMAccountName",
         "userAccountControl",
@@ -44,13 +45,11 @@ pub fn get_delegations(ldap: &mut ldap3::LdapConn, search_base: &str, _config: &
             .map(|v| v.join(", "))
             .unwrap_or_else(|| "None".to_string());
 
-        // Print results
         println!(
             "{}:{}:{}",
             account_name, delegation_type, delegated_services
         );
 
-        // Write to CSV file
         wtr.write_record(&[account_name, &delegation_type, &delegated_services])?;
     }
 
@@ -62,7 +61,6 @@ pub fn get_delegations(ldap: &mut ldap3::LdapConn, search_base: &str, _config: &
     Ok(())
 }
 
-/// **Determine the type of delegation based on attributes**
 fn determine_delegation_type(entry: &SearchEntry) -> String {
     if let Some(uac) = entry.attrs.get("userAccountControl").and_then(|v| v.get(0)) {
         if let Ok(uac_value) = uac.parse::<i64>() {

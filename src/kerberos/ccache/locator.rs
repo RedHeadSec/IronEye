@@ -44,14 +44,14 @@ pub fn find_default_ccache() -> Option<String> {
             }
         }
     }
-    
+
     #[cfg(unix)]
     {
         if let Some(path) = find_unix_default() {
             return Some(path);
         }
     }
-    
+
     None
 }
 
@@ -63,7 +63,7 @@ fn find_unix_default() -> Option<String> {
         if Path::new(&path).exists() {
             return Some(path);
         }
-        
+
         let euid = libc::geteuid();
         if euid != uid {
             let path = format!("/tmp/krb5cc_{}", euid);
@@ -72,7 +72,7 @@ fn find_unix_default() -> Option<String> {
             }
         }
     }
-    
+
     None
 }
 
@@ -87,14 +87,8 @@ pub fn validate_ccache_location(location: &CcacheLocation) -> Result<String, Str
                 Ok(path.clone())
             }
         }
-        CcacheLocation::Dir(_) => {
-            Err("DIR: ccache collections not yet supported".to_string())
-        }
-        CcacheLocation::Keyring(_) => {
-            Err("KEYRING: ccache type not yet supported".to_string())
-        }
-        CcacheLocation::Kcm => {
-            Err("KCM: ccache type not yet supported".to_string())
-        }
+        CcacheLocation::Dir(_) => Err("DIR: ccache collections not yet supported".to_string()),
+        CcacheLocation::Keyring(_) => Err("KEYRING: ccache type not yet supported".to_string()),
+        CcacheLocation::Kcm => Err("KCM: ccache type not yet supported".to_string()),
     }
 }

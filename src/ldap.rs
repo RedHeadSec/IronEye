@@ -1,7 +1,10 @@
 use crate::help::get_timestamp;
 use crate::kerberos::ccache::{parse_ccache_file, validate_ccache};
 use crate::kerberos::env::{determine_ccache_path, restore_krb5ccname, set_krb5ccname_temp};
-use crate::kerberos::krb5conf::{create_temp_krb5_conf, generate_krb5_conf_from_ccache, restore_krb5_config_env, set_krb5_config_env};
+use crate::kerberos::krb5conf::{
+    create_temp_krb5_conf, generate_krb5_conf_from_ccache, restore_krb5_config_env,
+    set_krb5_config_env,
+};
 use byteorder::{LittleEndian, ReadBytesExt};
 use ldap3::{LdapConn, LdapConnSettings, LdapError, Scope, SearchEntry};
 use std::io::{Cursor, Read};
@@ -39,18 +42,22 @@ pub fn ldap_connect(config: &mut LdapConfig) -> Result<(LdapConn, String), LdapE
     let mut ldap = LdapConn::with_settings(settings, &ldap_url)?;
 
     if config.kerberos {
-        let ccache_to_use = determine_ccache_path(config.ccache_path.as_ref()).map_err(|e| {
-            LdapError::Io {
+        let ccache_to_use =
+            determine_ccache_path(config.ccache_path.as_ref()).map_err(|e| LdapError::Io {
                 source: std::io::Error::new(std::io::ErrorKind::NotFound, e),
-            }
-        })?;
+            })?;
 
         // Validate DC address for Kerberos
         if config.dc_ip.parse::<std::net::IpAddr>().is_ok() {
-            eprintln!("[!] Error: Kerberos authentication requires a hostname/FQDN, not an IP address.");
+            eprintln!(
+                "[!] Error: Kerberos authentication requires a hostname/FQDN, not an IP address."
+            );
             eprintln!("[!] Current value: {}", config.dc_ip);
             eprintln!("[!] Please use the DC's FQDN instead.");
-            eprintln!("[!] Example: -i dc01.redheadsec.local instead of -i {}", config.dc_ip);
+            eprintln!(
+                "[!] Example: -i dc01.redheadsec.local instead of -i {}",
+                config.dc_ip
+            );
             return Err(LdapError::Io {
                 source: std::io::Error::new(
                     std::io::ErrorKind::InvalidInput,
@@ -73,7 +80,10 @@ pub fn ldap_connect(config: &mut LdapConfig) -> Result<(LdapConn, String), LdapE
                 match validate_ccache(&ccache) {
                     Ok(info) => {
                         println!("[+] Valid TGT found for {}", info.principal);
-                        println!("[+] Ticket expires: {} ({} remaining)", info.end_time, info.time_remaining);
+                        println!(
+                            "[+] Ticket expires: {} ({} remaining)",
+                            info.end_time, info.time_remaining
+                        );
 
                         if let Some(tgt) = crate::kerberos::ccache::find_tgt(&ccache) {
                             let minutes_remaining = tgt.expires_in_minutes();
@@ -98,32 +108,32 @@ pub fn ldap_connect(config: &mut LdapConfig) -> Result<(LdapConn, String), LdapE
                     config.username = ccache.default_principal.components[0].clone();
                 }
 
-                let krb5_conf = generate_krb5_conf_from_ccache(&ccache, &normalized_dc)
-                    .map_err(|e| LdapError::Io {
-                        source: std::io::Error::new(
-                            std::io::ErrorKind::Other,
-                            format!("Failed to generate krb5.conf: {}", e),
-                        ),
+                let krb5_conf =
+                    generate_krb5_conf_from_ccache(&ccache, &normalized_dc).map_err(|e| {
+                        LdapError::Io {
+                            source: std::io::Error::new(
+                                std::io::ErrorKind::Other,
+                                format!("Failed to generate krb5.conf: {}", e),
+                            ),
+                        }
                     })?;
-                
-                let krb5_conf_path = create_temp_krb5_conf(&krb5_conf)
-                    .map_err(|e| LdapError::Io {
-                        source: e,
-                    })?;
-                
+
+                let krb5_conf_path =
+                    create_temp_krb5_conf(&krb5_conf).map_err(|e| LdapError::Io { source: e })?;
+
                 //println!("[*] Generated temporary krb5.conf at {}", krb5_conf_path);
                 //println!("[*] Service Principal: ldap/{}@{}", normalized_dc, ccache.default_principal.realm);
-                
+
                 let original_krb5_config = set_krb5_config_env(&krb5_conf_path);
                 let original_krb5ccname = set_krb5ccname_temp(&ccache_to_use);
-                
+
                 let bind_result = ldap.sasl_gssapi_bind(&normalized_dc)?.success();
-                
+
                 restore_krb5ccname(original_krb5ccname);
                 restore_krb5_config_env(original_krb5_config);
-                
+
                 let _ = std::fs::remove_file(krb5_conf_path);
-                
+
                 bind_result?;
             }
             Err(e) => {
@@ -184,18 +194,22 @@ pub fn ldap_connect(config: &mut LdapConfig) -> Result<(LdapConn, String), LdapE
     let mut ldap = LdapConn::with_settings(settings, &ldap_url)?;
 
     if config.kerberos {
-        let ccache_to_use = determine_ccache_path(config.ccache_path.as_ref()).map_err(|e| {
-            LdapError::Io {
+        let ccache_to_use =
+            determine_ccache_path(config.ccache_path.as_ref()).map_err(|e| LdapError::Io {
                 source: std::io::Error::new(std::io::ErrorKind::NotFound, e),
-            }
-        })?;
+            })?;
 
         // Validate DC address for Kerberos
         if config.dc_ip.parse::<std::net::IpAddr>().is_ok() {
-            eprintln!("[!] Error: Kerberos authentication requires a hostname/FQDN, not an IP address.");
+            eprintln!(
+                "[!] Error: Kerberos authentication requires a hostname/FQDN, not an IP address."
+            );
             eprintln!("[!] Current value: {}", config.dc_ip);
             eprintln!("[!] Please use the DC's FQDN instead.");
-            eprintln!("[!] Example: -i dc01.redheadsec.local instead of -i {}", config.dc_ip);
+            eprintln!(
+                "[!] Example: -i dc01.redheadsec.local instead of -i {}",
+                config.dc_ip
+            );
             return Err(LdapError::Io {
                 source: std::io::Error::new(
                     std::io::ErrorKind::InvalidInput,
@@ -207,7 +221,10 @@ pub fn ldap_connect(config: &mut LdapConfig) -> Result<(LdapConn, String), LdapE
         // Normalize hostname to lowercase (Kerberos convention)
         let normalized_dc = config.dc_ip.to_lowercase();
         if normalized_dc != config.dc_ip {
-            println!("[*] Normalized hostname: {} -> {}", config.dc_ip, normalized_dc);
+            println!(
+                "[*] Normalized hostname: {} -> {}",
+                config.dc_ip, normalized_dc
+            );
         }
 
         println!("[*] Using Kerberos authentication for LDAP.");
@@ -218,7 +235,10 @@ pub fn ldap_connect(config: &mut LdapConfig) -> Result<(LdapConn, String), LdapE
                 match validate_ccache(&ccache) {
                     Ok(info) => {
                         println!("[+] Valid TGT found for {}", info.principal);
-                        println!("[+] Ticket expires: {} ({} remaining)", info.end_time, info.time_remaining);
+                        println!(
+                            "[+] Ticket expires: {} ({} remaining)",
+                            info.end_time, info.time_remaining
+                        );
 
                         if let Some(tgt) = crate::kerberos::ccache::find_tgt(&ccache) {
                             let minutes_remaining = tgt.expires_in_minutes();
@@ -244,33 +264,36 @@ pub fn ldap_connect(config: &mut LdapConfig) -> Result<(LdapConn, String), LdapE
                 }
 
                 // Generate krb5.conf from ccache
-                let krb5_conf = generate_krb5_conf_from_ccache(&ccache, &normalized_dc)
-                    .map_err(|e| LdapError::Io {
-                        source: std::io::Error::new(
-                            std::io::ErrorKind::Other,
-                            format!("Failed to generate krb5.conf: {}", e),
-                        ),
+                let krb5_conf =
+                    generate_krb5_conf_from_ccache(&ccache, &normalized_dc).map_err(|e| {
+                        LdapError::Io {
+                            source: std::io::Error::new(
+                                std::io::ErrorKind::Other,
+                                format!("Failed to generate krb5.conf: {}", e),
+                            ),
+                        }
                     })?;
-                
-                let krb5_conf_path = create_temp_krb5_conf(&krb5_conf)
-                    .map_err(|e| LdapError::Io {
-                        source: e,
-                    })?;
-                
+
+                let krb5_conf_path =
+                    create_temp_krb5_conf(&krb5_conf).map_err(|e| LdapError::Io { source: e })?;
+
                 println!("[*] Generated temporary krb5.conf at {}", krb5_conf_path);
-                println!("[*] Service Principal: ldap/{}@{}", normalized_dc, ccache.default_principal.realm);
-                
+                println!(
+                    "[*] Service Principal: ldap/{}@{}",
+                    normalized_dc, ccache.default_principal.realm
+                );
+
                 let original_krb5_config = set_krb5_config_env(&krb5_conf_path);
                 let original_krb5ccname = set_krb5ccname_temp(&ccache_to_use);
-                
+
                 let bind_result = ldap.sasl_gssapi_bind(&normalized_dc)?.success();
-                
+
                 restore_krb5ccname(original_krb5ccname);
                 restore_krb5_config_env(original_krb5_config);
-                
+
                 // Clean up temp file
                 let _ = std::fs::remove_file(krb5_conf_path);
-                
+
                 bind_result?;
             }
             Err(e) => {

@@ -3,32 +3,29 @@ use crate::ldap::LdapConfig;
 use ldap3::{LdapConn, Scope, SearchEntry};
 use std::error::Error;
 
-pub fn get_subnets(ldap: &mut LdapConn, _search_base: &str, _config: &LdapConfig) -> Result<(), Box<dyn Error>> {
-    // Query RootDSE for configurationNamingContext
+pub fn get_subnets(
+    ldap: &mut LdapConn,
+    _search_base: &str,
+    _config: &LdapConfig,
+) -> Result<(), Box<dyn Error>> {
     let config_base = get_configuration_naming_context(ldap)?;
 
-    // Construct the Subnets search base
     let subnets_base = format!("CN=Subnets,CN=Sites,{}", config_base);
 
-    // Perform the Subnets query
     let entries = query_subnets(ldap, &subnets_base)?;
 
-    // Check if there are no results
     if entries.is_empty() {
         println!("\nNo subnets found in Active Directory.");
         return Ok(());
     }
 
-    // Open a CSV writer
     let mut wtr = csv::Writer::from_path("subnets_export.csv")?;
 
-    // Write the header row
     wtr.write_record(&["Subnet", "Site", "Description"])?;
 
     println!("\nSubnets Query Results:");
     println!("----------------------");
 
-    // Write each subnet's details to the CSV file and print them to the terminal
     for entry in entries {
         let subnet = entry
             .attrs
@@ -46,17 +43,14 @@ pub fn get_subnets(ldap: &mut LdapConn, _search_base: &str, _config: &LdapConfig
             .and_then(|v| v.get(0))
             .map_or("", String::as_str);
 
-        // Write to the CSV file
         wtr.write_record(&[subnet, site, description])?;
 
-        // Print to the terminal
         println!(
             "Subnet: {}, Site: {}, Description: {}",
             subnet, site, description
         );
     }
 
-    // Flush the writer to ensure all data is written to the file
     wtr.flush()?;
 
     println!("\nSubnets query completed successfully. Results saved to 'subnets_export.csv'.");
@@ -64,10 +58,9 @@ pub fn get_subnets(ldap: &mut LdapConn, _search_base: &str, _config: &LdapConfig
     Ok(())
 }
 
-// Helper function to query RootDSE for the configurationNamingContext
 fn get_configuration_naming_context(ldap: &mut LdapConn) -> Result<String, Box<dyn Error>> {
     let result = ldap.search(
-        "", // RootDSE query has an empty base
+        "",
         Scope::Base,
         "(objectClass=*)",
         vec!["configurationNamingContext"],
@@ -86,7 +79,6 @@ fn get_configuration_naming_context(ldap: &mut LdapConn) -> Result<String, Box<d
     Err("Failed to retrieve configurationNamingContext from RootDSE.".into())
 }
 
-// Helper function to perform the LDAP search for subnets
 fn query_subnets(
     ldap: &mut LdapConn,
     subnets_base: &str,
@@ -96,7 +88,7 @@ fn query_subnets(
         subnets_base,
         Scope::Subtree,
         search_filter,
-        vec!["cn", "siteObject", "description"], // Attributes to fetch
+        vec!["cn", "siteObject", "description"],
     )?;
 
     let (entries, _) = result.success()?;

@@ -4,7 +4,11 @@ use csv::Writer;
 use ldap3::{LdapConn, Scope, SearchEntry};
 use std::error::Error;
 
-pub fn get_organizational_units(ldap: &mut LdapConn, search_base: &str, _config: &LdapConfig) -> Result<(), Box<dyn Error>> {
+pub fn get_organizational_units(
+    ldap: &mut LdapConn,
+    search_base: &str,
+    _config: &LdapConfig,
+) -> Result<(), Box<dyn Error>> {
     let entries = query_organizational_units(ldap, search_base)?;
 
     if entries.is_empty() {

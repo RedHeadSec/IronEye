@@ -1,7 +1,7 @@
-use ldap3::{LdapConn, Scope, Mod};
-use std::collections::HashSet;
-use crate::ldap::escape_filter;
 use crate::help::add_terminal_spacing;
+use crate::ldap::escape_filter;
+use ldap3::{LdapConn, Mod, Scope};
+use std::collections::HashSet;
 
 const UF_ACCOUNT_DISABLE: i32 = 0x0002;
 
@@ -14,12 +14,12 @@ pub fn enable_account(
 
     let escaped_username = escape_filter(username);
     let search_filter = format!("(sAMAccountName={})", escaped_username);
-    
+
     let (results, _) = match ldap.search(
         search_base,
         Scope::Subtree,
         &search_filter,
-        vec!["distinguishedName", "userAccountControl"]
+        vec!["distinguishedName", "userAccountControl"],
     ) {
         Ok(res) => match res.success() {
             Ok(r) => r,
@@ -44,8 +44,9 @@ pub fn enable_account(
 
     let entry = ldap3::SearchEntry::construct(results[0].clone());
     let user_dn = entry.dn;
-    
-    let current_uac = entry.attrs
+
+    let current_uac = entry
+        .attrs
         .get("userAccountControl")
         .and_then(|v| v.first())
         .and_then(|v| v.parse::<i32>().ok())
@@ -69,14 +70,16 @@ pub fn enable_account(
             }
             Err(e) => {
                 eprintln!("[!] Failed to enable user: {}", e);
-                
+
                 let error_string = format!("{:?}", e);
-                if error_string.contains("insufficientAccessRights") || error_string.contains("50") {
+                if error_string.contains("insufficientAccessRights") || error_string.contains("50")
+                {
                     eprintln!("[!] Insufficient access rights - you don't have permission to modify user accounts");
-                } else if error_string.contains("unwillingToPerform") || error_string.contains("53") {
+                } else if error_string.contains("unwillingToPerform") || error_string.contains("53")
+                {
                     eprintln!("[!] Server unwilling to perform - account may be protected");
                 }
-                
+
                 add_terminal_spacing(1);
                 Err(e.into())
             }

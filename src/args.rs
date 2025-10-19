@@ -1,9 +1,9 @@
 use crate::deep_queries::{computers, delegations, ou, pki, sccm, subnets, trusts, users};
 use crate::help::add_terminal_spacing;
-use crate::ldap::LdapConfig;
-use crate::kerberos::proxy_config::ProxyConfig;
 use crate::kerberos::hash;
-use dialoguer::{theme::ColorfulTheme, Select, Input, Confirm};
+use crate::kerberos::proxy_config::ProxyConfig;
+use crate::ldap::LdapConfig;
+use dialoguer::{theme::ColorfulTheme, Confirm, Input, Select};
 use rustyline::DefaultEditor;
 
 pub struct ConnectionArgs {
@@ -38,8 +38,8 @@ pub struct SprayArgs {
     pub delay: u64,
     pub continue_on_success: bool,
     pub verbose: u8,
-    pub lockout_threshold: Option<u32>,      
-    pub lockout_window_seconds: Option<u32>, 
+    pub lockout_threshold: Option<u32>,
+    pub lockout_window_seconds: Option<u32>,
 }
 
 pub enum CerberoCommand {
@@ -116,14 +116,22 @@ pub fn calculate_kerberos_hash() {
         String::new()
     };
 
-    let user_opt = if username.is_empty() { None } else { Some(username.as_str()) };
-    let domain_opt = if domain.is_empty() { None } else { Some(domain.as_str()) };
+    let user_opt = if username.is_empty() {
+        None
+    } else {
+        Some(username.as_str())
+    };
+    let domain_opt = if domain.is_empty() {
+        None
+    } else {
+        Some(domain.as_str())
+    };
 
     let hashes = hash::hash_password(&password, user_opt, domain_opt);
     let show_all = user_opt.is_some() && domain_opt.is_some();
-    
+
     hashes.display(show_all);
-    
+
     if show_all {
         println!("\n\x1b[32m[+] All hashes calculated successfully\x1b[0m");
         if let (Some(u), Some(d)) = (user_opt, domain_opt) {
@@ -151,11 +159,15 @@ pub fn get_spray_arguments() -> Option<SprayArgs> {
     println!("\nArgument format: --users <user/path> --passwords <pass/path> --domain <domain> --dc-ip <ip1,ip2,...> [options]");
     println!("Example: --users users.txt --passwords passwords.txt --domain corp.local --dc-ip 192.168.1.10,192.168.1.11 --threads 10 --jitter 500 --delay 2 --continue-on-success --verbose 1 --timestamp --lockout-threshold 5 --lockout-window 600");
     println!("\nTiming Options:");
-    println!("  --delay <seconds>: Delay between attempts in seconds (e.g., --delay 2 = 2 second delay)");
+    println!(
+        "  --delay <seconds>: Delay between attempts in seconds (e.g., --delay 2 = 2 second delay)"
+    );
     println!("  --jitter <ms>: Random jitter in milliseconds added to delay (e.g., --jitter 500 = 0-500ms)");
     println!("\nVerbosity Levels:");
     println!("  0 (default): Only successful logins, lockouts, and fatal errors");
-    println!("  1: All failed attempts in format [-] Failed login: user@domain with password: pass");
+    println!(
+        "  1: All failed attempts in format [-] Failed login: user@domain with password: pass"
+    );
     println!("  2: Full debug output with raw LDAP responses and thread details");
     add_terminal_spacing(1);
 
@@ -168,9 +180,15 @@ pub fn get_cerbero_args() -> CerberoCommand {
     println!("\nKerbtool Examples:");
     println!("1. Press Enter for help menu");
     println!("2. --ask-tgt --user admin --domain corp.local --pass <pass>");
-    println!("3. --ask-st --user admin --domain corp.local --pass <pass> --spn cifs/dc01.corp.local");
-    println!("4. --kerberoast --target <user> -u <user> -p <pass> -d <domain> --dc-ip <ip> --spn <spn>");
-    println!("5. --forge --target Administrator --domain corp.local --sign-aes <key> --domain-sid <sid>");
+    println!(
+        "3. --ask-st --user admin --domain corp.local --pass <pass> --spn cifs/dc01.corp.local"
+    );
+    println!(
+        "4. --kerberoast --target <user> -u <user> -p <pass> -d <domain> --dc-ip <ip> --spn <spn>"
+    );
+    println!(
+        "5. --forge --target Administrator --domain corp.local --sign-aes <key> --domain-sid <sid>"
+    );
     println!("6. export /path/to/ccache (sets KRB5CCNAME environment variable)");
     println!("7. socks (configure SOCKS proxy settings)");
     println!("8. hash (calculate Kerberos hashes from password)");
@@ -193,7 +211,9 @@ pub fn get_cerbero_args() -> CerberoCommand {
             } else if let Some(path) = input.strip_prefix("export ") {
                 let path = path.trim();
                 if path.is_empty() {
-                    eprintln!("\x1b[31m[!] Invalid export command. Usage: export /path/to/ccache\x1b[0m");
+                    eprintln!(
+                        "\x1b[31m[!] Invalid export command. Usage: export /path/to/ccache\x1b[0m"
+                    );
                     CerberoCommand::None
                 } else {
                     println!("\x1b[32m[+] Exporting KRB5CCNAME to: {}\x1b[0m", path);
@@ -221,7 +241,11 @@ pub fn get_userenum_arguments() -> Option<UserEnumArgs> {
     parse_userenum_args(&args_input)
 }
 
-pub fn run_nested_query_menu(ldap: &mut ldap3::LdapConn, search_base: &str, ldap_config: &LdapConfig) -> Result<(), String> {
+pub fn run_nested_query_menu(
+    ldap: &mut ldap3::LdapConn,
+    search_base: &str,
+    ldap_config: &LdapConfig,
+) -> Result<(), String> {
     const QUERY_OPTIONS: &[&str] = &[
         "Query Domain Trusts",
         "Query All Users",
@@ -450,9 +474,16 @@ pub fn parse_shell_args(input: &str) -> Vec<String> {
 
 pub fn configure_socks_proxy() {
     let mut config = ProxyConfig::load();
-    
+
     println!("\n=== SOCKS Proxy Configuration ===");
-    println!("Current Status: {}", if config.is_enabled() { "Enabled" } else { "Disabled" });
+    println!(
+        "Current Status: {}",
+        if config.is_enabled() {
+            "Enabled"
+        } else {
+            "Disabled"
+        }
+    );
     if config.is_enabled() {
         println!("Current Proxy: {}:{}", config.get_host(), config.get_port());
     }
@@ -477,7 +508,11 @@ pub fn configure_socks_proxy() {
             if let Err(e) = config.save() {
                 eprintln!("[!] Failed to save config: {}", e);
             } else {
-                println!("\x1b[32m[+] SOCKS proxy enabled: {}:{}\x1b[0m", config.get_host(), config.get_port());
+                println!(
+                    "\x1b[32m[+] SOCKS proxy enabled: {}:{}\x1b[0m",
+                    config.get_host(),
+                    config.get_port()
+                );
             }
         }
         Ok(1) => {
@@ -530,7 +565,11 @@ pub fn configure_socks_proxy() {
             if let Err(e) = config.save() {
                 eprintln!("[!] Failed to save config: {}", e);
             } else {
-                println!("\x1b[32m[+] SOCKS proxy configured: {}:{}\x1b[0m", config.get_host(), config.get_port());
+                println!(
+                    "\x1b[32m[+] SOCKS proxy configured: {}:{}\x1b[0m",
+                    config.get_host(),
+                    config.get_port()
+                );
                 if config.is_enabled() {
                     println!("\x1b[32m[+] SOCKS proxy is now enabled\x1b[0m");
                 }
@@ -538,7 +577,14 @@ pub fn configure_socks_proxy() {
         }
         Ok(3) => {
             println!("\nCurrent SOCKS Proxy Settings:");
-            println!("  Status: {}", if config.is_enabled() { "Enabled" } else { "Disabled" });
+            println!(
+                "  Status: {}",
+                if config.is_enabled() {
+                    "Enabled"
+                } else {
+                    "Disabled"
+                }
+            );
             println!("  Host: {}", config.get_host());
             println!("  Port: {}", config.get_port());
             println!("  Config File: {:?}", ProxyConfig::config_path());
@@ -605,8 +651,11 @@ impl ConnectConfig {
                 return None;
             }
         } else {
-            if self.username.is_empty() || self.password.is_empty() 
-                || self.domain.is_empty() || self.dc_ip.is_empty() {
+            if self.username.is_empty()
+                || self.password.is_empty()
+                || self.domain.is_empty()
+                || self.dc_ip.is_empty()
+            {
                 eprintln!("Missing required arguments! Provide -u, -p, -d, and -i.");
                 return None;
             }
@@ -644,7 +693,11 @@ struct SprayConfig {
 
 impl SprayConfig {
     fn validate(self) -> Option<SprayArgs> {
-        if self.userfile.is_empty() || self.password.is_empty() || self.domain.is_empty() || self.dc_ip.is_empty() {
+        if self.userfile.is_empty()
+            || self.password.is_empty()
+            || self.domain.is_empty()
+            || self.dc_ip.is_empty()
+        {
             println!("Error: --users, --passwords, --domain, and --dc-ip are required");
             return None;
         }

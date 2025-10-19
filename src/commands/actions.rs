@@ -1,8 +1,11 @@
+use crate::commands::{
+    add_computer, add_user_to_group, del_computer, disable_account, enable_account,
+    set_dontreqpreauth, set_spn,
+};
+use crate::help::{add_terminal_spacing, read_input};
+use crate::ldap::LdapConfig;
 use dialoguer::{theme::ColorfulTheme, Select};
 use ldap3::LdapConn;
-use crate::ldap::LdapConfig;
-use crate::help::{add_terminal_spacing, read_input};
-use crate::commands::{add_computer, del_computer, set_spn, add_user_to_group, enable_account, disable_account, set_dontreqpreauth};
 
 const ACTIONS_OPTIONS: &[&str] = &[
     "Add Computer",
@@ -57,12 +60,27 @@ fn handle_add_computer(
     }
 
     let password = read_input("Enter password (leave empty for random): ");
-    let password = if password.is_empty() { None } else { Some(password.as_str()) };
+    let password = if password.is_empty() {
+        None
+    } else {
+        Some(password.as_str())
+    };
 
     let target_dn = read_input("Enter target DN (leave empty for CN=Computers): ");
-    let target_dn = if target_dn.is_empty() { None } else { Some(target_dn.as_str()) };
+    let target_dn = if target_dn.is_empty() {
+        None
+    } else {
+        Some(target_dn.as_str())
+    };
 
-    add_computer::add_computer(ldap, search_base, ldap_config, &computer_name, password, target_dn)
+    add_computer::add_computer(
+        ldap,
+        search_base,
+        ldap_config,
+        &computer_name,
+        password,
+        target_dn,
+    )
 }
 
 fn handle_del_computer(
@@ -154,7 +172,6 @@ fn handle_enable_account(
     }
 
     enable_account::enable_account(ldap, search_base, &username)
-   
 }
 
 fn handle_disable_account(
