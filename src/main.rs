@@ -6,7 +6,7 @@ const LOGO: &str = r#"
 ░▒▓█▓▒░ ░▒▓█▓▒░ ░▒▓█▓▒░   ░▒▓██████▓▒░   ░▒▓█▓▒░ ░▒▓█▓▒░ ░▒▓████████▓▒░     ░▒▓█▓▒░     ░▒▓████████▓▒░ 
 
 Multi-purpose LDAP/Kerberos tool | By: Evasive_Ginger
-Cerbero Implementation: https://github.com/zer1t0/cerbero
+Kerbtool wrapper for Kerberos protocol attacks
 "#;
 
 use dialoguer::{theme::ColorfulTheme, Confirm, Select};
@@ -19,7 +19,7 @@ pub mod ldap;
 pub mod ldapping;
 pub mod spray;
 
-use crate::args::{get_cerbero_args, CerberoCommand};
+use crate::args::{get_cerbero_args, CerberoCommand, parse_shell_args, configure_socks_proxy, calculate_kerberos_hash};
 use args::{
     get_connect_arguments, get_spray_arguments, get_userenum_arguments, run_nested_query_menu,
 };
@@ -28,7 +28,7 @@ use spray::*;
 
 const MAIN_OPTIONS: &[&str] = &[
     "Connect (LDAP Reconissance)",
-    "Cerbero (Kerberos Protocol Attacks)",
+    "Kerbtool (Kerberos Protocol Attacks)",
     "User Enumeration (LDAP Ping Method)",
     "Password Spray (LDAP)",
     "Generate KRB5 Conf",
@@ -231,25 +231,34 @@ fn handle_net_commands(ldap: &mut ldap3::LdapConn, search_base: &str, ldap_confi
 fn handle_cerbero() {
     match get_cerbero_args() {
         CerberoCommand::Arguments(args) => {
-            let args_vec: Vec<&str> = args.split_whitespace().collect();
-            match kerberos::cerberos::run_cerbero(&args_vec) {
+            let args_vec = parse_shell_args(&args);
+            let args_refs: Vec<&str> = args_vec.iter().map(|s| s.as_str()).collect();
+            match kerberos::kerbtool::run_kerbtool(&args_refs) {
                 Ok(output) => {
-                    println!("[+] Cerbero executed successfully.\n");
                     if !output.stdout.is_empty() {
-                        println!("Cerbero Output:\n{}", output.stdout);
+                        println!("{}", output.stdout);
                     }
                     if !output.stderr.is_empty() {
-                        eprintln!("Cerbero Error Output:\n{}", output.stderr);
+                        eprintln!("{}", output.stderr);
+                    }
+                    if !output.success {
+                        eprintln!("[!] Kerbtool command failed");
                     }
                 }
-                Err(e) => eprintln!("[!] Failed to execute Cerbero: {}", e),
+                Err(e) => eprintln!("[!] Failed to execute Kerbtool: {}", e),
             }
         }
         CerberoCommand::Export(path) => {
             println!("[+] KRB5CCNAME environment variable set to: {}", path);
             std::env::set_var("KRB5CCNAME", path);
         }
-        CerberoCommand::None => eprintln!("[!] No valid Cerbero command provided."),
+        CerberoCommand::Socks => {
+            configure_socks_proxy();
+        }
+        CerberoCommand::Hash => {
+            calculate_kerberos_hash();
+        }
+        CerberoCommand::None => eprintln!("[!] No valid Kerbtool command provided."),
     }
 }
 

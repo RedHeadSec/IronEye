@@ -1,7 +1,9 @@
 use crate::deep_queries::{computers, delegations, ou, pki, sccm, subnets, trusts, users};
 use crate::help::add_terminal_spacing;
 use crate::ldap::LdapConfig;
-use dialoguer::{theme::ColorfulTheme, Select};
+use crate::kerberos::proxy_config::ProxyConfig;
+use crate::kerberos::hash;
+use dialoguer::{theme::ColorfulTheme, Select, Input, Confirm};
 use rustyline::DefaultEditor;
 
 pub struct ConnectionArgs {
@@ -43,6 +45,8 @@ pub struct SprayArgs {
 pub enum CerberoCommand {
     Arguments(String),
     Export(String),
+    Socks,
+    Hash,
     None,
 }
 
@@ -57,6 +61,77 @@ impl ConnectionArgs {
 
     pub fn uses_timestamp_format(&self) -> bool {
         self.timestamp_format
+    }
+}
+
+pub fn calculate_kerberos_hash() {
+    println!("\n=== Kerberos Hash Calculator ===");
+    println!("Calculate RC4 (NT hash), AES128, and AES256 keys from password");
+    println!();
+
+    let password = match Input::<String>::with_theme(&ColorfulTheme::default())
+        .with_prompt("Password")
+        .interact_text()
+    {
+        Ok(p) => p,
+        Err(e) => {
+            eprintln!("Error reading password: {}", e);
+            return;
+        }
+    };
+
+    if password.is_empty() {
+        eprintln!("[!] Password cannot be empty");
+        return;
+    }
+
+    println!("\nOptional: Provide username and domain for AES key calculation");
+    println!("(Press Enter to skip and calculate RC4 only)");
+
+    let username = match Input::<String>::with_theme(&ColorfulTheme::default())
+        .with_prompt("Username (optional)")
+        .allow_empty(true)
+        .interact_text()
+    {
+        Ok(u) => u,
+        Err(e) => {
+            eprintln!("Error reading username: {}", e);
+            return;
+        }
+    };
+
+    let domain = if !username.is_empty() {
+        match Input::<String>::with_theme(&ColorfulTheme::default())
+            .with_prompt("Domain (optional)")
+            .allow_empty(true)
+            .interact_text()
+        {
+            Ok(d) => d,
+            Err(e) => {
+                eprintln!("Error reading domain: {}", e);
+                return;
+            }
+        }
+    } else {
+        String::new()
+    };
+
+    let user_opt = if username.is_empty() { None } else { Some(username.as_str()) };
+    let domain_opt = if domain.is_empty() { None } else { Some(domain.as_str()) };
+
+    let hashes = hash::hash_password(&password, user_opt, domain_opt);
+    let show_all = user_opt.is_some() && domain_opt.is_some();
+    
+    hashes.display(show_all);
+    
+    if show_all {
+        println!("\n\x1b[32m[+] All hashes calculated successfully\x1b[0m");
+        if let (Some(u), Some(d)) = (user_opt, domain_opt) {
+            println!("\x1b[33m[*] Salt used: {}{}\x1b[0m", d.to_uppercase(), u);
+        }
+    } else {
+        println!("\n\x1b[32m[+] RC4 hash calculated successfully\x1b[0m");
+        println!("\x1b[33m[*] Provide username and domain for AES key calculation\x1b[0m");
     }
 }
 
@@ -90,12 +165,18 @@ pub fn get_spray_arguments() -> Option<SprayArgs> {
 }
 
 pub fn get_cerbero_args() -> CerberoCommand {
-    println!("\nCerbero Examples:");
+    println!("\nKerbtool Examples:");
     println!("1. Press Enter for help menu");
-    println!("2. ask --help | asreproast --help | brute --help | convert --help | craft --help | hash --help | kerberoast --help | list --help | export /path/to/ccache");
+    println!("2. --ask-tgt --user admin --domain corp.local --pass <pass>");
+    println!("3. --ask-st --user admin --domain corp.local --pass <pass> --spn cifs/dc01.corp.local");
+    println!("4. --kerberoast --target <user> -u <user> -p <pass> -d <domain> --dc-ip <ip> --spn <spn>");
+    println!("5. --forge --target Administrator --domain corp.local --sign-aes <key> --domain-sid <sid>");
+    println!("6. export /path/to/ccache (sets KRB5CCNAME environment variable)");
+    println!("7. socks (configure SOCKS proxy settings)");
+    println!("8. hash (calculate Kerberos hashes from password)");
 
     let mut rl = create_editor(".cerbero_history.txt");
-    println!("\nEnter Cerbero arguments (leave empty for '--help'):");
+    println!("\nEnter Kerbtool arguments (leave empty for '--help'):");
 
     match rl.readline("> ") {
         Ok(input) => {
@@ -105,6 +186,10 @@ pub fn get_cerbero_args() -> CerberoCommand {
 
             if input.is_empty() {
                 CerberoCommand::Arguments("--help".to_string())
+            } else if input.eq_ignore_ascii_case("socks") {
+                CerberoCommand::Socks
+            } else if input.eq_ignore_ascii_case("hash") {
+                CerberoCommand::Hash
             } else if let Some(path) = input.strip_prefix("export ") {
                 let path = path.trim();
                 if path.is_empty() {
@@ -326,7 +411,7 @@ fn parse_userenum_args(input: &str) -> Option<UserEnumArgs> {
     config.validate()
 }
 
-fn parse_shell_args(input: &str) -> Vec<String> {
+pub fn parse_shell_args(input: &str) -> Vec<String> {
     let mut args = Vec::new();
     let mut current = String::new();
     let mut in_single_quote = false;
@@ -361,6 +446,108 @@ fn parse_shell_args(input: &str) -> Vec<String> {
     }
 
     args
+}
+
+pub fn configure_socks_proxy() {
+    let mut config = ProxyConfig::load();
+    
+    println!("\n=== SOCKS Proxy Configuration ===");
+    println!("Current Status: {}", if config.is_enabled() { "Enabled" } else { "Disabled" });
+    if config.is_enabled() {
+        println!("Current Proxy: {}:{}", config.get_host(), config.get_port());
+    }
+    println!();
+
+    let options = vec![
+        "Enable SOCKS Proxy",
+        "Disable SOCKS Proxy",
+        "Configure SOCKS Settings",
+        "View Current Settings",
+        "Back",
+    ];
+
+    match Select::with_theme(&ColorfulTheme::default())
+        .with_prompt("Select an option")
+        .items(&options)
+        .default(0)
+        .interact()
+    {
+        Ok(0) => {
+            config.enabled = true;
+            if let Err(e) = config.save() {
+                eprintln!("[!] Failed to save config: {}", e);
+            } else {
+                println!("\x1b[32m[+] SOCKS proxy enabled: {}:{}\x1b[0m", config.get_host(), config.get_port());
+            }
+        }
+        Ok(1) => {
+            config.enabled = false;
+            if let Err(e) = config.save() {
+                eprintln!("[!] Failed to save config: {}", e);
+            } else {
+                println!("\x1b[33m[-] SOCKS proxy disabled\x1b[0m");
+            }
+        }
+        Ok(2) => {
+            match Input::<String>::with_theme(&ColorfulTheme::default())
+                .with_prompt("SOCKS Host")
+                .default(config.get_host().to_string())
+                .interact_text()
+            {
+                Ok(host) => {
+                    config.socks_host = host;
+                }
+                Err(e) => {
+                    eprintln!("Error reading host: {}", e);
+                    return;
+                }
+            }
+
+            match Input::<u16>::with_theme(&ColorfulTheme::default())
+                .with_prompt("SOCKS Port")
+                .default(config.get_port())
+                .interact_text()
+            {
+                Ok(port) => {
+                    config.socks_port = port;
+                }
+                Err(e) => {
+                    eprintln!("Error reading port: {}", e);
+                    return;
+                }
+            }
+
+            match Confirm::with_theme(&ColorfulTheme::default())
+                .with_prompt("Enable SOCKS proxy now?")
+                .default(true)
+                .interact()
+            {
+                Ok(true) => config.enabled = true,
+                Ok(false) => config.enabled = false,
+                Err(_) => {}
+            }
+
+            if let Err(e) = config.save() {
+                eprintln!("[!] Failed to save config: {}", e);
+            } else {
+                println!("\x1b[32m[+] SOCKS proxy configured: {}:{}\x1b[0m", config.get_host(), config.get_port());
+                if config.is_enabled() {
+                    println!("\x1b[32m[+] SOCKS proxy is now enabled\x1b[0m");
+                }
+            }
+        }
+        Ok(3) => {
+            println!("\nCurrent SOCKS Proxy Settings:");
+            println!("  Status: {}", if config.is_enabled() { "Enabled" } else { "Disabled" });
+            println!("  Host: {}", config.get_host());
+            println!("  Port: {}", config.get_port());
+            println!("  Config File: {:?}", ProxyConfig::config_path());
+        }
+        Ok(4) | Err(_) => {
+            println!("Returning to menu...");
+        }
+        _ => {}
+    }
 }
 
 fn get_arg_value(args: &[String], index: &mut usize) -> Option<String> {
