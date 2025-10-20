@@ -1,6 +1,6 @@
 [package]
 name = "ironeye"
-version = "0.2.0"
+version = "2.0.0"
 edition = "2021"
 
 [dependencies]
@@ -19,10 +19,11 @@ uuid = { version = "1", features = ["v4"] }
 x509-parser = "0.12"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
-md4 = "0.10"
-sha1 = "0.10"
-hmac = "0.12"
-pbkdf2 = "0.12"
+
+# Kerberos attack library
+cerbero_lib = { path = "lib/cerbero_lib", default-features = false }
+kerberos_crypto = "0.3"
+ms_pac = "0.0.4"
 
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"

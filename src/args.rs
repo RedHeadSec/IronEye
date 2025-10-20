@@ -1,9 +1,8 @@
 use crate::deep_queries::{computers, delegations, ou, pki, sccm, subnets, trusts, users};
 use crate::help::add_terminal_spacing;
 use crate::kerberos::hash;
-use crate::kerberos::proxy_config::ProxyConfig;
 use crate::ldap::LdapConfig;
-use dialoguer::{theme::ColorfulTheme, Confirm, Input, Select};
+use dialoguer::{theme::ColorfulTheme, Input, Select};
 use rustyline::DefaultEditor;
 
 pub struct ConnectionArgs {
@@ -43,9 +42,72 @@ pub struct SprayArgs {
 }
 
 pub enum CerberoCommand {
-    Arguments(String),
+    AskTgt {
+        username: String,
+        password: String,
+        domain: String,
+        dc_ip: String,
+        output: String,
+        hash: Option<String>,
+    },
+    AskTgs {
+        username: String,
+        password: String,
+        domain: String,
+        dc_ip: String,
+        service: String,
+        output: String,
+    },
+    AskS4u2self {
+        username: String,
+        password: String,
+        domain: String,
+        dc_ip: String,
+        impersonate: String,
+        output: String,
+    },
+    AskS4u2proxy {
+        username: String,
+        password: String,
+        domain: String,
+        dc_ip: String,
+        impersonate: String,
+        service: String,
+        output: String,
+    },
+    AsrepRoast {
+        domain: String,
+        dc_ip: String,
+        target: String,
+        output: Option<String>,
+        format: String,
+    },
+    Kerberoast {
+        username: String,
+        password: String,
+        domain: String,
+        dc_ip: String,
+        target: String,
+        output: Option<String>,
+        format: String,
+    },
+    Convert {
+        input: String,
+        output: String,
+        format: Option<String>,
+    },
+    Craft {
+        user: String,
+        sid: String,
+        user_rid: u32,
+        service: Option<String>,
+        key_type: String,
+        key_value: String,
+        groups: Vec<u32>,
+        output: String,
+        format: String,
+    },
     Export(String),
-    Socks,
     Hash,
     None,
 }
@@ -177,24 +239,36 @@ pub fn get_spray_arguments() -> Option<SprayArgs> {
 }
 
 pub fn get_cerbero_args() -> CerberoCommand {
-    println!("\nKerbtool Examples:");
-    println!("1. Press Enter for help menu");
-    println!("2. --ask-tgt --user admin --domain corp.local --pass <pass>");
+    println!("\nCerberos Commands:");
+    println!("Available Now:");
     println!(
-        "3. --ask-st --user admin --domain corp.local --pass <pass> --spn cifs/dc01.corp.local"
+        "  ask-tgt -u <user> -p <pass> -d <domain> -i <dc_ip> [-o output.ccache] [--hash <hash>]"
     );
     println!(
-        "4. --kerberoast --target <user> -u <user> -p <pass> -d <domain> --dc-ip <ip> --spn <spn>"
+        "  ask-tgs -u <user> -p <pass> -d <domain> -i <dc_ip> -s <service> [-o output.ccache]"
     );
+    println!("  ask-s4u2self -u <user> -p <pass> -d <domain> -i <dc_ip> --impersonate <user> [-o output.ccache]");
+    println!("  ask-s4u2proxy -u <user> -p <pass> -d <domain> -i <dc_ip> --impersonate <user> -s <service> [-o output.ccache]");
+    println!("  asreproast -d <domain> -i <dc_ip> -t <user|file> [-o output.txt] [--format hashcat|john]");
+    println!("  kerberoast -u <user> -p <pass> -d <domain> -i <dc_ip> -t <user:spn|file> [-o output.txt] [--format hashcat|john]");
+    println!("  convert -i <input> -o <output> [--format krb|ccache|auto]");
+    println!("  craft -u <user> --sid <sid> [--user-rid <rid>] [--password|--rc4|--aes256 <key>] [--groups <rids>] [-s <service>] [-o output.ccache] [--format ccache|krb]");
+    println!("  export /path/to/ccache  - Set KRB5CCNAME environment variable");
+    println!("  hash                    - Calculate Kerberos hashes from password");
+    println!("\nExamples:");
+    println!("  ask-tgt -u administrator -p Password123! -d contoso.local -i 192.168.1.10");
     println!(
-        "5. --forge --target Administrator --domain corp.local --sign-aes <key> --domain-sid <sid>"
+        "  ask-tgs -u administrator -p Password123! -d contoso.local -i 192.168.1.10 -s ldap/dc01"
     );
-    println!("6. export /path/to/ccache (sets KRB5CCNAME environment variable)");
-    println!("7. socks (configure SOCKS proxy settings)");
-    println!("8. hash (calculate Kerberos hashes from password)");
+    println!("  asreproast -d contoso.local -i 192.168.1.10 -t users.txt -o hashes.txt");
+    println!("  kerberoast -u administrator -p Password123! -d contoso.local -i 192.168.1.10 -t services.txt -o hashes.txt");
+    println!("  convert -i ticket.ccache -o ticket.krb");
+    println!("  convert -i ticket.kirbi -o ticket.ccache --format ccache");
+    println!("  craft -u contoso.local/administrator --sid S-1-5-21-123456789-987654321-111111111 --aes256 <KRBTGT key> (Golden Ticket)");
+    println!("  craft -u under.world/kratos --sid S-1-5-21-658410550-3858838999-180593761 --ntlm 29f9ab984728cc7d18c8497c9ee76c77 -s cifs/styx,under.world (Silver Ticket)");
 
     let mut rl = create_editor(".cerbero_history.txt");
-    println!("\nEnter Kerbtool arguments (leave empty for '--help'):");
+    println!("\nEnter command:");
 
     match rl.readline("> ") {
         Ok(input) => {
@@ -203,9 +277,24 @@ pub fn get_cerbero_args() -> CerberoCommand {
             let input = input.trim();
 
             if input.is_empty() {
-                CerberoCommand::Arguments("--help".to_string())
-            } else if input.eq_ignore_ascii_case("socks") {
-                CerberoCommand::Socks
+                println!("[!] No command entered");
+                CerberoCommand::None
+            } else if input.starts_with("ask-tgt") {
+                parse_ask_tgt_command(input)
+            } else if input.starts_with("ask-tgs") {
+                parse_ask_tgs_command(input)
+            } else if input.starts_with("ask-s4u2self") {
+                parse_ask_s4u2self_command(input)
+            } else if input.starts_with("ask-s4u2proxy") {
+                parse_ask_s4u2proxy_command(input)
+            } else if input.starts_with("asreproast") {
+                parse_asreproast_command(input)
+            } else if input.starts_with("kerberoast") {
+                parse_kerberoast_command(input)
+            } else if input.starts_with("convert") {
+                parse_convert_command(input)
+            } else if input.starts_with("craft") {
+                parse_craft_command(input)
             } else if input.eq_ignore_ascii_case("hash") {
                 CerberoCommand::Hash
             } else if let Some(path) = input.strip_prefix("export ") {
@@ -221,7 +310,9 @@ pub fn get_cerbero_args() -> CerberoCommand {
                     CerberoCommand::Export(path.to_string())
                 }
             } else {
-                CerberoCommand::Arguments(input.to_string())
+                println!("[!] Unknown command: '{}'", input);
+                println!("[*] Valid commands: ask-tgt, ask-tgs, ask-s4u2self, ask-s4u2proxy, asreproast, kerberoast, convert, craft, export, hash");
+                CerberoCommand::None
             }
         }
         Err(e) => {
@@ -472,130 +563,6 @@ pub fn parse_shell_args(input: &str) -> Vec<String> {
     args
 }
 
-pub fn configure_socks_proxy() {
-    let mut config = ProxyConfig::load();
-
-    println!("\n=== SOCKS Proxy Configuration ===");
-    println!(
-        "Current Status: {}",
-        if config.is_enabled() {
-            "Enabled"
-        } else {
-            "Disabled"
-        }
-    );
-    if config.is_enabled() {
-        println!("Current Proxy: {}:{}", config.get_host(), config.get_port());
-    }
-    println!();
-
-    let options = vec![
-        "Enable SOCKS Proxy",
-        "Disable SOCKS Proxy",
-        "Configure SOCKS Settings",
-        "View Current Settings",
-        "Back",
-    ];
-
-    match Select::with_theme(&ColorfulTheme::default())
-        .with_prompt("Select an option")
-        .items(&options)
-        .default(0)
-        .interact()
-    {
-        Ok(0) => {
-            config.enabled = true;
-            if let Err(e) = config.save() {
-                eprintln!("[!] Failed to save config: {}", e);
-            } else {
-                println!(
-                    "\x1b[32m[+] SOCKS proxy enabled: {}:{}\x1b[0m",
-                    config.get_host(),
-                    config.get_port()
-                );
-            }
-        }
-        Ok(1) => {
-            config.enabled = false;
-            if let Err(e) = config.save() {
-                eprintln!("[!] Failed to save config: {}", e);
-            } else {
-                println!("\x1b[33m[-] SOCKS proxy disabled\x1b[0m");
-            }
-        }
-        Ok(2) => {
-            match Input::<String>::with_theme(&ColorfulTheme::default())
-                .with_prompt("SOCKS Host")
-                .default(config.get_host().to_string())
-                .interact_text()
-            {
-                Ok(host) => {
-                    config.socks_host = host;
-                }
-                Err(e) => {
-                    eprintln!("Error reading host: {}", e);
-                    return;
-                }
-            }
-
-            match Input::<u16>::with_theme(&ColorfulTheme::default())
-                .with_prompt("SOCKS Port")
-                .default(config.get_port())
-                .interact_text()
-            {
-                Ok(port) => {
-                    config.socks_port = port;
-                }
-                Err(e) => {
-                    eprintln!("Error reading port: {}", e);
-                    return;
-                }
-            }
-
-            match Confirm::with_theme(&ColorfulTheme::default())
-                .with_prompt("Enable SOCKS proxy now?")
-                .default(true)
-                .interact()
-            {
-                Ok(true) => config.enabled = true,
-                Ok(false) => config.enabled = false,
-                Err(_) => {}
-            }
-
-            if let Err(e) = config.save() {
-                eprintln!("[!] Failed to save config: {}", e);
-            } else {
-                println!(
-                    "\x1b[32m[+] SOCKS proxy configured: {}:{}\x1b[0m",
-                    config.get_host(),
-                    config.get_port()
-                );
-                if config.is_enabled() {
-                    println!("\x1b[32m[+] SOCKS proxy is now enabled\x1b[0m");
-                }
-            }
-        }
-        Ok(3) => {
-            println!("\nCurrent SOCKS Proxy Settings:");
-            println!(
-                "  Status: {}",
-                if config.is_enabled() {
-                    "Enabled"
-                } else {
-                    "Disabled"
-                }
-            );
-            println!("  Host: {}", config.get_host());
-            println!("  Port: {}", config.get_port());
-            println!("  Config File: {:?}", ProxyConfig::config_path());
-        }
-        Ok(4) | Err(_) => {
-            println!("Returning to menu...");
-        }
-        _ => {}
-    }
-}
-
 fn get_arg_value(args: &[String], index: &mut usize) -> Option<String> {
     if *index + 1 < args.len() {
         let value = args[*index + 1].clone();
@@ -749,5 +716,395 @@ impl UserEnumConfig {
             timestamp_format: self.timestamp_format,
             threads: if self.threads == 0 { 4 } else { self.threads },
         })
+    }
+}
+
+fn parse_ask_tgt_command(input: &str) -> CerberoCommand {
+    let args = parse_shell_args(input);
+    let mut username = String::new();
+    let mut password = String::new();
+    let mut domain = String::new();
+    let mut dc_ip = String::new();
+    let mut output = String::from("ticket.ccache");
+    let mut hash: Option<String> = None;
+
+    let mut i = 1;
+    while i < args.len() {
+        match args[i].as_str() {
+            "-u" | "--user" => username = get_arg_value(&args, &mut i).unwrap_or_default(),
+            "-p" | "--pass" | "--password" => {
+                password = get_arg_value(&args, &mut i).unwrap_or_default()
+            }
+            "-d" | "--domain" => domain = get_arg_value(&args, &mut i).unwrap_or_default(),
+            "-i" | "--dc-ip" => dc_ip = get_arg_value(&args, &mut i).unwrap_or_default(),
+            "-o" | "--output" => output = get_arg_value(&args, &mut i).unwrap_or_default(),
+            "--hash" => hash = get_arg_value(&args, &mut i),
+            _ => i += 1,
+        }
+    }
+
+    if username.is_empty() || domain.is_empty() || dc_ip.is_empty() {
+        eprintln!("[!] Missing required arguments: -u, -d, -i");
+        return CerberoCommand::None;
+    }
+
+    if password.is_empty() && hash.is_none() {
+        eprintln!("[!] Must provide either -p (password) or --hash");
+        return CerberoCommand::None;
+    }
+
+    CerberoCommand::AskTgt {
+        username,
+        password,
+        domain,
+        dc_ip,
+        output,
+        hash,
+    }
+}
+
+fn parse_ask_tgs_command(input: &str) -> CerberoCommand {
+    let args = parse_shell_args(input);
+    let mut username = String::new();
+    let mut password = String::new();
+    let mut domain = String::new();
+    let mut dc_ip = String::new();
+    let mut service = String::new();
+    let mut output = String::from("ticket.ccache");
+
+    let mut i = 1;
+    while i < args.len() {
+        match args[i].as_str() {
+            "-u" | "--user" => username = get_arg_value(&args, &mut i).unwrap_or_default(),
+            "-p" | "--pass" | "--password" => {
+                password = get_arg_value(&args, &mut i).unwrap_or_default()
+            }
+            "-d" | "--domain" => domain = get_arg_value(&args, &mut i).unwrap_or_default(),
+            "-i" | "--dc-ip" => dc_ip = get_arg_value(&args, &mut i).unwrap_or_default(),
+            "-s" | "--service" => service = get_arg_value(&args, &mut i).unwrap_or_default(),
+            "-o" | "--output" => output = get_arg_value(&args, &mut i).unwrap_or_default(),
+            _ => i += 1,
+        }
+    }
+
+    if username.is_empty()
+        || password.is_empty()
+        || domain.is_empty()
+        || dc_ip.is_empty()
+        || service.is_empty()
+    {
+        eprintln!("[!] Missing required arguments: -u, -p, -d, -i, -s");
+        return CerberoCommand::None;
+    }
+
+    CerberoCommand::AskTgs {
+        username,
+        password,
+        domain,
+        dc_ip,
+        service,
+        output,
+    }
+}
+
+fn parse_ask_s4u2self_command(input: &str) -> CerberoCommand {
+    let args = parse_shell_args(input);
+    let mut username = String::new();
+    let mut password = String::new();
+    let mut domain = String::new();
+    let mut dc_ip = String::new();
+    let mut impersonate = String::new();
+    let mut output = String::from("ticket.ccache");
+
+    let mut i = 1;
+    while i < args.len() {
+        match args[i].as_str() {
+            "-u" | "--user" => username = get_arg_value(&args, &mut i).unwrap_or_default(),
+            "-p" | "--pass" | "--password" => {
+                password = get_arg_value(&args, &mut i).unwrap_or_default()
+            }
+            "-d" | "--domain" => domain = get_arg_value(&args, &mut i).unwrap_or_default(),
+            "-i" | "--dc-ip" => dc_ip = get_arg_value(&args, &mut i).unwrap_or_default(),
+            "--impersonate" => impersonate = get_arg_value(&args, &mut i).unwrap_or_default(),
+            "-o" | "--output" => output = get_arg_value(&args, &mut i).unwrap_or_default(),
+            _ => i += 1,
+        }
+    }
+
+    if username.is_empty()
+        || password.is_empty()
+        || domain.is_empty()
+        || dc_ip.is_empty()
+        || impersonate.is_empty()
+    {
+        eprintln!("[!] Missing required arguments: -u, -p, -d, -i, --impersonate");
+        return CerberoCommand::None;
+    }
+
+    CerberoCommand::AskS4u2self {
+        username,
+        password,
+        domain,
+        dc_ip,
+        impersonate,
+        output,
+    }
+}
+
+fn parse_ask_s4u2proxy_command(input: &str) -> CerberoCommand {
+    let args = parse_shell_args(input);
+    let mut username = String::new();
+    let mut password = String::new();
+    let mut domain = String::new();
+    let mut dc_ip = String::new();
+    let mut impersonate = String::new();
+    let mut service = String::new();
+    let mut output = String::from("ticket.ccache");
+
+    let mut i = 1;
+    while i < args.len() {
+        match args[i].as_str() {
+            "-u" | "--user" => username = get_arg_value(&args, &mut i).unwrap_or_default(),
+            "-p" | "--pass" | "--password" => {
+                password = get_arg_value(&args, &mut i).unwrap_or_default()
+            }
+            "-d" | "--domain" => domain = get_arg_value(&args, &mut i).unwrap_or_default(),
+            "-i" | "--dc-ip" => dc_ip = get_arg_value(&args, &mut i).unwrap_or_default(),
+            "--impersonate" => impersonate = get_arg_value(&args, &mut i).unwrap_or_default(),
+            "-s" | "--service" => service = get_arg_value(&args, &mut i).unwrap_or_default(),
+            "-o" | "--output" => output = get_arg_value(&args, &mut i).unwrap_or_default(),
+            _ => i += 1,
+        }
+    }
+
+    if username.is_empty()
+        || password.is_empty()
+        || domain.is_empty()
+        || dc_ip.is_empty()
+        || impersonate.is_empty()
+        || service.is_empty()
+    {
+        eprintln!("[!] Missing required arguments: -u, -p, -d, -i, --impersonate, -s");
+        return CerberoCommand::None;
+    }
+
+    CerberoCommand::AskS4u2proxy {
+        username,
+        password,
+        domain,
+        dc_ip,
+        impersonate,
+        service,
+        output,
+    }
+}
+
+fn parse_asreproast_command(input: &str) -> CerberoCommand {
+    let args = parse_shell_args(input);
+    let mut domain = String::new();
+    let mut dc_ip = String::new();
+    let mut target = String::new();
+    let mut output: Option<String> = None;
+    let mut format = String::from("hashcat");
+
+    let mut i = 1;
+    while i < args.len() {
+        match args[i].as_str() {
+            "-d" | "--domain" => domain = get_arg_value(&args, &mut i).unwrap_or_default(),
+            "-i" | "--dc-ip" => dc_ip = get_arg_value(&args, &mut i).unwrap_or_default(),
+            "-t" | "--target" => target = get_arg_value(&args, &mut i).unwrap_or_default(),
+            "-o" | "--output" => output = get_arg_value(&args, &mut i),
+            "--format" => format = get_arg_value(&args, &mut i).unwrap_or(String::from("hashcat")),
+            _ => i += 1,
+        }
+    }
+
+    if domain.is_empty() || dc_ip.is_empty() || target.is_empty() {
+        eprintln!("[!] Missing required arguments: -d, -i, -t");
+        return CerberoCommand::None;
+    }
+
+    // Validate format
+    if !matches!(format.as_str(), "hashcat" | "john") {
+        eprintln!("[!] Invalid format. Use 'hashcat' or 'john'");
+        return CerberoCommand::None;
+    }
+
+    CerberoCommand::AsrepRoast {
+        domain,
+        dc_ip,
+        target,
+        output,
+        format,
+    }
+}
+
+fn parse_kerberoast_command(input: &str) -> CerberoCommand {
+    let args = parse_shell_args(input);
+    let mut username = String::new();
+    let mut password = String::new();
+    let mut domain = String::new();
+    let mut dc_ip = String::new();
+    let mut target = String::new();
+    let mut output: Option<String> = None;
+    let mut format = String::from("hashcat");
+
+    let mut i = 1;
+    while i < args.len() {
+        match args[i].as_str() {
+            "-u" | "--user" => username = get_arg_value(&args, &mut i).unwrap_or_default(),
+            "-p" | "--pass" | "--password" => {
+                password = get_arg_value(&args, &mut i).unwrap_or_default()
+            }
+            "-d" | "--domain" => domain = get_arg_value(&args, &mut i).unwrap_or_default(),
+            "-i" | "--dc-ip" => dc_ip = get_arg_value(&args, &mut i).unwrap_or_default(),
+            "-t" | "--target" => target = get_arg_value(&args, &mut i).unwrap_or_default(),
+            "-o" | "--output" => output = get_arg_value(&args, &mut i),
+            "--format" => format = get_arg_value(&args, &mut i).unwrap_or(String::from("hashcat")),
+            _ => i += 1,
+        }
+    }
+
+    if username.is_empty()
+        || password.is_empty()
+        || domain.is_empty()
+        || dc_ip.is_empty()
+        || target.is_empty()
+    {
+        eprintln!("[!] Missing required arguments: -u, -p, -d, -i, -t");
+        return CerberoCommand::None;
+    }
+
+    // Validate format
+    if !matches!(format.as_str(), "hashcat" | "john") {
+        eprintln!("[!] Invalid format. Use 'hashcat' or 'john'");
+        return CerberoCommand::None;
+    }
+
+    CerberoCommand::Kerberoast {
+        username,
+        password,
+        domain,
+        dc_ip,
+        target,
+        output,
+        format,
+    }
+}
+
+fn parse_convert_command(input: &str) -> CerberoCommand {
+    let args = parse_shell_args(input);
+    let mut input_file = String::new();
+    let mut output_file = String::new();
+    let mut format: Option<String> = None;
+
+    let mut i = 1;
+    while i < args.len() {
+        match args[i].as_str() {
+            "-i" | "--input" => input_file = get_arg_value(&args, &mut i).unwrap_or_default(),
+            "-o" | "--output" => output_file = get_arg_value(&args, &mut i).unwrap_or_default(),
+            "--format" => format = get_arg_value(&args, &mut i),
+            _ => i += 1,
+        }
+    }
+
+    if input_file.is_empty() || output_file.is_empty() {
+        eprintln!("[!] Missing required arguments: -i, -o");
+        return CerberoCommand::None;
+    }
+
+    // Validate format if provided
+    if let Some(ref f) = format {
+        if !matches!(f.as_str(), "krb" | "ccache" | "auto") {
+            eprintln!("[!] Invalid format. Use 'krb', 'ccache', or 'auto'");
+            return CerberoCommand::None;
+        }
+    }
+
+    CerberoCommand::Convert {
+        input: input_file,
+        output: output_file,
+        format,
+    }
+}
+
+fn parse_craft_command(input: &str) -> CerberoCommand {
+    let args = parse_shell_args(input);
+    let mut user = String::new();
+    let mut sid = String::new();
+    let mut user_rid: u32 = 500;
+    let mut service: Option<String> = None;
+    let mut key_type = String::new();
+    let mut key_value = String::new();
+    let mut groups: Vec<u32> = vec![513, 512, 520, 518, 519];
+    let mut output = String::new();
+    let mut format = String::from("ccache");
+
+    let mut i = 1;
+    while i < args.len() {
+        match args[i].as_str() {
+            "-u" | "--user" => user = get_arg_value(&args, &mut i).unwrap_or_default(),
+            "--sid" => sid = get_arg_value(&args, &mut i).unwrap_or_default(),
+            "--user-rid" => {
+                if let Some(rid_str) = get_arg_value(&args, &mut i) {
+                    user_rid = rid_str.parse().unwrap_or(500);
+                }
+            }
+            "-s" | "--service" | "--spn" => service = get_arg_value(&args, &mut i),
+            "--password" => {
+                key_type = "password".to_string();
+                key_value = get_arg_value(&args, &mut i).unwrap_or_default();
+            }
+            "--rc4" | "--ntlm" => {
+                key_type = "rc4".to_string();
+                key_value = get_arg_value(&args, &mut i).unwrap_or_default();
+            }
+            "--aes" | "--aes256" => {
+                key_type = "aes256".to_string();
+                key_value = get_arg_value(&args, &mut i).unwrap_or_default();
+            }
+            "--aes128" => {
+                key_type = "aes128".to_string();
+                key_value = get_arg_value(&args, &mut i).unwrap_or_default();
+            }
+            "--groups" => {
+                if let Some(groups_str) = get_arg_value(&args, &mut i) {
+                    groups = groups_str
+                        .split(',')
+                        .filter_map(|s| s.trim().parse().ok())
+                        .collect();
+                }
+            }
+            "-o" | "--output" => output = get_arg_value(&args, &mut i).unwrap_or_default(),
+            "--format" => format = get_arg_value(&args, &mut i).unwrap_or(String::from("ccache")),
+            _ => i += 1,
+        }
+    }
+
+    if user.is_empty() || sid.is_empty() || key_type.is_empty() || key_value.is_empty() {
+        eprintln!("[!] Missing required arguments: -u, --sid, and one of (--password|--rc4|--aes)");
+        return CerberoCommand::None;
+    }
+
+    if output.is_empty() {
+        let username_only = user.split('/').last().unwrap_or(&user);
+        output = format!("{}.ccache", username_only);
+    }
+
+    if !matches!(format.as_str(), "ccache" | "krb") {
+        eprintln!("[!] Invalid format. Use 'ccache' or 'krb'");
+        return CerberoCommand::None;
+    }
+
+    CerberoCommand::Craft {
+        user,
+        sid,
+        user_rid,
+        service,
+        key_type,
+        key_value,
+        groups,
+        output,
+        format,
     }
 }
