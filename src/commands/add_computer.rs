@@ -1,14 +1,46 @@
 use crate::help::add_terminal_spacing;
 use crate::ldap::{escape_filter, LdapConfig};
-use ldap3::{LdapConn, Scope};
+use ldap3::{LdapConn, Mod, Scope};
 use rand::Rng;
 use std::collections::HashSet;
 
 pub fn generate_password(length: usize) -> String {
-    const CHARSET: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789@.,";
     let mut rng = rand::thread_rng();
-    (0..length)
-        .map(|_| CHARSET[rng.gen_range(0..CHARSET.len())] as char)
+    let uppercase = b"ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+    let lowercase = b"abcdefghijklmnopqrstuvwxyz";
+    let numbers = b"0123456789";
+    let special = b"!@#$%^&*()_+-=[]{}|;:,.<>?";
+    
+    let mut password = Vec::with_capacity(length);
+    password.push(uppercase[rng.gen_range(0..uppercase.len())] as char);
+    password.push(lowercase[rng.gen_range(0..lowercase.len())] as char);
+    password.push(numbers[rng.gen_range(0..numbers.len())] as char);
+    password.push(special[rng.gen_range(0..special.len())] as char);
+    
+    let all_chars = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!@#$%^&*()_+-=[]{}|;:,.<>?";
+    for _ in 4..length {
+        password.push(all_chars[rng.gen_range(0..all_chars.len())] as char);
+    }
+    
+    use rand::seq::SliceRandom;
+    password.shuffle(&mut rng);
+    password.into_iter().collect()
+}
+
+fn validate_password_complexity(password: &str) -> bool {
+    let has_upper = password.chars().any(|c| c.is_uppercase());
+    let has_lower = password.chars().any(|c| c.is_lowercase());
+    let has_digit = password.chars().any(|c| c.is_numeric());
+    let has_special = password.chars().any(|c| !c.is_alphanumeric());
+    let min_length = password.len() >= 8;
+    
+    has_upper && has_lower && has_digit && has_special && min_length
+}
+
+fn encode_password_for_ad(password: &str) -> Vec<u8> {
+    let quoted = format!("\"{}\"", password);
+    quoted.encode_utf16()
+        .flat_map(|c| c.to_le_bytes())
         .collect()
 }
 
@@ -162,16 +194,59 @@ pub fn add_computer(
                 "[+] Computer {} added successfully to {}",
                 computer_name, computer_dn
             );
-            println!("[*] Generated password: \"{}\"", password);
-            println!("\n[!] Note: Rust ldap3 crate limitation - binary attributes (unicodePwd) not supported");
-            println!("[!] Set password manually:");
-            println!("    - PowerShell: Set-ADAccountPassword -Identity {} -Reset -NewPassword (ConvertTo-SecureString -AsPlainText '{}' -Force)", computer_hostname, password);
-            println!(
-                "    - net rpc password {} -U {}/{} -S {}",
-                computer_name, config.domain, config.username, config.dc_ip
-            );
-            add_terminal_spacing(1);
-            Ok(())
+
+            if !validate_password_complexity(&password) {
+                println!("[!] Warning: Password may not meet AD complexity requirements");
+                println!("[!] AD typically requires: 8+ chars, uppercase, lowercase, number, special char");
+                println!("[*] Attempting to set password anyway...");
+            }
+
+            let encoded_pwd = encode_password_for_ad(&password);
+            let attr_name = b"unicodePwd".to_vec();
+            let mut pwd_set = HashSet::new();
+            pwd_set.insert(encoded_pwd);
+
+            match ldap.modify(&computer_dn, vec![Mod::Replace(attr_name, pwd_set)]) {
+                Ok(mod_result) => match mod_result.success() {
+                    Ok(_) => {
+                        println!("[+] Password set successfully");
+                        println!("[*] Password: \"{}\"", password);
+                        add_terminal_spacing(1);
+                        Ok(())
+                    }
+                    Err(e) => {
+                        eprintln!("[!] Failed to set password: {}", e);
+                        let error_string = format!("{:?}", e);
+                        if error_string.contains("unwillingToPerform") || error_string.contains("53") {
+                            eprintln!("[!] Server unwilling to perform password operation");
+                            eprintln!("[!] Common causes:");
+                            eprintln!("    - Password doesn't meet complexity requirements");
+                            eprintln!("    - Requires: 8+ chars, uppercase, lowercase, number, special char");
+                            eprintln!("    - Connection may not be properly secured");
+                        } else if error_string.contains("constraintViolation")
+                            || error_string.contains("19")
+                        {
+                            eprintln!(
+                                "[!] Password doesn't meet complexity requirements or policy"
+                            );
+                            eprintln!("[!] AD requires: 8+ chars, uppercase, lowercase, number, special char");
+                        } else if error_string.contains("insufficientAccessRights")
+                            || error_string.contains("50")
+                        {
+                            eprintln!("[!] Insufficient permissions to set password");
+                        }
+                        println!("[*] Generated password: \"{}\"", password);
+                        add_terminal_spacing(1);
+                        Ok(())
+                    }
+                },
+                Err(e) => {
+                    eprintln!("[!] Failed to execute password modify operation: {}", e);
+                    println!("[*] Generated password: \"{}\"", password);
+                    add_terminal_spacing(1);
+                    Ok(())
+                }
+            }
         }
         Err(e) => {
             eprintln!("[!] Failed to add computer account: {}", e);
