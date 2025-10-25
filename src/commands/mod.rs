@@ -6,6 +6,7 @@ pub mod del_computer;
 pub mod disable_account;
 pub mod enable_account;
 pub mod from_sid_guid;
+pub mod get_acedacl;
 pub mod get_sid_guid;
 pub mod getpasspol;
 pub mod getspns;

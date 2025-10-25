@@ -1,3 +1,4 @@
+pub mod acl;
 pub mod args;
 pub mod commands;
 pub mod deep_queries;

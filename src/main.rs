@@ -12,6 +12,7 @@ Native Cerberos library for Kerberos protocol attacks
 use cerbero_lib;
 use dialoguer::{theme::ColorfulTheme, Confirm, Select};
 use std::net::IpAddr;
+pub mod acl;
 pub mod args;
 pub mod commands;
 pub mod deep_queries;
@@ -43,6 +44,7 @@ const CMD_OPTIONS: &[&str] = &[
     "Get SID/GUID",
     "From SID/GUID",
     "Get SPNs",
+    "Get ACE/DACL",
     "Query Groups",
     "Machine Quota",
     "Net Commands",
@@ -141,43 +143,44 @@ fn run_command_menu(
                     eprintln!("Error: {}", e);
                 }
             }
-            3 => handle_query_groups(&mut ldap, &search_base, ldap_config),
-            4 => {
+            3 => handle_get_acedacl(&mut ldap, &search_base, ldap_config),
+            4 => handle_query_groups(&mut ldap, &search_base, ldap_config),
+            5 => {
                 if let Err(e) =
                     commands::maq::get_machine_account_quota(&mut ldap, &search_base, ldap_config)
                 {
                     eprintln!("Error: {}", e);
                 }
             }
-            5 => handle_net_commands(&mut ldap, &search_base, ldap_config),
-            6 => {
+            6 => handle_net_commands(&mut ldap, &search_base, ldap_config),
+            7 => {
                 if let Err(e) =
                     commands::getpasspol::get_password_policy(&mut ldap, &search_base, ldap_config)
                 {
                     eprintln!("Error: {}", e);
                 }
             }
-            7 => {
+            8 => {
                 if let Err(e) = run_nested_query_menu(&mut ldap, &search_base, ldap_config) {
                     eprintln!("Error: {}", e);
                 }
             }
-            8 => {
+            9 => {
                 if let Err(e) =
                     commands::customldap::custom_ldap_query(&mut ldap, &search_base, ldap_config)
                 {
                     eprintln!("Error running custom LDAP query: {}", e);
                 }
             }
-            9 => {
+            10 => {
                 if let Err(e) =
                     commands::actions::run_actions_menu(&mut ldap, &search_base, ldap_config)
                 {
                     eprintln!("Error in actions menu: {}", e);
                 }
             }
-            10 => show_help_connect(),
-            11 => break,
+            11 => show_help_connect(),
+            12 => break,
             _ => unreachable!(),
         }
     }
@@ -233,6 +236,21 @@ fn handle_query_groups(
     if let Err(e) = commands::groups::query_groups(ldap, search_base, ldap_config, username, export)
     {
         eprintln!("Error: {}", e);
+    }
+}
+
+fn handle_get_acedacl(
+    ldap: &mut ldap3::LdapConn,
+    search_base: &str,
+    ldap_config: &crate::ldap::LdapConfig,
+) {
+    let username = read_input("Enter username to analyze: ");
+    if !username.is_empty() {
+        if let Err(e) =
+            commands::get_acedacl::get_ace_dacl(ldap, search_base, ldap_config, &username)
+        {
+            eprintln!("Error: {}", e);
+        }
     }
 }
 
