@@ -15,13 +15,14 @@ const ACTIONS_OPTIONS: &[&str] = &[
     "Set DONT_REQUIRE_PREAUTH",
     "Enable Account",
     "Disable Account",
+    "Reconnect with Secure Connection",
     "Back",
 ];
 
 pub fn run_actions_menu(
     ldap: &mut LdapConn,
     search_base: &str,
-    ldap_config: &LdapConfig,
+    ldap_config: &mut LdapConfig,
 ) -> Result<(), Box<dyn std::error::Error>> {
     loop {
         let selection = Select::with_theme(&ColorfulTheme::default())
@@ -40,7 +41,11 @@ pub fn run_actions_menu(
             4 => handle_set_dontreqpreauth(ldap, search_base)?,
             5 => handle_enable_account(ldap, search_base)?,
             6 => handle_disable_account(ldap, search_base)?,
-            7 => break,
+            7 => {
+                handle_reconnect_starttls(ldap, ldap_config)?;
+                // Reconnection replaces the connection, so continue menu
+            }
+            8 => break,
             _ => unreachable!(),
         }
     }
@@ -185,4 +190,41 @@ fn handle_disable_account(
     }
 
     disable_account::disable_account(ldap, search_base, &username)
+}
+
+fn handle_reconnect_starttls(
+    ldap: &mut LdapConn,
+    ldap_config: &mut LdapConfig,
+) -> Result<(), Box<dyn std::error::Error>> {
+    use crate::ldap;
+    
+    #[cfg(target_os = "windows")]
+    println!("[*] Reconnecting with secure connection (Kerberos over LDAP)...");
+    #[cfg(target_os = "linux")]
+    println!("[*] Reconnecting with secure connection (LDAPS)...");
+    
+    // Enable secure_ldaps flag
+    ldap_config.secure_ldaps = true;
+    
+    // Close existing connection
+    let _ = ldap.unbind();
+    
+    // Create new connection (Windows: plain LDAP, Linux: LDAPS)
+    match ldap::ldap_connect(ldap_config) {
+        Ok((new_ldap, _)) => {
+            *ldap = new_ldap;
+            #[cfg(target_os = "windows")]
+            println!("[+] Successfully reconnected (plain LDAP + Kerberos encryption)");
+            #[cfg(target_os = "linux")]
+            println!("[+] Successfully reconnected with LDAPS");
+            add_terminal_spacing(1);
+            Ok(())
+        }
+        Err(e) => {
+            eprintln!("[!] Failed to reconnect: {}", e);
+            eprintln!("[!] You may need to exit and reconnect manually");
+            add_terminal_spacing(1);
+            Err(e.into())
+        }
+    }
 }

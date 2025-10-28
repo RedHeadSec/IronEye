@@ -11,18 +11,10 @@ Native Cerberos library for Kerberos protocol attacks
 
 use cerbero_lib;
 use dialoguer::{theme::ColorfulTheme, Confirm, Select};
+use ironeye::{args, commands, help, kerberos, ldap, ldapping, spray};
 use std::net::IpAddr;
-pub mod acl;
-pub mod args;
-pub mod commands;
-pub mod deep_queries;
-pub mod help;
-pub mod kerberos;
-pub mod ldap;
-pub mod ldapping;
-pub mod spray;
 
-use crate::args::{calculate_kerberos_hash, get_cerbero_args, parse_shell_args, CerberoCommand};
+use args::{calculate_kerberos_hash, get_cerbero_args, CerberoCommand};
 use args::{
     get_connect_arguments, get_spray_arguments, get_userenum_arguments, run_nested_query_menu,
 };
@@ -45,7 +37,6 @@ const CMD_OPTIONS: &[&str] = &[
     "From SID/GUID",
     "Get SPNs",
     "Get ACE/DACL",
-    "Query Groups",
     "Machine Quota",
     "Net Commands",
     "Password Policy",
@@ -92,7 +83,7 @@ fn handle_connect() {
         return;
     };
 
-    let (ldap, search_base) = match crate::ldap::ldap_connect(&mut ldap_config) {
+    let (ldap, search_base) = match ldap::ldap_connect(&mut ldap_config) {
         Ok(conn) => conn,
         Err(e) => {
             eprintln!("[!] Failed to connect to LDAP server: {}. Check credentials, Kerberos ticket, or connection.", e);
@@ -110,7 +101,7 @@ fn handle_connect() {
 }
 
 fn run_command_menu(
-    ldap_config: &mut crate::ldap::LdapConfig,
+    ldap_config: &mut ldap::LdapConfig,
     mut ldap: ldap3::LdapConn,
     search_base: String,
 ) {
@@ -144,43 +135,42 @@ fn run_command_menu(
                 }
             }
             3 => handle_get_acedacl(&mut ldap, &search_base, ldap_config),
-            4 => handle_query_groups(&mut ldap, &search_base, ldap_config),
-            5 => {
+            4 => {
                 if let Err(e) =
                     commands::maq::get_machine_account_quota(&mut ldap, &search_base, ldap_config)
                 {
                     eprintln!("Error: {}", e);
                 }
             }
-            6 => handle_net_commands(&mut ldap, &search_base, ldap_config),
-            7 => {
+            5 => handle_net_commands(&mut ldap, &search_base, ldap_config),
+            6 => {
                 if let Err(e) =
                     commands::getpasspol::get_password_policy(&mut ldap, &search_base, ldap_config)
                 {
                     eprintln!("Error: {}", e);
                 }
             }
-            8 => {
+            7 => {
                 if let Err(e) = run_nested_query_menu(&mut ldap, &search_base, ldap_config) {
                     eprintln!("Error: {}", e);
                 }
             }
-            9 => {
+            8 => {
                 if let Err(e) =
                     commands::customldap::custom_ldap_query(&mut ldap, &search_base, ldap_config)
                 {
                     eprintln!("Error running custom LDAP query: {}", e);
                 }
             }
-            10 => {
+            9 => {
                 if let Err(e) =
                     commands::actions::run_actions_menu(&mut ldap, &search_base, ldap_config)
                 {
                     eprintln!("Error in actions menu: {}", e);
                 }
             }
-            11 => show_help_connect(),
-            12 => break,
+            10 => show_help_connect(),
+            11 => break,
             _ => unreachable!(),
         }
     }
@@ -189,7 +179,7 @@ fn run_command_menu(
 fn handle_get_sid_guid(
     ldap: &mut ldap3::LdapConn,
     search_base: &str,
-    ldap_config: &crate::ldap::LdapConfig,
+    ldap_config: &ldap::LdapConfig,
 ) {
     let target = read_input("Enter target object: ");
     if !target.is_empty() {
@@ -204,7 +194,7 @@ fn handle_get_sid_guid(
 fn handle_from_sid_guid(
     ldap: &mut ldap3::LdapConn,
     search_base: &str,
-    _ldap_config: &crate::ldap::LdapConfig,
+    _ldap_config: &ldap::LdapConfig,
 ) {
     println!("SID Ex:  S-1-5-21-123456789-234567890-345678901-1001");
     println!("GUID Ex: 550e8400-e29b-41d4-a716-446655440000\n");
@@ -217,32 +207,10 @@ fn handle_from_sid_guid(
     }
 }
 
-fn handle_query_groups(
-    ldap: &mut ldap3::LdapConn,
-    search_base: &str,
-    ldap_config: &crate::ldap::LdapConfig,
-) {
-    let username = read_input(
-        "Enter username to see specific user's groups (or press Enter to see all groups): ",
-    );
-    let export_input = read_input("Export results to file? (y/N): ");
-    let export = export_input.trim().to_lowercase() == "y";
-    let username = if username.is_empty() {
-        None
-    } else {
-        Some(username.as_str())
-    };
-
-    if let Err(e) = commands::groups::query_groups(ldap, search_base, ldap_config, username, export)
-    {
-        eprintln!("Error: {}", e);
-    }
-}
-
 fn handle_get_acedacl(
     ldap: &mut ldap3::LdapConn,
     search_base: &str,
-    ldap_config: &crate::ldap::LdapConfig,
+    ldap_config: &ldap::LdapConfig,
 ) {
     let username = read_input("Enter username to analyze: ");
     if !username.is_empty() {
@@ -257,7 +225,7 @@ fn handle_get_acedacl(
 fn handle_net_commands(
     ldap: &mut ldap3::LdapConn,
     search_base: &str,
-    ldap_config: &crate::ldap::LdapConfig,
+    ldap_config: &ldap::LdapConfig,
 ) {
     let input = read_input(
         "Enter the net command arguments (e.g., user administrator OR group \"Domain Admins\"): ",
@@ -266,14 +234,14 @@ fn handle_net_commands(
 
     if args.len() < 2 {
         eprintln!("Error: net command requires type (user/group) and name");
-        eprintln!("Usage: net <user|group> <n>");
+        eprintln!("Usage: net <user|group> <name>");
         return;
     }
 
     let command_type = args[0].to_lowercase();
     if !matches!(command_type.as_str(), "user" | "group") {
         eprintln!("Error: net command type must be either 'user' or 'group'");
-        eprintln!("Usage: net <user|group> <n>");
+        eprintln!("Usage: net <user|group> <name>");
         return;
     }
 
@@ -302,7 +270,7 @@ fn handle_cerbero() {
                 }
             };
 
-            let mut ops = crate::kerberos::KerberosOps::new(&domain, ip);
+            let mut ops = kerberos::KerberosOps::new(&domain, ip);
 
             let result = if let Some(hash_value) = hash {
                 ops.ask_tgt_hash(&username, &hash_value, &output)
@@ -331,7 +299,7 @@ fn handle_cerbero() {
                 }
             };
 
-            let mut ops = crate::kerberos::KerberosOps::new(&domain, ip);
+            let mut ops = kerberos::KerberosOps::new(&domain, ip);
 
             match ops.ask_tgs(&username, &password, &service, &output) {
                 Ok(_) => println!("\x1b[32m[+] Success\x1b[0m"),
@@ -354,7 +322,7 @@ fn handle_cerbero() {
                 }
             };
 
-            let mut ops = crate::kerberos::KerberosOps::new(&domain, ip);
+            let mut ops = kerberos::KerberosOps::new(&domain, ip);
 
             match ops.ask_s4u2self(&username, &password, &impersonate, &output) {
                 Ok(_) => println!("\x1b[32m[+] Success\x1b[0m"),
@@ -378,7 +346,7 @@ fn handle_cerbero() {
                 }
             };
 
-            let mut ops = crate::kerberos::KerberosOps::new(&domain, ip);
+            let mut ops = kerberos::KerberosOps::new(&domain, ip);
 
             match ops.ask_s4u2proxy(&username, &password, &impersonate, &service, &output) {
                 Ok(_) => println!("\x1b[32m[+] Success\x1b[0m"),
@@ -402,16 +370,14 @@ fn handle_cerbero() {
                 }
             };
 
-            let ops = crate::kerberos::KerberosOps::new(&domain, ip);
+            let ops = kerberos::KerberosOps::new(&domain, ip);
 
-            // Determine crack format
             let crack_format = if format == "john" {
                 cerbero_lib::CrackFormat::John
             } else {
                 cerbero_lib::CrackFormat::Hashcat
             };
 
-            // Check if target is a file or a single user
             let hashes = if Path::new(&target).exists() {
                 match ops.asreproast_file(&target, crack_format) {
                     Ok(h) => h,
@@ -430,7 +396,6 @@ fn handle_cerbero() {
                 }
             };
 
-            // Output results
             if let Some(output_file) = output {
                 use std::fs::File;
                 use std::io::Write;
@@ -445,7 +410,6 @@ fn handle_cerbero() {
                     Err(e) => eprintln!("\x1b[31m[!] Failed to write output: {}\x1b[0m", e),
                 }
             } else {
-                // Print to stdout
                 for hash in &hashes {
                     println!("{}", hash);
                 }
@@ -474,7 +438,7 @@ fn handle_cerbero() {
                 }
             };
 
-            let mut ops = crate::kerberos::KerberosOps::new(&domain, ip);
+            let mut ops = kerberos::KerberosOps::new(&domain, ip);
 
             let crack_format = if format == "john" {
                 cerbero_lib::CrackFormat::John
@@ -491,7 +455,6 @@ fn handle_cerbero() {
                     }
                 }
             } else {
-                // Single target (user:spn format)
                 let parts: Vec<&str> = target.split(':').collect();
                 if parts.len() != 2 {
                     eprintln!("\x1b[31m[!] Invalid target format. Use 'user:spn' or provide a file\x1b[0m");

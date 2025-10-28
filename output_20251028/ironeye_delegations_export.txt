@@ -1,0 +1,39 @@
+--------------------
+accountExpires: 9223372036854775807
+badPasswordTime: 0
+badPwdCount: 0
+cn: DEV-DC
+codePage: 0
+countryCode: 0
+dNSHostName: DEV-DC.redheadsec.dev
+dSCorePropagationData: 20250719133623.0Z, 16010101000001.0Z
+distinguishedName: CN=DEV-DC,OU=Domain Controllers,DC=redheadsec,DC=dev
+instanceType: 4
+isCriticalSystemObject: TRUE
+lastLogoff: 0
+lastLogon: 134061330090085938
+lastLogonTimestamp: 134054994089867268
+localPolicyFlags: 0
+logonCount: 650
+msDFSR-ComputerReferenceBL: CN=DEV-DC,CN=Topology,CN=Domain System Volume,CN=DFSR-GlobalSettings,CN=System,DC=redheadsec,DC=dev
+msDS-SupportedEncryptionTypes: 28
+name: DEV-DC
+objectCategory: CN=Computer,CN=Schema,CN=Configuration,DC=redheadsec,DC=dev
+objectClass: top, person, organizationalPerson, user, computer
+operatingSystem: Windows Server 2025 Standard Evaluation
+operatingSystemVersion: 10.0 (26100)
+primaryGroupID: 516
+pwdLastSet: 134053509295309906
+rIDSetReferences: CN=RID Set,CN=DEV-DC,OU=Domain Controllers,DC=redheadsec,DC=dev
+sAMAccountName: DEV-DC$
+sAMAccountType: 805306369
+serverReferenceBL: CN=DEV-DC,CN=Servers,CN=Default-First-Site-Name,CN=Sites,CN=Configuration,DC=redheadsec,DC=dev
+servicePrincipalName: Dfsr-12F9A27C-BF97-4787-9364-D31B6C55EB04/DEV-DC.redheadsec.dev, TERMSRV/DEV-DC, TERMSRV/DEV-DC.redheadsec.dev, ldap/DEV-DC.redheadsec.dev/ForestDnsZones.redheadsec.dev, ldap/DEV-DC.redheadsec.dev/DomainDnsZones.redheadsec.dev, DNS/DEV-DC.redheadsec.dev, GC/DEV-DC.redheadsec.dev/redheadsec.dev, RestrictedKrbHost/DEV-DC.redheadsec.dev, RestrictedKrbHost/DEV-DC, RPC/0f79608e-d9c0-47bf-9f92-fda03a2b4fa5._msdcs.redheadsec.dev, HOST/DEV-DC/redheadsec, HOST/DEV-DC.redheadsec.dev/redheadsec, HOST/DEV-DC, HOST/DEV-DC.redheadsec.dev, HOST/DEV-DC.redheadsec.dev/redheadsec.dev, E3514235-4B06-11D1-AB04-00C04FC2DCD2/0f79608e-d9c0-47bf-9f92-fda03a2b4fa5/redheadsec.dev, ldap/DEV-DC/redheadsec, ldap/0f79608e-d9c0-47bf-9f92-fda03a2b4fa5._msdcs.redheadsec.dev, ldap/DEV-DC.redheadsec.dev/redheadsec, ldap/DEV-DC, ldap/DEV-DC.redheadsec.dev, ldap/DEV-DC.redheadsec.dev/redheadsec.dev
+uSNChanged: 50603
+uSNCreated: 12293
+userAccountControl: 532480
+whenChanged: 20251021055008.0Z
+whenCreated: 20250719133621.0Z
+msDS-GenerationId: aSwH2pQR6Us=
+objectGUID: 2bf0687a-1852-4988-be69-30c176c0b5a7
+objectSid: S-1-5-21-1256792053-539744884-1428864015-1001

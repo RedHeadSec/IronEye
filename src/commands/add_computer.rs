@@ -70,10 +70,20 @@ pub fn add_computer(
     add_terminal_spacing(1);
 
     if !config.secure_ldaps {
-        println!("[!] LDAPS connection required for add_computer operation");
-        println!("[!] Reconnect using the --secure-ldaps flag");
+        println!("[!] Secure connection required for add_computer operation");
+        println!("[!] Either:");
+        #[cfg(target_os = "windows")]
+        {
+            println!("    1. Reconnect with -s flag (uses plain LDAP + Kerberos encryption)");
+            println!("    2. Use 'Reconnect with Secure Connection' from Actions menu");
+        }
+        #[cfg(target_os = "linux")]
+        {
+            println!("    1. Reconnect with -s flag (uses LDAPS)");
+            println!("    2. Use 'Reconnect with Secure Connection' from Actions menu");
+        }
         add_terminal_spacing(1);
-        return Err("LDAPS required".into());
+        return Err("Secure connection required".into());
     }
 
     let computer_name = if computer_name.ends_with('$') {

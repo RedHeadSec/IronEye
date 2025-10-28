@@ -40,6 +40,11 @@ impl KerberosOps {
     ) -> CerberoResult<()> {
         let user = KrbUser::new(username.to_string(), self.domain.clone());
         let user_key = Key::Secret(password.to_string());
+        
+        if std::path::Path::new(output_file).exists() {
+            std::fs::remove_file(output_file).ok();
+        }
+        
         let mut vault = FileVault::new(output_file.to_string());
         let kdccomm = self.create_kdccomm();
 
@@ -71,6 +76,11 @@ impl KerberosOps {
     ) -> CerberoResult<()> {
         let user = KrbUser::new(username.to_string(), self.domain.clone());
         let user_key = Key::Secret(password.to_string());
+        
+        if std::path::Path::new(output_file).exists() {
+            std::fs::remove_file(output_file).ok();
+        }
+        
         let mut vault = FileVault::new(output_file.to_string());
         let kdccomm = self.create_kdccomm();
 
@@ -122,6 +132,10 @@ impl KerberosOps {
                 ));
             };
 
+        if std::path::Path::new(output_file).exists() {
+            std::fs::remove_file(output_file).ok();
+        }
+
         let mut vault = FileVault::new(output_file.to_string());
         let kdccomm = self.create_kdccomm();
 
@@ -158,6 +172,11 @@ impl KerberosOps {
         let user = KrbUser::new(username.to_string(), self.domain.clone());
         let imp_user = KrbUser::new(impersonate_user.to_string(), self.domain.clone());
         let user_key = Key::Secret(password.to_string());
+        
+        if std::path::Path::new(output_file).exists() {
+            std::fs::remove_file(output_file).ok();
+        }
+        
         let mut vault = FileVault::new(output_file.to_string());
         let kdccomm = self.create_kdccomm();
 
@@ -195,6 +214,11 @@ impl KerberosOps {
         let user = KrbUser::new(username.to_string(), self.domain.clone());
         let imp_user = KrbUser::new(impersonate_user.to_string(), self.domain.clone());
         let user_key = Key::Secret(password.to_string());
+        
+        if std::path::Path::new(output_file).exists() {
+            std::fs::remove_file(output_file).ok();
+        }
+        
         let mut vault = FileVault::new(output_file.to_string());
         let kdccomm = self.create_kdccomm();
 

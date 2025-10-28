@@ -1,6 +1,7 @@
+use crate::bofhound::export_bofhound;
 use crate::help::add_terminal_spacing;
 use crate::ldap::LdapConfig;
-use csv::Writer;
+use chrono::Local;
 use ldap3::adapters::{Adapter, EntriesOnly, PagedResults};
 use ldap3::{LdapConn, Scope, SearchEntry};
 use std::error::Error;
@@ -12,19 +13,11 @@ pub fn get_computers(
 ) -> Result<(), Box<dyn Error>> {
     let entries = query_computers(ldap, search_base)?;
 
-    let mut wtr = Writer::from_path("computers_export.csv")?;
-
-    wtr.write_record(&[
-        "sAMAccountName",
-        "dNSHostName",
-        "operatingSystem",
-        "description",
-    ])?;
-
     println!("\nComputers Query Results:");
     println!("------------------------");
+    println!("Found {} computers", entries.len());
 
-    for entry in entries {
+    for entry in &entries {
         let sam_account_name = entry
             .attrs
             .get("sAMAccountName")
@@ -40,34 +33,19 @@ pub fn get_computers(
             .get("operatingSystem")
             .and_then(|v| v.get(0))
             .map_or("", String::as_str);
-        let description = entry
-            .attrs
-            .get("description")
-            .and_then(|v| v.get(0))
-            .map_or("", String::as_str);
-
-        wtr.write_record(&[
-            sam_account_name,
-            dns_host_name,
-            operating_system,
-            description,
-        ])?;
 
         println!(
-            "sAMAccountName: {}, dNSHostName: {}, operatingSystem: {}, description: {}",
-            sam_account_name, dns_host_name, operating_system, description
+            "sAMAccountName: {}, dNSHostName: {}, operatingSystem: {}",
+            sam_account_name, dns_host_name, operating_system
         );
     }
 
-    // Flush the writer to ensure all data is written to the file
-    wtr.flush()?;
-
-    println!("\nComputers query completed successfully. Results saved to 'computers_export.csv'.");
+    export_bofhound("computers_export.txt", &entries)?;
+    let date = Local::now().format("%Y%m%d").to_string();
+    println!("\nComputers query completed successfully. Results saved to 'output_{}/ironeye_computers_export.txt'.", date);
     add_terminal_spacing(1);
     Ok(())
 }
-
-// Helper function to perform the LDAP search for computer accounts
 
 fn query_computers(
     ldap: &mut LdapConn,
@@ -85,12 +63,7 @@ fn query_computers(
         search_base,
         Scope::Subtree,
         search_filter,
-        vec![
-            "sAMAccountName",
-            "dNSHostName",
-            "operatingSystem",
-            "description",
-        ],
+        vec!["*"],
     )?;
 
     let mut entries = Vec::new();

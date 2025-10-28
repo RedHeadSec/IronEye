@@ -3,6 +3,10 @@ name = "ironeye"
 version = "2.0.1"
 edition = "2021"
 
+[lib]
+name = "ironeye"
+path = "src/lib.rs"
+
 [dependencies]
 dialoguer = "0.10"
 clap = { version = "4.3", features = ["derive"] }
@@ -30,9 +34,11 @@ libc = "0.2"
 
 [target.'cfg(target_os = "linux")'.dependencies]
 ldap3 = { version = "0.11", features = ["gssapi"] }
+native-tls = "0.2"
 
 [target.'cfg(target_os = "windows")'.dependencies]
 ldap3 = { version = "0.11", features = ["gssapi"] }
+native-tls = "0.2"
 
 [target.'cfg(target_os = "macos")'.dependencies]
 ldap3 = { version = "0.11" }

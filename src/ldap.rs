@@ -29,9 +29,25 @@ pub struct LdapConfig {
 
 #[cfg(target_os = "linux")]
 pub fn ldap_connect(config: &mut LdapConfig) -> Result<(LdapConn, String), LdapError> {
-    let settings = LdapConnSettings::new()
-        .set_conn_timeout(Duration::from_secs(CONNECTION_TIMEOUT_SECS))
-        .set_no_tls_verify(true);
+    use native_tls::TlsConnector;
+
+    let settings = if config.secure_ldaps {
+        let tls_connector = TlsConnector::builder()
+            .danger_accept_invalid_certs(true)
+            .danger_accept_invalid_hostnames(true)
+            .build()
+            .map_err(|e| LdapError::Io {
+                source: std::io::Error::new(std::io::ErrorKind::Other, e.to_string()),
+            })?;
+
+        LdapConnSettings::new()
+            .set_conn_timeout(Duration::from_secs(CONNECTION_TIMEOUT_SECS))
+            .set_connector(tls_connector)
+    } else {
+        LdapConnSettings::new()
+            .set_conn_timeout(Duration::from_secs(CONNECTION_TIMEOUT_SECS))
+            .set_no_tls_verify(true)
+    };
 
     let ldap_url = if config.secure_ldaps {
         format!("ldaps://{}", config.dc_ip.to_lowercase())
@@ -64,6 +80,19 @@ pub fn ldap_connect(config: &mut LdapConfig) -> Result<(LdapConn, String), LdapE
                     "Kerberos requires hostname/FQDN, not IP address",
                 ),
             });
+        }
+
+        // Warn if using short hostname (best practice is FQDN)
+        if !config.dc_ip.contains('.') {
+            eprintln!(
+                "[!] Warning: Kerberos works best with FQDNs, not short hostnames."
+            );
+            eprintln!("[!] Current value: {}", config.dc_ip);
+            eprintln!("[!] If connection fails, use the full domain name instead.");
+            eprintln!(
+                "[!] Example: -i {}.{} instead of -i {}",
+                config.dc_ip, config.domain, config.dc_ip
+            );
         }
 
         // Normalize hostname to lowercase (Kerberos convention)
@@ -181,15 +210,12 @@ pub fn ldap_connect(config: &mut LdapConfig) -> Result<(LdapConn, String), LdapE
 
 #[cfg(target_os = "windows")]
 pub fn ldap_connect(config: &mut LdapConfig) -> Result<(LdapConn, String), LdapError> {
+
+    let ldap_url = format!("ldap://{}", config.dc_ip.to_lowercase());
+    
     let settings = LdapConnSettings::new()
         .set_conn_timeout(Duration::from_secs(CONNECTION_TIMEOUT_SECS))
         .set_no_tls_verify(true);
-
-    let ldap_url = if config.secure_ldaps {
-        format!("ldaps://{}", config.dc_ip.to_lowercase())
-    } else {
-        format!("ldap://{}", config.dc_ip.to_lowercase())
-    };
 
     let mut ldap = LdapConn::with_settings(settings, &ldap_url)?;
 
@@ -216,6 +242,27 @@ pub fn ldap_connect(config: &mut LdapConfig) -> Result<(LdapConn, String), LdapE
                     "Kerberos requires hostname/FQDN, not IP address",
                 ),
             });
+        }
+
+        // Windows SSPI requires FQDN, not short hostname
+        if !config.dc_ip.contains('.') {
+            eprintln!(
+                "[!] Warning: Windows Kerberos/SSPI requires a FQDN, not a short hostname."
+            );
+            eprintln!("[!] Current value: {}", config.dc_ip);
+            eprintln!("[!] If connection fails, use the full domain name instead.");
+            eprintln!(
+                "[!] Example: -i {}.{} instead of -i {}",
+                config.dc_ip, config.domain, config.dc_ip
+            );
+        }
+
+        // Note about secure connection on Windows
+        if config.secure_ldaps {
+            eprintln!(
+                "[*] Note: Using plain LDAP on Windows (LDAPS+Kerberos has compatibility issues)."
+            );
+            eprintln!("[*] Kerberos provides encryption, so connection is still secure.");
         }
 
         // Normalize hostname to lowercase (Kerberos convention)
@@ -277,12 +324,9 @@ pub fn ldap_connect(config: &mut LdapConfig) -> Result<(LdapConn, String), LdapE
                 let krb5_conf_path =
                     create_temp_krb5_conf(&krb5_conf).map_err(|e| LdapError::Io { source: e })?;
 
-                println!("[*] Generated temporary krb5.conf at {}", krb5_conf_path);
-                println!(
-                    "[*] Service Principal: ldap/{}@{}",
-                    normalized_dc, ccache.default_principal.realm
-                );
-
+                //println!("[*] Generated temporary krb5.conf at {}", krb5_conf_path);
+                //println!("[*] Service Principal: ldap/{}@{}",normalized_dc, ccache.default_principal.realm);
+                
                 let original_krb5_config = set_krb5_config_env(&krb5_conf_path);
                 let original_krb5ccname = set_krb5ccname_temp(&ccache_to_use);
 

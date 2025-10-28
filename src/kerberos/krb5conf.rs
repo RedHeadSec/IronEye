@@ -40,11 +40,12 @@ pub fn generate_krb5_conf_from_ccache(ccache: &CcacheFile, dc_ip: &str) -> Resul
 }
 
 pub fn create_temp_krb5_conf(content: &str) -> Result<String, std::io::Error> {
-    let temp_path = "/tmp/ironeye_krb5.conf";
-    let mut file = fs::File::create(temp_path)?;
+    let temp_dir = std::env::temp_dir();
+    let temp_path = temp_dir.join("ironeye_krb5.conf");
+    let mut file = fs::File::create(&temp_path)?;
     file.write_all(content.as_bytes())?;
     file.sync_all()?;
-    Ok(temp_path.to_string())
+    Ok(temp_path.to_string_lossy().to_string())
 }
 
 pub fn set_krb5_config_env(conf_path: &str) -> Option<String> {

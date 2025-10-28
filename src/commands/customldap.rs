@@ -82,7 +82,7 @@ pub fn custom_ldap_query(
                     let output_filename = generate_output_filename(&filter);
                     println!("Saving results to: {}", output_filename);
                     let mut file = File::create(&output_filename)?;
-                    print_ldap_results(non_empty_entries, &mut io::stdout(), &mut file)?;
+                    print_ldap_results_bofhound(non_empty_entries, &mut io::stdout(), &mut file)?;
                     println!("\nQuery complete.\n");
                 }
             }
@@ -103,7 +103,6 @@ fn ldap_query(
     filter: &str,
     attributes: &[&str],
 ) -> Result<Vec<SearchEntry>, Box<dyn Error>> {
-    // Attach SDFlags control for nTSecurityDescriptor
     ldap.with_controls(vec![RawControl {
         ctype: String::from("1.2.840.113556.1.4.801"),
         crit: false,
@@ -128,7 +127,7 @@ fn ldap_query(
     Ok(entries)
 }
 
-fn print_ldap_results<W1: Write, W2: Write>(
+fn print_ldap_results_bofhound<W1: Write, W2: Write>(
     entries: Vec<SearchEntry>,
     console: &mut W1,
     file: &mut W2,

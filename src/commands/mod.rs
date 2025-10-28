@@ -10,7 +10,6 @@ pub mod get_acedacl;
 pub mod get_sid_guid;
 pub mod getpasspol;
 pub mod getspns;
-pub mod groups;
 pub mod maq;
 pub mod net;
 pub mod set_dontreqpreauth;

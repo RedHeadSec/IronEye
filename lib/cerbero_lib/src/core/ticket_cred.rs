@@ -34,7 +34,7 @@ impl TicketCreds {
         self.ticket_creds.push(ticket_info);
     }
 
-    pub fn iter(&self) -> Iter<TicketCred> {
+    pub fn iter(&self) -> Iter<'_, TicketCred> {
         return self.ticket_creds.iter();
     }
 

@@ -1,11 +1,9 @@
+use crate::bofhound::{export_bofhound, query_with_security_descriptor};
 use crate::help::add_terminal_spacing;
 use crate::ldap::LdapConfig;
 use chrono::Local;
-use ldap3::adapters::{Adapter, EntriesOnly, PagedResults};
 use ldap3::{LdapConn, Scope, SearchEntry};
 use std::error::Error;
-use std::fs::File;
-use std::io::Write;
 use x509_parser::prelude::*;
 
 #[derive(Debug, Clone)]
@@ -41,18 +39,30 @@ pub fn get_pki_info(
 
     println!("\n=== Active Directory Certificate Services Analysis ===\n");
 
-    let cas = get_certificate_authorities(ldap, &config_base)?;
+    let (cas, ca_entries, enrollment_entries) = get_certificate_authorities(ldap, &config_base)?;
     display_certificate_authorities(&cas);
 
-    let templates = get_certificate_templates(ldap, &config_base)?;
-    let interesting_templates = display_certificate_templates(&templates);
+    let (templates, template_entries) = get_certificate_templates(ldap, &config_base)?;
+    let _interesting_templates = display_certificate_templates(&templates);
+
+    let pki_containers = get_pki_containers(ldap, &config_base)?;
 
     println!("\nWould you like to save the results to a file? (y/N): ");
     let mut input = String::new();
     std::io::stdin().read_line(&mut input)?;
 
     if input.trim().to_lowercase() == "y" {
-        save_results_to_file(&cas, &templates, &interesting_templates)?;
+        let mut all_entries = Vec::new();
+        all_entries.extend(ca_entries);
+        all_entries.extend(enrollment_entries);
+        all_entries.extend(template_entries);
+        all_entries.extend(pki_containers);
+        
+        let timestamp = Local::now().format("%Y%m%d_%H%M%S");
+        let filename = format!("pki_export_{}.txt", timestamp);
+        export_bofhound(&filename, &all_entries)?;
+        let date = Local::now().format("%Y%m%d").to_string();
+        println!("Results saved to: output_{}/ironeye_{}", date, filename);
     }
 
     add_terminal_spacing(1);
@@ -62,7 +72,7 @@ pub fn get_pki_info(
 fn get_certificate_authorities(
     ldap: &mut LdapConn,
     config_base: &str,
-) -> Result<Vec<CertificateAuthority>, Box<dyn Error>> {
+) -> Result<(Vec<CertificateAuthority>, Vec<SearchEntry>, Vec<SearchEntry>), Box<dyn Error>> {
     let ca_base = format!(
         "CN=Certification Authorities,CN=Public Key Services,CN=Services,{}",
         config_base
@@ -72,12 +82,21 @@ fn get_certificate_authorities(
         config_base
     );
 
-    let ca_entries =
-        query_pki_container(ldap, &ca_base, vec!["cn", "dNSHostName", "cACertificate"])?;
-    let enrollment_entries =
-        query_pki_container(ldap, &enrollment_base, vec!["cn", "dNSHostName"])?;
+    let ca_entries = query_with_security_descriptor(
+        ldap,
+        &ca_base,
+        "(objectClass=*)",
+        vec!["cn", "dNSHostName", "cACertificate"],
+    )?;
+    let enrollment_entries = query_with_security_descriptor(
+        ldap,
+        &enrollment_base,
+        "(objectClass=*)",
+        vec!["cn", "dNSHostName"],
+    )?;
 
     let mut cas = Vec::new();
+    let mut raw_entries = Vec::new();
 
     for entry in ca_entries {
         let ca_name = entry
@@ -129,29 +148,25 @@ fn get_certificate_authorities(
             validity_start,
             validity_end,
         });
+        
+        raw_entries.push(entry);
     }
 
-    Ok(cas)
+    Ok((cas, raw_entries, enrollment_entries))
 }
 
 fn get_certificate_templates(
     ldap: &mut LdapConn,
     config_base: &str,
-) -> Result<Vec<CertificateTemplate>, Box<dyn Error>> {
+) -> Result<(Vec<CertificateTemplate>, Vec<SearchEntry>), Box<dyn Error>> {
     let templates_base = format!(
         "CN=Certificate Templates,CN=Public Key Services,CN=Services,{}",
         config_base
     );
 
-    let adapters: Vec<Box<dyn Adapter<_, _>>> = vec![
-        Box::new(EntriesOnly::new()),
-        Box::new(PagedResults::new(500)),
-    ];
-
-    let mut search = ldap.streaming_search_with(
-        adapters,
+    let raw_entries = query_with_security_descriptor(
+        ldap,
         &templates_base,
-        Scope::OneLevel,
         "(objectClass=pKICertificateTemplate)",
         vec![
             "cn",
@@ -167,9 +182,7 @@ fn get_certificate_templates(
 
     let mut templates = Vec::new();
 
-    while let Some(entry) = search.next()? {
-        let template_entry = SearchEntry::construct(entry);
-
+    for template_entry in &raw_entries {
         let name = template_entry
             .attrs
             .get("cn")
@@ -252,8 +265,7 @@ fn get_certificate_templates(
         templates.push(template);
     }
 
-    let _ = search.result().success()?;
-    Ok(templates)
+    Ok((templates, raw_entries))
 }
 
 fn display_certificate_authorities(cas: &[CertificateAuthority]) {
@@ -411,190 +423,23 @@ fn display_certificate_templates(templates: &[CertificateTemplate]) -> Vec<&Cert
     interesting_templates
 }
 
-fn save_results_to_file(
-    cas: &[CertificateAuthority],
-    templates: &[CertificateTemplate],
-    interesting_templates: &[&CertificateTemplate],
-) -> Result<(), Box<dyn Error>> {
-    let timestamp = Local::now().format("%Y%m%d_%H%M%S");
-    let filename = format!("adcs_analysis_{}.txt", timestamp);
-    let mut file = File::create(&filename)?;
-
-    writeln!(file, "Active Directory Certificate Services Analysis")?;
-    writeln!(
-        file,
-        "Generated: {}",
-        Local::now().format("%Y-%m-%d %H:%M:%S")
+fn get_pki_containers(
+    ldap: &mut LdapConn,
+    config_base: &str,
+) -> Result<Vec<SearchEntry>, Box<dyn Error>> {
+    let pki_base = format!(
+        "CN=Public Key Services,CN=Services,{}",
+        config_base
+    );
+    
+    let pki_entries = query_with_security_descriptor(
+        ldap,
+        &pki_base,
+        "(|(objectClass=certificationAuthority)(objectClass=pKIEnrollmentService)(objectClass=container))",
+        vec!["*"],
     )?;
-    writeln!(
-        file,
-        "===============================================================================\n"
-    )?;
-
-    writeln!(file, "CERTIFICATE AUTHORITIES ({} found):", cas.len())?;
-    writeln!(
-        file,
-        "==============================================================================="
-    )?;
-    for (index, ca) in cas.iter().enumerate() {
-        writeln!(file, "{}. {}", index + 1, ca.name)?;
-        writeln!(file, "   DNS Name:           {}", ca.dns_name)?;
-        writeln!(file, "   Certificate Subject: {}", ca.cert_subject)?;
-        writeln!(file, "   Certificate Serial:  {}", ca.cert_serial)?;
-        writeln!(file, "   Validity Start:      {}", ca.validity_start)?;
-        writeln!(file, "   Validity End:        {}", ca.validity_end)?;
-        writeln!(file)?;
-    }
-
-    if !interesting_templates.is_empty() {
-        writeln!(
-            file,
-            "\nINTERESTING CERTIFICATE TEMPLATES ({} found):",
-            interesting_templates.len()
-        )?;
-        writeln!(
-            file,
-            "==============================================================================="
-        )?;
-
-        for template in interesting_templates {
-            writeln!(file, "Template: {}", template.display_name)?;
-            writeln!(file, "  Internal Name:              {}", template.name)?;
-            writeln!(
-                file,
-                "  Schema Version:             v{}",
-                template.schema_version
-            )?;
-            writeln!(
-                file,
-                "  Requires Approval:          {}",
-                if template.requires_approval {
-                    "Yes"
-                } else {
-                    "No"
-                }
-            )?;
-            writeln!(
-                file,
-                "  Allows SAN:                 {}",
-                if template.allows_san { "Yes" } else { "No" }
-            )?;
-            writeln!(
-                file,
-                "  Enrollee Supplies Subject:  {}",
-                if template.enrollee_supplies_subject {
-                    "Yes"
-                } else {
-                    "No"
-                }
-            )?;
-            writeln!(
-                file,
-                "  Client Authentication EKU:  {}",
-                if template.client_auth_eku {
-                    "Yes"
-                } else {
-                    "No"
-                }
-            )?;
-            writeln!(
-                file,
-                "  Smart Card Logon EKU:       {}",
-                if template.smart_card_logon_eku {
-                    "Yes"
-                } else {
-                    "No"
-                }
-            )?;
-            writeln!(
-                file,
-                "  Any Purpose EKU:            {}",
-                if template.any_purpose_eku {
-                    "Yes"
-                } else {
-                    "No"
-                }
-            )?;
-            writeln!(file)?;
-        }
-    } else {
-        writeln!(file, "\nINTERESTING CERTIFICATE TEMPLATES: None found")?;
-    }
-
-    writeln!(
-        file,
-        "\nALL ENABLED CERTIFICATE TEMPLATES ({} found):",
-        templates.iter().filter(|t| t.enabled).count()
-    )?;
-    writeln!(
-        file,
-        "==============================================================================="
-    )?;
-    writeln!(
-        file,
-        "{:<40} {:<12} {:<12} {:<12} {:<12}",
-        "Template Name", "Approval", "SAN", "Client Auth", "Any Purpose"
-    )?;
-    writeln!(
-        file,
-        "{:-<40} {:-<12} {:-<12} {:-<12} {:-<12}",
-        "", "", "", "", ""
-    )?;
-
-    for template in templates.iter().filter(|t| t.enabled) {
-        let approval = if template.requires_approval {
-            "Required"
-        } else {
-            "None"
-        };
-        let san = if template.allows_san { "Yes" } else { "No" };
-        let client_auth = if template.client_auth_eku || template.smart_card_logon_eku {
-            "Yes"
-        } else {
-            "No"
-        };
-        let any_purpose = if template.any_purpose_eku {
-            "Yes"
-        } else {
-            "No"
-        };
-
-        writeln!(
-            file,
-            "{:<40} {:<12} {:<12} {:<12} {:<12}",
-            template.display_name, approval, san, client_auth, any_purpose
-        )?;
-    }
-
-    writeln!(file, "\n\nANALYSIS NOTES:")?;
-    writeln!(
-        file,
-        "==============================================================================="
-    )?;
-    writeln!(
-        file,
-        "Templates marked as 'interesting' have properties that may allow certificate abuse:"
-    )?;
-    writeln!(
-        file,
-        "- SAN (Subject Alternative Name) allowed without approval"
-    )?;
-    writeln!(
-        file,
-        "- Client Authentication or Smart Card Logon EKU with SAN"
-    )?;
-    writeln!(file, "- Any Purpose EKU without approval requirements")?;
-    writeln!(
-        file,
-        "\nFor detailed exploitation techniques, use tools like:"
-    )?;
-    writeln!(file, "- Certify.exe (https://github.com/GhostPack/Certify)")?;
-    writeln!(file, "- Certipy (https://github.com/ly4k/Certipy)")?;
-
-    file.flush()?;
-    println!("Results saved to: {}", filename);
-
-    Ok(())
+    
+    Ok(pki_entries)
 }
 
 fn parse_certificate(cert_data: &[u8]) -> Result<CertificateDetails, Box<dyn Error>> {
@@ -613,18 +458,6 @@ struct CertificateDetails {
     serial_number: String,
     validity_start: String,
     validity_end: String,
-}
-
-fn query_pki_container(
-    ldap: &mut LdapConn,
-    base: &str,
-    attributes: Vec<&str>,
-) -> Result<Vec<SearchEntry>, Box<dyn Error>> {
-    let search_filter = "(objectClass=*)";
-    let result = ldap.search(base, Scope::Subtree, search_filter, attributes)?;
-
-    let (entries, _) = result.success()?;
-    Ok(entries.into_iter().map(SearchEntry::construct).collect())
 }
 
 fn get_configuration_naming_context(ldap: &mut LdapConn) -> Result<String, Box<dyn Error>> {

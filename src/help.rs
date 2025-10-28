@@ -47,15 +47,14 @@ pub fn show_help_connect() {
     println!("  2. 'From SID/GUID' - Resolve object from SID/GUID");
     println!("  3. 'Get SPNs' - Retrieve Service Principal Names (SPNs) for Kerberos services in the domain.");
     println!("  4. 'Get ACE/DACL' - Analyze ACL permissions for a given user across all object categories.");
-    println!("  5. 'Query Groups' - Enumerate groups and their memberships in the domain.");
-    println!("  6. 'Machine Quota' - Check the machine account quota for the domain.");
-    println!("  7. 'Net Commands' - Execute predefined or custom network commands.");
-    println!("  8. 'Password Policy' - Retrieve and display the domain's password policy.");
-    println!("  9. 'Deep-Queries' - Perform predefined deep LDAP queries (e.g., users, computers, trusts).");
-    println!("  10. 'Custom LDAP Query' - Execute a custom LDAP query by providing a filter and attributes. BOFHound output compatiable!");
-    println!("  11. 'Actions' - Perform actions on AD objects.");
-    println!("  12. 'Help' - Show this help message.");
-    println!("  13. 'Back' - Return to the main menu.");
+    println!("  5. 'Machine Quota' - Check the machine account quota for the domain.");
+    println!("  6. 'Net Commands' - Execute predefined or custom network commands.");
+    println!("  7. 'Password Policy' - Retrieve and display the domain's password policy.");
+    println!("  8. 'Deep-Queries' - Perform predefined deep LDAP queries (e.g., users, computers, trusts).");
+    println!("  9. 'Custom LDAP Query' - Execute a custom LDAP query by providing a filter and attributes. BOFHound output compatiable!");
+    println!("  10. 'Actions' - Perform actions on AD objects.");
+    println!("  11. 'Help' - Show this help message.");
+    println!("  12. 'Back' - Return to the main menu.");
     println!("\n");
 }
 

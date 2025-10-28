@@ -1,5 +1,8 @@
+use crate::bofhound::export_bofhound;
 use crate::help::add_terminal_spacing;
 use crate::ldap::LdapConfig;
+use chrono::Local;
+use ldap3::adapters::{Adapter, EntriesOnly, PagedResults};
 use ldap3::{LdapConn, Scope, SearchEntry};
 use std::error::Error;
 
@@ -9,9 +12,7 @@ pub fn get_subnets(
     _config: &LdapConfig,
 ) -> Result<(), Box<dyn Error>> {
     let config_base = get_configuration_naming_context(ldap)?;
-
     let subnets_base = format!("CN=Subnets,CN=Sites,{}", config_base);
-
     let entries = query_subnets(ldap, &subnets_base)?;
 
     if entries.is_empty() {
@@ -19,14 +20,11 @@ pub fn get_subnets(
         return Ok(());
     }
 
-    let mut wtr = csv::Writer::from_path("subnets_export.csv")?;
-
-    wtr.write_record(&["Subnet", "Site", "Description"])?;
-
     println!("\nSubnets Query Results:");
     println!("----------------------");
+    println!("Found {} subnets", entries.len());
 
-    for entry in entries {
+    for entry in &entries {
         let subnet = entry
             .attrs
             .get("cn")
@@ -37,23 +35,13 @@ pub fn get_subnets(
             .get("siteObject")
             .and_then(|v| v.get(0))
             .map_or("", String::as_str);
-        let description = entry
-            .attrs
-            .get("description")
-            .and_then(|v| v.get(0))
-            .map_or("", String::as_str);
 
-        wtr.write_record(&[subnet, site, description])?;
-
-        println!(
-            "Subnet: {}, Site: {}, Description: {}",
-            subnet, site, description
-        );
+        println!("Subnet: {}, Site: {}", subnet, site);
     }
 
-    wtr.flush()?;
-
-    println!("\nSubnets query completed successfully. Results saved to 'subnets_export.csv'.");
+    export_bofhound("subnets_export.txt", &entries)?;
+    let date = Local::now().format("%Y%m%d").to_string();
+    println!("\nSubnets query completed successfully. Results saved to 'output_{}/ironeye_subnets_export.txt'.", date);
     add_terminal_spacing(1);
     Ok(())
 }
@@ -84,14 +72,25 @@ fn query_subnets(
     subnets_base: &str,
 ) -> Result<Vec<SearchEntry>, Box<dyn Error>> {
     let search_filter = "(objectClass=subnet)";
-    let result = ldap.search(
+
+    let adapters: Vec<Box<dyn Adapter<_, _>>> = vec![
+        Box::new(EntriesOnly::new()),
+        Box::new(PagedResults::new(500)),
+    ];
+
+    let mut search = ldap.streaming_search_with(
+        adapters,
         subnets_base,
         Scope::Subtree,
         search_filter,
-        vec!["cn", "siteObject", "description"],
+        vec!["*"],
     )?;
 
-    let (entries, _) = result.success()?;
+    let mut entries = Vec::new();
+    while let Some(entry) = search.next()? {
+        entries.push(SearchEntry::construct(entry));
+    }
+    let _ = search.result().success()?;
 
-    Ok(entries.into_iter().map(SearchEntry::construct).collect())
+    Ok(entries)
 }

@@ -1,0 +1,302 @@
+--------------------
+accountExpires: 0
+adminCount: 1
+badPasswordTime: 0
+badPwdCount: 0
+cn: Administrator
+codePage: 0
+countryCode: 0
+dSCorePropagationData: 20250719135131.0Z, 20250719135131.0Z, 20250719133623.0Z, 16010101181216.0Z
+description: Built-in account for administering the computer/domain
+distinguishedName: CN=Administrator,CN=Users,DC=redheadsec,DC=dev
+instanceType: 4
+isCriticalSystemObject: TRUE
+lastLogoff: 0
+lastLogon: 0
+logonCount: 0
+memberOf: CN=Group Policy Creator Owners,CN=Users,DC=redheadsec,DC=dev, CN=Domain Admins,CN=Users,DC=redheadsec,DC=dev, CN=Enterprise Admins,CN=Users,DC=redheadsec,DC=dev, CN=Schema Admins,CN=Users,DC=redheadsec,DC=dev, CN=Administrators,CN=Builtin,DC=redheadsec,DC=dev
+name: Administrator
+objectCategory: CN=Person,CN=Schema,CN=Configuration,DC=redheadsec,DC=dev
+objectClass: top, person, organizationalPerson, user
+primaryGroupID: 513
+pwdLastSet: 133924477913979006
+sAMAccountName: Administrator
+sAMAccountType: 805306368
+uSNChanged: 13063
+uSNCreated: 8196
+userAccountControl: 66048
+whenChanged: 20250719135131.0Z
+whenCreated: 20250719133516.0Z
+logonHours: ////////////////////////////
+objectGUID: c70315f9-be5b-4ff6-8e43-cec01fa6c14b
+objectSid: S-1-5-21-1256792053-539744884-1428864015-500
+--------------------
+accountExpires: 9223372036854775807
+badPasswordTime: 0
+badPwdCount: 0
+cn: Guest
+codePage: 0
+countryCode: 0
+dSCorePropagationData: 20250719133623.0Z, 16010101000001.0Z
+description: Built-in account for guest access to the computer/domain
+distinguishedName: CN=Guest,CN=Users,DC=redheadsec,DC=dev
+instanceType: 4
+isCriticalSystemObject: TRUE
+lastLogoff: 0
+lastLogon: 0
+logonCount: 0
+memberOf: CN=Guests,CN=Builtin,DC=redheadsec,DC=dev
+name: Guest
+objectCategory: CN=Person,CN=Schema,CN=Configuration,DC=redheadsec,DC=dev
+objectClass: top, person, organizationalPerson, user
+primaryGroupID: 514
+pwdLastSet: 0
+sAMAccountName: Guest
+sAMAccountType: 805306368
+uSNChanged: 8197
+uSNCreated: 8197
+userAccountControl: 66082
+whenChanged: 20250719133516.0Z
+whenCreated: 20250719133516.0Z
+objectGUID: f3bd189c-9a25-4b8c-8b3a-02d2330418f3
+objectSid: S-1-5-21-1256792053-539744884-1428864015-501
+--------------------
+accountExpires: 0
+adminCount: 1
+badPasswordTime: 0
+badPwdCount: 0
+cn: localuser
+codePage: 1252
+countryCode: 1
+dSCorePropagationData: 20250719135131.0Z, 20250719133623.0Z, 16010101000416.0Z
+description: LocalUser
+displayName: localuser
+distinguishedName: CN=localuser,CN=Users,DC=redheadsec,DC=dev
+instanceType: 4
+lastLogoff: 0
+lastLogon: 134027677134880278
+lastLogonTimestamp: 134027677134880278
+logonCount: 213
+memberOf: CN=Users,CN=Builtin,DC=redheadsec,DC=dev, CN=Administrators,CN=Builtin,DC=redheadsec,DC=dev
+name: localuser
+objectCategory: CN=Person,CN=Schema,CN=Configuration,DC=redheadsec,DC=dev
+objectClass: top, person, organizationalPerson, user
+primaryGroupID: 513
+pwdLastSet: 133924477913683206
+sAMAccountName: localuser
+sAMAccountType: 805306368
+uSNChanged: 41376
+uSNCreated: 8198
+userAccountControl: 66048
+whenChanged: 20250919150153.0Z
+whenCreated: 20250719133516.0Z
+logonHours: ////////////////////////////
+objectGUID: 63a020e7-a893-413f-841b-b9c5fb26c2de
+objectSid: S-1-5-21-1256792053-539744884-1428864015-1000
+--------------------
+accountExpires: 9223372036854775807
+badPasswordTime: 0
+badPwdCount: 0
+cn: DEV-DC
+codePage: 0
+countryCode: 0
+dNSHostName: DEV-DC.redheadsec.dev
+dSCorePropagationData: 20250719133623.0Z, 16010101000001.0Z
+distinguishedName: CN=DEV-DC,OU=Domain Controllers,DC=redheadsec,DC=dev
+instanceType: 4
+isCriticalSystemObject: TRUE
+lastLogoff: 0
+lastLogon: 134061330090085938
+lastLogonTimestamp: 134054994089867268
+localPolicyFlags: 0
+logonCount: 650
+msDFSR-ComputerReferenceBL: CN=DEV-DC,CN=Topology,CN=Domain System Volume,CN=DFSR-GlobalSettings,CN=System,DC=redheadsec,DC=dev
+msDS-SupportedEncryptionTypes: 28
+name: DEV-DC
+objectCategory: CN=Computer,CN=Schema,CN=Configuration,DC=redheadsec,DC=dev
+objectClass: top, person, organizationalPerson, user, computer
+operatingSystem: Windows Server 2025 Standard Evaluation
+operatingSystemVersion: 10.0 (26100)
+primaryGroupID: 516
+pwdLastSet: 134053509295309906
+rIDSetReferences: CN=RID Set,CN=DEV-DC,OU=Domain Controllers,DC=redheadsec,DC=dev
+sAMAccountName: DEV-DC$
+sAMAccountType: 805306369
+serverReferenceBL: CN=DEV-DC,CN=Servers,CN=Default-First-Site-Name,CN=Sites,CN=Configuration,DC=redheadsec,DC=dev
+servicePrincipalName: Dfsr-12F9A27C-BF97-4787-9364-D31B6C55EB04/DEV-DC.redheadsec.dev, TERMSRV/DEV-DC, TERMSRV/DEV-DC.redheadsec.dev, ldap/DEV-DC.redheadsec.dev/ForestDnsZones.redheadsec.dev, ldap/DEV-DC.redheadsec.dev/DomainDnsZones.redheadsec.dev, DNS/DEV-DC.redheadsec.dev, GC/DEV-DC.redheadsec.dev/redheadsec.dev, RestrictedKrbHost/DEV-DC.redheadsec.dev, RestrictedKrbHost/DEV-DC, RPC/0f79608e-d9c0-47bf-9f92-fda03a2b4fa5._msdcs.redheadsec.dev, HOST/DEV-DC/redheadsec, HOST/DEV-DC.redheadsec.dev/redheadsec, HOST/DEV-DC, HOST/DEV-DC.redheadsec.dev, HOST/DEV-DC.redheadsec.dev/redheadsec.dev, E3514235-4B06-11D1-AB04-00C04FC2DCD2/0f79608e-d9c0-47bf-9f92-fda03a2b4fa5/redheadsec.dev, ldap/DEV-DC/redheadsec, ldap/0f79608e-d9c0-47bf-9f92-fda03a2b4fa5._msdcs.redheadsec.dev, ldap/DEV-DC.redheadsec.dev/redheadsec, ldap/DEV-DC, ldap/DEV-DC.redheadsec.dev, ldap/DEV-DC.redheadsec.dev/redheadsec.dev
+uSNChanged: 50603
+uSNCreated: 12293
+userAccountControl: 532480
+whenChanged: 20251021055008.0Z
+whenCreated: 20250719133621.0Z
+msDS-GenerationId: aSwH2pQR6Us=
+objectGUID: 2bf0687a-1852-4988-be69-30c176c0b5a7
+objectSid: S-1-5-21-1256792053-539744884-1428864015-1001
+--------------------
+accountExpires: 9223372036854775807
+adminCount: 1
+badPasswordTime: 0
+badPwdCount: 0
+cn: krbtgt
+codePage: 0
+countryCode: 0
+dSCorePropagationData: 20250719135131.0Z, 20250719133623.0Z, 16010101000416.0Z
+description: Key Distribution Center Service Account
+distinguishedName: CN=krbtgt,CN=Users,DC=redheadsec,DC=dev
+instanceType: 4
+isCriticalSystemObject: TRUE
+lastLogoff: 0
+lastLogon: 0
+logonCount: 0
+memberOf: CN=Denied RODC Password Replication Group,CN=Users,DC=redheadsec,DC=dev
+msDS-SupportedEncryptionTypes: 0
+name: krbtgt
+objectCategory: CN=Person,CN=Schema,CN=Configuration,DC=redheadsec,DC=dev
+objectClass: top, person, organizationalPerson, user
+primaryGroupID: 513
+pwdLastSet: 133974057819304849
+sAMAccountName: krbtgt
+sAMAccountType: 805306368
+servicePrincipalName: kadmin/changepw
+showInAdvancedViewOnly: TRUE
+uSNChanged: 13074
+uSNCreated: 12324
+userAccountControl: 514
+whenChanged: 20250719135131.0Z
+whenCreated: 20250719133621.0Z
+objectGUID: e3f4d3d0-0d5d-43e7-a3b9-7315296b23f7
+objectSid: S-1-5-21-1256792053-539744884-1428864015-502
+--------------------
+accountExpires: 9223372036854775807
+badPasswordTime: 0
+badPwdCount: 0
+cn: redheadsecuser
+codePage: 0
+countryCode: 0
+dSCorePropagationData: 16010101000000.0Z
+distinguishedName: CN=redheadsecuser,CN=Users,DC=redheadsec,DC=dev
+givenName: Domain
+instanceType: 4
+lastLogoff: 0
+lastLogon: 134061606465113183
+lastLogonTimestamp: 134055434509199732
+logonCount: 70
+memberOf: CN=Remote Desktop Users,CN=Builtin,DC=redheadsec,DC=dev
+name: redheadsecuser
+objectCategory: CN=Person,CN=Schema,CN=Configuration,DC=redheadsec,DC=dev
+objectClass: top, person, organizationalPerson, user
+primaryGroupID: 513
+pwdLastSet: 133974061990492909
+sAMAccountName: redheadsecuser
+sAMAccountType: 805306368
+servicePrincipalName: HTTP/web.redheadsec.dev
+sn: User
+uSNChanged: 56362
+uSNCreated: 12938
+userAccountControl: 66048
+whenChanged: 20251024110412.0Z
+whenCreated: 20250719134319.0Z
+objectGUID: 36c8e1fd-408d-4134-b4f5-60c8354a90b4
+objectSid: S-1-5-21-1256792053-539744884-1428864015-1104
+--------------------
+accountExpires: 9223372036854775807
+adminCount: 1
+badPasswordTime: 134000699110986156
+badPwdCount: 0
+cn: redheadsecadmin
+codePage: 0
+countryCode: 0
+dSCorePropagationData: 20250719135131.0Z, 16010101000000.0Z
+distinguishedName: CN=redheadsecadmin,CN=Users,DC=redheadsec,DC=dev
+givenName: Domain
+instanceType: 4
+lastLogoff: 0
+lastLogon: 134061612680399660
+lastLogonTimestamp: 134060597875928634
+logonCount: 170
+memberOf: CN=Group Policy Creator Owners,CN=Users,DC=redheadsec,DC=dev, CN=Domain Admins,CN=Users,DC=redheadsec,DC=dev, CN=Enterprise Admins,CN=Users,DC=redheadsec,DC=dev, CN=Schema Admins,CN=Users,DC=redheadsec,DC=dev, CN=Remote Desktop Users,CN=Builtin,DC=redheadsec,DC=dev
+name: redheadsecadmin
+objectCategory: CN=Person,CN=Schema,CN=Configuration,DC=redheadsec,DC=dev
+objectClass: top, person, organizationalPerson, user
+primaryGroupID: 513
+pwdLastSet: 133974062033084367
+sAMAccountName: redheadsecadmin
+sAMAccountType: 805306368
+sn: Admin
+uSNChanged: 62974
+uSNCreated: 12955
+userAccountControl: 66048
+whenChanged: 20251027172947.0Z
+whenCreated: 20250719134323.0Z
+objectGUID: f8da8c7e-b09a-4ad9-97a1-462fc07767ca
+objectSid: S-1-5-21-1256792053-539744884-1428864015-1105
+--------------------
+accountExpires: 9223372036854775807
+badPasswordTime: 0
+badPwdCount: 0
+cn: DEV-WIN10
+codePage: 0
+countryCode: 0
+dNSHostName: DEV-WIN10.redheadsec.dev
+dSCorePropagationData: 16010101000000.0Z
+distinguishedName: CN=DEV-WIN10,OU=Workstations,DC=redheadsec,DC=dev
+instanceType: 4
+isCriticalSystemObject: FALSE
+lastLogoff: 0
+lastLogon: 134061580507941007
+lastLogonTimestamp: 134055274883554808
+localPolicyFlags: 0
+logonCount: 382
+msDS-SupportedEncryptionTypes: 28
+name: DEV-WIN10
+objectCategory: CN=Computer,CN=Schema,CN=Configuration,DC=redheadsec,DC=dev
+objectClass: top, person, organizationalPerson, user, computer
+operatingSystem: Windows 10 Enterprise Evaluation
+operatingSystemVersion: 10.0 (19044)
+primaryGroupID: 515
+pwdLastSet: 134055274885280251
+sAMAccountName: DEV-WIN10$
+sAMAccountType: 805306369
+servicePrincipalName: WSMAN/DEV-WIN10, WSMAN/DEV-WIN10.redheadsec.dev, TERMSRV/DEV-WIN10, TERMSRV/DEV-WIN10.redheadsec.dev, RestrictedKrbHost/DEV-WIN10, HOST/DEV-WIN10, RestrictedKrbHost/DEV-WIN10.redheadsec.dev, HOST/DEV-WIN10.redheadsec.dev
+uSNChanged: 50641
+uSNCreated: 13083
+userAccountControl: 4096
+whenChanged: 20251021133808.0Z
+whenCreated: 20250719135538.0Z
+objectGUID: 95184f99-06c9-4f22-ad03-3a61ed4bd42a
+objectSid: S-1-5-21-1256792053-539744884-1428864015-1106
+--------------------
+accountExpires: 9223372036854775807
+badPasswordTime: 134061606690185306
+badPwdCount: 2
+cn: DEV-WIN11
+codePage: 0
+countryCode: 0
+dNSHostName: DEV-WIN11.redheadsec.dev
+dSCorePropagationData: 16010101000000.0Z
+distinguishedName: CN=DEV-WIN11,OU=Workstations,DC=redheadsec,DC=dev
+instanceType: 4
+isCriticalSystemObject: FALSE
+lastLogoff: 0
+lastLogon: 134061606689830742
+lastLogonTimestamp: 134055434553402616
+localPolicyFlags: 0
+logonCount: 154
+msDS-SupportedEncryptionTypes: 28
+name: DEV-WIN11
+objectCategory: CN=Computer,CN=Schema,CN=Configuration,DC=redheadsec,DC=dev
+objectClass: top, person, organizationalPerson, user, computer
+operatingSystem: Windows 11 Enterprise Evaluation
+operatingSystemVersion: 10.0 (22621)
+primaryGroupID: 515
+pwdLastSet: 134027684761143032
+sAMAccountName: DEV-WIN11$
+sAMAccountType: 805306369
+servicePrincipalName: WSMAN/DEV-WIN11, WSMAN/DEV-WIN11.redheadsec.dev, TERMSRV/DEV-WIN11, TERMSRV/DEV-WIN11.redheadsec.dev, RestrictedKrbHost/DEV-WIN11, HOST/DEV-WIN11, RestrictedKrbHost/DEV-WIN11.redheadsec.dev, HOST/DEV-WIN11.redheadsec.dev
+uSNChanged: 50679
+uSNCreated: 13086
+userAccountControl: 4096
+whenChanged: 20251021180415.0Z
+whenCreated: 20250719135538.0Z
+objectGUID: c828d0f3-1455-42c4-8cde-90c28d61af91
+objectSid: S-1-5-21-1256792053-539744884-1428864015-1107

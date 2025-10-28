@@ -1,5 +1,8 @@
+use crate::bofhound::export_bofhound;
 use crate::help::add_terminal_spacing;
 use crate::ldap::LdapConfig;
+use chrono::Local;
+use ldap3::adapters::{Adapter, EntriesOnly, PagedResults};
 use ldap3::{Scope, SearchEntry};
 use std::error::Error;
 
@@ -10,15 +13,24 @@ pub fn get_delegations(
 ) -> Result<(), Box<dyn Error>> {
     let delegation_filter = "(&(objectClass=User)(|(userAccountControl:1.2.840.113556.1.4.803:=524288)(msDS-AllowedToDelegateTo=*)(msDS-AllowedToActOnBehalfOfOtherIdentity=*)))";
 
-    let attributes = vec![
-        "sAMAccountName",
-        "userAccountControl",
-        "msDS-AllowedToDelegateTo",
-        "msDS-AllowedToActOnBehalfOfOtherIdentity",
+    let adapters: Vec<Box<dyn Adapter<_, _>>> = vec![
+        Box::new(EntriesOnly::new()),
+        Box::new(PagedResults::new(500)),
     ];
 
-    let result = ldap.search(&search_base, Scope::Subtree, delegation_filter, attributes)?;
-    let (entries, _) = result.success()?;
+    let mut search = ldap.streaming_search_with(
+        adapters,
+        search_base,
+        Scope::Subtree,
+        delegation_filter,
+        vec!["*"],
+    )?;
+
+    let mut entries = Vec::new();
+    while let Some(entry) = search.next()? {
+        entries.push(SearchEntry::construct(entry));
+    }
+    let _ = search.result().success()?;
 
     if entries.is_empty() {
         println!("\nNo delegation settings found in Active Directory.");
@@ -27,12 +39,9 @@ pub fn get_delegations(
 
     println!("\nDelegations Found:");
     println!("-------------------");
+    println!("Found {} delegation entries", entries.len());
 
-    let mut wtr = csv::Writer::from_path("delegations_export.csv")?;
-    wtr.write_record(&["Account", "Delegation Type", "Services"])?;
-
-    for entry in entries {
-        let entry = SearchEntry::construct(entry);
+    for entry in &entries {
         let account_name = entry
             .attrs
             .get("sAMAccountName")
@@ -49,13 +58,12 @@ pub fn get_delegations(
             "{}:{}:{}",
             account_name, delegation_type, delegated_services
         );
-
-        wtr.write_record(&[account_name, &delegation_type, &delegated_services])?;
     }
 
-    wtr.flush()?;
+    export_bofhound("delegations_export.txt", &entries)?;
+    let date = Local::now().format("%Y%m%d").to_string();
     println!(
-        "\nDelegations query completed successfully. Results saved to 'delegations_export.csv'."
+        "\nDelegations query completed successfully. Results saved to 'output_{}/ironeye_delegations_export.txt'.", date
     );
     add_terminal_spacing(1);
     Ok(())

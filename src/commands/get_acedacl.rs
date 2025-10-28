@@ -3,14 +3,16 @@ use crate::help::add_terminal_spacing;
 use crate::ldap::LdapConfig;
 use base64::engine::general_purpose::STANDARD as BASE64;
 use base64::Engine;
+use chrono::Local;
 use dialoguer::{Confirm, Input};
 use ldap3::adapters::{Adapter, EntriesOnly, PagedResults};
 use ldap3::controls::RawControl;
 use ldap3::{LdapConn, Scope, SearchEntry};
 use std::collections::{HashMap, HashSet};
 use std::error::Error;
-use std::fs::File;
+use std::fs::{self, File};
 use std::io::Write;
+use std::path::PathBuf;
 
 pub fn get_ace_dacl(
     ldap: &mut LdapConn,
@@ -147,7 +149,8 @@ pub fn get_ace_dacl(
             .interact()?;
 
         permissions.export_bofhound(&filename, ldap, search_base)?;
-        println!("\nResults exported to: {}", filename);
+        let date = Local::now().format("%Y%m%d").to_string();
+        println!("\nResults exported to: output_{}/ironeye_{}", date, filename);
     }
 
     add_terminal_spacing(2);
@@ -415,7 +418,15 @@ impl PermissionCollector {
         ldap: &mut LdapConn,
         search_base: &str,
     ) -> Result<(), Box<dyn Error>> {
-        let mut file = File::create(filename)?;
+        let date = Local::now().format("%Y%m%d").to_string();
+        let output_dir = format!("output_{}", date);
+        fs::create_dir_all(&output_dir)?;
+        
+        let prefixed_filename = format!("ironeye_{}", filename);
+        let mut path = PathBuf::from(&output_dir);
+        path.push(prefixed_filename);
+        
+        let mut file = File::create(&path)?;
         let separator = "--------------------";
 
         let affected_objects = self.get_all_affected_objects();

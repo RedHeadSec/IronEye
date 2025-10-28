@@ -1,0 +1,44 @@
+--------------------
+dSCorePropagationData: 20250719134155.0Z, 20250719133623.0Z, 16010101000416.0Z
+description: Default container for domain controllers
+distinguishedName: OU=Domain Controllers,DC=redheadsec,DC=dev
+gPLink: [LDAP://CN={6AC1786C-016F-11D2-945F-00C04fB984F9},CN=Policies,CN=System,DC=redheadsec,DC=dev;0]
+instanceType: 4
+isCriticalSystemObject: TRUE
+name: Domain Controllers
+objectCategory: CN=Organizational-Unit,CN=Schema,CN=Configuration,DC=redheadsec,DC=dev
+objectClass: top, organizationalUnit
+ou: Domain Controllers
+showInAdvancedViewOnly: FALSE
+systemFlags: -1946157056
+uSNChanged: 5816
+uSNCreated: 5816
+whenChanged: 20250719133515.0Z
+whenCreated: 20250719133515.0Z
+objectGUID: 757ce64b-afcc-437f-a5b8-5a06a9ccea3a
+--------------------
+dSCorePropagationData: 20250719134155.0Z, 20250719134155.0Z, 16010101000000.0Z
+distinguishedName: OU=Workstations,DC=redheadsec,DC=dev
+instanceType: 4
+name: Workstations
+objectCategory: CN=Organizational-Unit,CN=Schema,CN=Configuration,DC=redheadsec,DC=dev
+objectClass: top, organizationalUnit
+ou: Workstations
+uSNChanged: 12678
+uSNCreated: 12676
+whenChanged: 20250719134155.0Z
+whenCreated: 20250719134155.0Z
+objectGUID: 5551c8c4-3a07-4f05-ae4c-e4ba4063c67a
+--------------------
+dSCorePropagationData: 20250719134158.0Z, 16010101000000.0Z
+distinguishedName: OU=Servers,DC=redheadsec,DC=dev
+instanceType: 4
+name: Servers
+objectCategory: CN=Organizational-Unit,CN=Schema,CN=Configuration,DC=redheadsec,DC=dev
+objectClass: top, organizationalUnit
+ou: Servers
+uSNChanged: 12687
+uSNCreated: 12686
+whenChanged: 20250719134158.0Z
+whenCreated: 20250719134158.0Z
+objectGUID: e805fbbe-e710-44ea-a6a4-0375ce46c22b
