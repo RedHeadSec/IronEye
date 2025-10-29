@@ -23,6 +23,7 @@ uuid = { version = "1", features = ["v4"] }
 x509-parser = "0.12"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
+tokio = { version = "1", features = ["rt", "net"] }
 
 # Kerberos attack library
 cerbero_lib = { path = "lib/cerbero_lib", default-features = false }

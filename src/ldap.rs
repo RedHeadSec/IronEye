@@ -194,8 +194,11 @@ pub fn ldap_connect(config: &mut LdapConfig) -> Result<(LdapConn, String), LdapE
 
 #[cfg(target_os = "windows")]
 pub fn ldap_connect(config: &mut LdapConfig) -> Result<(LdapConn, String), LdapError> {
-
-    let ldap_url = format!("ldap://{}", config.dc_ip.to_lowercase());
+    let ldap_url = if config.secure_ldaps {
+        format!("ldaps://{}", config.dc_ip.to_lowercase())
+    } else {
+        format!("ldap://{}", config.dc_ip.to_lowercase())
+    };
     
     let settings = LdapConnSettings::new()
         .set_conn_timeout(Duration::from_secs(CONNECTION_TIMEOUT_SECS))
@@ -243,12 +246,6 @@ pub fn ldap_connect(config: &mut LdapConfig) -> Result<(LdapConn, String), LdapE
 
         // Normalize hostname to lowercase (Kerberos convention)
         let normalized_dc = config.dc_ip.to_lowercase();
-        if normalized_dc != config.dc_ip {
-            println!(
-                "[*] Normalized hostname: {} -> {}",
-                config.dc_ip, normalized_dc
-            );
-        }
 
         println!("[*] Using Kerberos authentication for LDAP.");
         println!("[*] Ccache file: {}", ccache_to_use);

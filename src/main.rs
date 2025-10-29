@@ -86,11 +86,14 @@ fn handle_connect() {
     let (ldap, search_base) = match ldap::ldap_connect(&mut ldap_config) {
         Ok(conn) => conn,
         Err(e) => {
-            eprintln!("[!] Failed to connect to LDAP server: {}. Check credentials, Kerberos ticket, or connection.", e);
-            if ldap_config.kerberos {
-                eprintln!("[DEBUG] Kerberos authentication was enabled. Ensure `KRB5CCNAME` is set and contains a valid ticket.");
-            } else {
-                eprintln!("[DEBUG] Using simple bind with username and password.");
+            let error_msg = e.to_string();
+            eprintln!("[!] Failed to connect to LDAP server: {}", e);
+            
+            // Check for LDAPS-specific errors
+            if ldap_config.secure_ldaps && (error_msg.contains("TLS") || error_msg.contains("tls") || error_msg.contains("EOF during handshake")) {
+                eprintln!("[!] Try without -s flag or use Kerberos auth");
+            } else if ldap_config.kerberos {
+                eprintln!("[!] Kerberos auth failed. Obtain a TGT first: ask-tgt -u <user> -p <pass> -d {} -i <dc>", ldap_config.domain);
             }
             return;
         }

@@ -7,4 +7,5 @@ pub mod help;
 pub mod kerberos;
 pub mod ldap;
 pub mod ldapping;
+//pub mod smb;  // Temporarily disabled - broken SMB crate dependency
 pub mod spray;
