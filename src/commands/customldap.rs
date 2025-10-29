@@ -7,8 +7,9 @@ use ldap3::controls::RawControl;
 use ldap3::{LdapConn, Scope, SearchEntry};
 use rustyline::DefaultEditor;
 use std::error::Error;
-use std::fs::File;
+use std::fs::{self, File};
 use std::io::{self, Write};
+use std::path::PathBuf;
 
 pub fn custom_ldap_query(
     ldap: &mut LdapConn,
@@ -79,9 +80,9 @@ pub fn custom_ldap_query(
                 if non_empty_entries.is_empty() {
                     println!("No results found.");
                 } else {
-                    let output_filename = generate_output_filename(&filter);
-                    println!("Saving results to: {}", output_filename);
-                    let mut file = File::create(&output_filename)?;
+                    let output_path = generate_output_path(&filter)?;
+                    println!("Saving results to: {}", output_path.display());
+                    let mut file = File::create(&output_path)?;
                     print_ldap_results_bofhound(non_empty_entries, &mut io::stdout(), &mut file)?;
                     println!("\nQuery complete.\n");
                 }
@@ -165,7 +166,11 @@ fn print_ldap_results_bofhound<W1: Write, W2: Write>(
     Ok(())
 }
 
-fn generate_output_filename(filter: &str) -> String {
+fn generate_output_path(filter: &str) -> Result<PathBuf, Box<dyn Error>> {
+    let date = Local::now().format("%Y%m%d").to_string();
+    let output_dir = format!("output_{}", date);
+    fs::create_dir_all(&output_dir)?;
+    
     let timestamp = Local::now().format("%Y%m%d_%H%M%S");
     let mut safe_part = filter
         .chars()
@@ -176,7 +181,11 @@ fn generate_output_filename(filter: &str) -> String {
         safe_part = safe_part[..20].to_string();
     }
 
-    format!("ldap_query_{}_{}.txt", safe_part, timestamp)
+    let filename = format!("ironeye_ldap_query_{}_{}.txt", safe_part, timestamp);
+    let mut path = PathBuf::from(&output_dir);
+    path.push(filename);
+    
+    Ok(path)
 }
 
 fn validate_filter(filter: &str) -> Result<(), String> {

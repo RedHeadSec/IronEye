@@ -41,7 +41,7 @@ const CMD_OPTIONS: &[&str] = &[
     "Net Commands",
     "Password Policy",
     "Deep-Queries",
-    "Custom Ldap Query (Bofhound Compatible)",
+    "Custom Ldap Query",
     "Actions",
     "Help",
     "Back",
@@ -126,56 +126,86 @@ fn run_command_menu(
 
         add_terminal_spacing(2);
 
-        match cmd_selection {
+        let result = match cmd_selection {
             0 => handle_get_sid_guid(&mut ldap, &search_base, ldap_config),
             1 => handle_from_sid_guid(&mut ldap, &search_base, ldap_config),
-            2 => {
-                if let Err(e) = commands::getspns::get_service_principal_names(
-                    &mut ldap,
-                    &search_base,
-                    ldap_config,
-                ) {
-                    eprintln!("Error: {}", e);
-                }
-            }
+            2 => commands::getspns::get_service_principal_names(
+                &mut ldap,
+                &search_base,
+                ldap_config,
+            ),
             3 => handle_get_acedacl(&mut ldap, &search_base, ldap_config),
-            4 => {
-                if let Err(e) =
-                    commands::maq::get_machine_account_quota(&mut ldap, &search_base, ldap_config)
-                {
-                    eprintln!("Error: {}", e);
-                }
-            }
+            4 => commands::maq::get_machine_account_quota(&mut ldap, &search_base, ldap_config),
             5 => handle_net_commands(&mut ldap, &search_base, ldap_config),
-            6 => {
-                if let Err(e) =
-                    commands::getpasspol::get_password_policy(&mut ldap, &search_base, ldap_config)
-                {
-                    eprintln!("Error: {}", e);
-                }
+            6 => commands::getpasspol::get_password_policy(&mut ldap, &search_base, ldap_config),
+            7 => run_nested_query_menu(&mut ldap, &search_base, ldap_config).map_err(|e| e.into()),
+            8 => commands::customldap::custom_ldap_query(&mut ldap, &search_base, ldap_config),
+            9 => commands::actions::run_actions_menu(&mut ldap, &search_base, ldap_config),
+            10 => {
+                show_help_connect();
+                Ok(())
             }
-            7 => {
-                if let Err(e) = run_nested_query_menu(&mut ldap, &search_base, ldap_config) {
-                    eprintln!("Error: {}", e);
-                }
-            }
-            8 => {
-                if let Err(e) =
-                    commands::customldap::custom_ldap_query(&mut ldap, &search_base, ldap_config)
-                {
-                    eprintln!("Error running custom LDAP query: {}", e);
-                }
-            }
-            9 => {
-                if let Err(e) =
-                    commands::actions::run_actions_menu(&mut ldap, &search_base, ldap_config)
-                {
-                    eprintln!("Error in actions menu: {}", e);
-                }
-            }
-            10 => show_help_connect(),
             11 => break,
             _ => unreachable!(),
+        };
+
+        if let Err(e) = result {
+            let error_msg = e.to_string();
+            eprintln!("Error: {}", e);
+
+            // Check if it's a connection error
+            if is_connection_error(&error_msg) {
+                eprintln!("\n[!] Session expired or connection lost");
+                
+                let reconnect = Confirm::with_theme(&ColorfulTheme::default())
+                    .with_prompt("Reconnect to LDAP server?")
+                    .default(true)
+                    .interact()
+                    .unwrap_or(false);
+
+                if reconnect {
+                    match attempt_reconnect(ldap_config) {
+                        Ok(new_ldap) => {
+                            println!("[+] Successfully reconnected to LDAP server.\n");
+                            ldap = new_ldap;
+                            
+                            let retry = Confirm::with_theme(&ColorfulTheme::default())
+                                .with_prompt("Retry last command?")
+                                .default(true)
+                                .interact()
+                                .unwrap_or(false);
+                            
+                            if retry {
+                                let retry_result = match cmd_selection {
+                                    0 => handle_get_sid_guid(&mut ldap, &search_base, ldap_config),
+                                    1 => handle_from_sid_guid(&mut ldap, &search_base, ldap_config),
+                                    2 => commands::getspns::get_service_principal_names(&mut ldap, &search_base, ldap_config),
+                                    3 => handle_get_acedacl(&mut ldap, &search_base, ldap_config),
+                                    4 => commands::maq::get_machine_account_quota(&mut ldap, &search_base, ldap_config),
+                                    5 => handle_net_commands(&mut ldap, &search_base, ldap_config),
+                                    6 => commands::getpasspol::get_password_policy(&mut ldap, &search_base, ldap_config),
+                                    7 => run_nested_query_menu(&mut ldap, &search_base, ldap_config).map_err(|e| e.into()),
+                                    8 => commands::customldap::custom_ldap_query(&mut ldap, &search_base, ldap_config),
+                                    9 => commands::actions::run_actions_menu(&mut ldap, &search_base, ldap_config),
+                                    _ => Ok(()),
+                                };
+                                
+                                if let Err(e) = retry_result {
+                                    eprintln!("Error on retry: {}", e);
+                                }
+                            }
+                        }
+                        Err(e) => {
+                            eprintln!("[!] Failed to reconnect: {}", e);
+                            eprintln!("[!] Returning to main menu.\n");
+                            break;
+                        }
+                    }
+                } else {
+                    eprintln!("[!] Returning to main menu.\n");
+                    break;
+                }
+            }
         }
     }
 }
@@ -184,53 +214,46 @@ fn handle_get_sid_guid(
     ldap: &mut ldap3::LdapConn,
     search_base: &str,
     ldap_config: &ldap::LdapConfig,
-) {
+) -> Result<(), Box<dyn std::error::Error>> {
     let target = read_input("Enter target object: ");
     if !target.is_empty() {
-        if let Err(e) =
-            commands::get_sid_guid::query_sid_guid(ldap, search_base, ldap_config, &target)
-        {
-            eprintln!("Error: {}", e);
-        }
+        commands::get_sid_guid::query_sid_guid(ldap, search_base, ldap_config, &target)?;
     }
+    Ok(())
 }
 
 fn handle_from_sid_guid(
     ldap: &mut ldap3::LdapConn,
     search_base: &str,
     _ldap_config: &ldap::LdapConfig,
-) {
+) -> Result<(), Box<dyn std::error::Error>> {
     println!("SID Ex:  S-1-5-21-123456789-234567890-345678901-1001");
     println!("GUID Ex: 550e8400-e29b-41d4-a716-446655440000\n");
 
     let target = read_input("Enter SID/GUID: ");
     if !target.is_empty() {
-        if let Err(e) = commands::from_sid_guid::resolve_sid_guid(ldap, search_base, &target) {
-            eprintln!("Error: {}", e);
-        }
+        commands::from_sid_guid::resolve_sid_guid(ldap, search_base, &target)?;
     }
+    Ok(())
 }
 
 fn handle_get_acedacl(
     ldap: &mut ldap3::LdapConn,
     search_base: &str,
     ldap_config: &ldap::LdapConfig,
-) {
+) -> Result<(), Box<dyn std::error::Error>> {
     let username = read_input("Enter username to analyze: ");
     if !username.is_empty() {
-        if let Err(e) =
-            commands::get_acedacl::get_ace_dacl(ldap, search_base, ldap_config, &username)
-        {
-            eprintln!("Error: {}", e);
-        }
+        commands::get_acedacl::get_ace_dacl(ldap, search_base, ldap_config, &username)?;
     }
+    Ok(())
 }
 
 fn handle_net_commands(
     ldap: &mut ldap3::LdapConn,
     search_base: &str,
     ldap_config: &ldap::LdapConfig,
-) {
+) -> Result<(), Box<dyn std::error::Error>> {
     let input = read_input(
         "Enter the net command arguments (e.g., user administrator OR group \"Domain Admins\"): ",
     );
@@ -238,22 +261,20 @@ fn handle_net_commands(
 
     if args.len() < 2 {
         eprintln!("Error: net command requires type (user/group) and name");
-        eprintln!("Usage: net <user|group> <name>");
-        return;
+        eprintln!("Usage: net <user|group> <n>");
+        return Ok(());
     }
 
     let command_type = args[0].to_lowercase();
     if !matches!(command_type.as_str(), "user" | "group") {
         eprintln!("Error: net command type must be either 'user' or 'group'");
-        eprintln!("Usage: net <user|group> <name>");
-        return;
+        eprintln!("Usage: net <user|group> <n>");
+        return Ok(());
     }
 
     let name = args[1].trim_matches('"');
-    if let Err(e) = commands::net::net_command(ldap, search_base, ldap_config, &command_type, name)
-    {
-        eprintln!("Error: {}", e);
-    }
+    commands::net::net_command(ldap, search_base, ldap_config, &command_type, name)?;
+    Ok(())
 }
 
 fn handle_cerbero() {
@@ -808,6 +829,45 @@ fn confirm_exit() -> bool {
         }
         Err(_) => false,
     }
+}
+
+fn is_connection_error(error_msg: &str) -> bool {
+    error_msg.contains("channel closed")
+        || error_msg.contains("Connection reset")
+        || error_msg.contains("Broken pipe")
+        || error_msg.contains("recv error")
+        || error_msg.contains("connection closed")
+        || error_msg.contains("EOF")
+        || error_msg.contains("Connection lost")
+        || error_msg.contains("timed out")
+}
+
+fn attempt_reconnect(ldap_config: &mut ldap::LdapConfig) -> Result<ldap3::LdapConn, Box<dyn std::error::Error>> {
+    println!("[*] Attempting to reconnect...");
+    
+    let mut attempts = 0;
+    let max_attempts = 3;
+    
+    while attempts < max_attempts {
+        attempts += 1;
+        if attempts > 1 {
+            println!("[*] Reconnection attempt {} of {}", attempts, max_attempts);
+            std::thread::sleep(std::time::Duration::from_secs(2));
+        }
+        
+        match ldap::ldap_connect(ldap_config) {
+            Ok((conn, _)) => return Ok(conn),
+            Err(e) => {
+                if attempts < max_attempts {
+                    eprintln!("[!] Reconnection failed: {}. Retrying...", e);
+                } else {
+                    return Err(Box::new(e));
+                }
+            }
+        }
+    }
+    
+    Err("Maximum reconnection attempts reached".into())
 }
 
 fn parse_quoted_args(input: &str) -> Vec<String> {
