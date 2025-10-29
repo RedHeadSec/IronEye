@@ -24,7 +24,7 @@ impl KerberosHash {
     }
 }
 
-/// Calculate Kerberos hashes from password using Cerberos crypto library
+
 pub fn hash_password(password: &str, username: Option<&str>, domain: Option<&str>) -> KerberosHash {
 
     let user = if let (Some(u), Some(d)) = (username, domain) {
@@ -51,9 +51,9 @@ pub fn hash_password(password: &str, username: Option<&str>, domain: Option<&str
     }
 }
 
-// Helper functions that use cerbero's underlying crypto
+
 fn calculate_rc4_hash(password: &str) -> String {
-    // Import from cerbero_lib's kerberos_crypto dependency
+    
     use kerberos_crypto::rc4_hmac_md5;
 
     let key = rc4_hmac_md5::generate_key_from_string(password);
@@ -88,7 +88,7 @@ mod tests {
     fn test_rc4_calculation() {
         let password = "Password123!";
         let hashes = hash_password(password, None, None);
-        assert_eq!(hashes.rc4.len(), 32); // 16 bytes = 32 hex chars
+        assert_eq!(hashes.rc4.len(), 32); 
         assert!(hashes.aes128.is_none());
         assert!(hashes.aes256.is_none());
     }

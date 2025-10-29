@@ -103,7 +103,7 @@ impl KerberosOps {
         Ok(())
     }
 
-    /// Request TGT with hash
+    
     pub fn ask_tgt_hash(
         &mut self,
         username: &str,
@@ -112,7 +112,7 @@ impl KerberosOps {
     ) -> CerberoResult<()> {
         let user = KrbUser::new(username.to_string(), self.domain.clone());
 
-        // Parse hash - assume RC4 if 32 chars, otherwise AES
+        
         let user_key =
             if hash.len() == 32 {
                 let key_bytes = hex::decode(hash)
@@ -161,7 +161,7 @@ impl KerberosOps {
         Ok(())
     }
 
-    /// Request S4U2Self ticket (impersonation)
+    
     pub fn ask_s4u2self(
         &mut self,
         username: &str,
@@ -202,7 +202,7 @@ impl KerberosOps {
         Ok(())
     }
 
-    /// Request S4U2Proxy ticket (constrained delegation)
+    
     pub fn ask_s4u2proxy(
         &mut self,
         username: &str,
@@ -244,7 +244,7 @@ impl KerberosOps {
         Ok(())
     }
 
-    /// AS-REP roast single user
+    
     pub fn asreproast_user(
         &self,
         username: &str,
@@ -263,7 +263,7 @@ impl KerberosOps {
         Ok(hash)
     }
 
-    /// AS-REP roast multiple users from file
+    
     pub fn asreproast_file(
         &self,
         userfile: &str,
@@ -315,7 +315,7 @@ impl KerberosOps {
         Ok(hashes)
     }
 
-    /// Kerberoast single service
+    
     pub fn kerberoast_service(
         &mut self,
         username: &str,
@@ -343,7 +343,7 @@ impl KerberosOps {
             &mut kdccomm_mut,
         )?;
 
-        // Extract hash
+        
         let hash = cerbero_lib::tgs_to_crack_string(
             target_user,
             &service_name.to_string(),
@@ -355,7 +355,7 @@ impl KerberosOps {
         Ok(hash)
     }
 
-    /// Kerberoast from file
+    
     pub fn kerberoast_file(
         &mut self,
         username: &str,
@@ -384,7 +384,7 @@ impl KerberosOps {
         let user = KrbUser::new(username.to_string(), self.domain.clone());
         let user_key = Key::Secret(password.to_string());
 
-        // Get TGT once
+        
         let channel = new_krb_channel(self.dc_ip, self.protocol);
         let tgt = cerbero_lib::request_tgt(user.clone(), &user_key, None, None, &*channel)?;
 

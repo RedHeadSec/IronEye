@@ -136,7 +136,7 @@ fn process_usernames_threaded(
         handles.push(handle);
     }
 
-    // Wait for all threads to complete
+    
     for handle in handles {
         if let Err(e) = handle.join() {
             eprintln!("Thread panicked: {:?}", e);
@@ -249,7 +249,7 @@ fn display_results(total_users: usize, valid_users: &[String]) {
     println!("[+] Valid users found: {}", valid_users.len());
     println!("[+] Success rate: {:.2}%", success_rate);
 
-    // Print valid users to stdout if any were found
+    
     if !valid_users.is_empty() {
         println!("\n[+] Valid users:");
         for user in valid_users {

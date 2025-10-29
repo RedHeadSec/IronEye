@@ -103,7 +103,7 @@ pub fn run_craft() -> Result<(), Box<dyn std::error::Error>> {
         .try_into()
         .map_err(|_| format!("Invalid SID format: {}", realm_sid))?;
 
-    // Craft the ticket
+    
     let ticket_info = craft_ticket_info(
         user.clone(),
         service.clone(),

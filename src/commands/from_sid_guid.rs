@@ -118,13 +118,13 @@ pub fn resolve_sid_guid(
         return Ok(Some(name.to_string()));
     }
 
-    // Determine if it's a SID or GUID
+    
     let filter = if validate_sid(identifier) {
-        format!("(objectSid={})", identifier) // SID search
+        format!("(objectSid={})", identifier) 
     } else if validate_guid(identifier) {
         let escaped_guid = format_guid_for_ldap(identifier);
         //println!("DEBUG - Escaped GUID: {}", escaped_guid);
-        format!("(objectGUID={})", escaped_guid) // GUID search
+        format!("(objectGUID={})", escaped_guid) 
     } else {
         return Err("Invalid SID or GUID format".into());
     };

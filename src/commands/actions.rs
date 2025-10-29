@@ -43,7 +43,7 @@ pub fn run_actions_menu(
             6 => handle_disable_account(ldap, search_base)?,
             7 => {
                 handle_reconnect_starttls(ldap, ldap_config)?;
-                // Reconnection replaces the connection, so continue menu
+                
             }
             8 => break,
             _ => unreachable!(),
@@ -203,10 +203,10 @@ fn handle_reconnect_starttls(
     #[cfg(target_os = "linux")]
     println!("[*] Reconnecting with secure connection (LDAPS)...");
     
-    // Enable secure_ldaps flag
+    
     ldap_config.secure_ldaps = true;
     
-    // Close existing connection
+    
     let _ = ldap.unbind();
     
     // Create new connection (Windows: plain LDAP, Linux: LDAPS)

@@ -89,7 +89,7 @@ fn handle_connect() {
             let error_msg = e.to_string();
             eprintln!("[!] Failed to connect to LDAP server: {}", e);
             
-            // Check for LDAPS-specific errors
+            
             if ldap_config.secure_ldaps && (error_msg.contains("TLS") || error_msg.contains("tls") || error_msg.contains("EOF during handshake")) {
                 eprintln!("[!] Try without -s flag or use Kerberos auth");
             } else if ldap_config.kerberos {

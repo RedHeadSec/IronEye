@@ -234,7 +234,7 @@ fn get_certificate_templates(
         let allows_san = (name_flags & 0x1) != 0; // ENROLLEE_SUPPLIES_SUBJECT
         let enrollee_supplies_subject = (name_flags & 0x1) != 0;
 
-        // Check for EKU combinations
+        
         let any_purpose_eku = eku_oids
             .map_or(false, |oids| oids.contains(&"2.5.29.37.0".to_string()))
             || app_policy_oids.map_or(false, |oids| oids.contains(&"2.5.29.37.0".to_string()));

@@ -926,7 +926,7 @@ fn parse_asreproast_command(input: &str) -> CerberoCommand {
         return CerberoCommand::None;
     }
 
-    // Validate format
+    
     if !matches!(format.as_str(), "hashcat" | "john") {
         eprintln!("[!] Invalid format. Use 'hashcat' or 'john'");
         return CerberoCommand::None;
@@ -977,7 +977,7 @@ fn parse_kerberoast_command(input: &str) -> CerberoCommand {
         return CerberoCommand::None;
     }
 
-    // Validate format
+    
     if !matches!(format.as_str(), "hashcat" | "john") {
         eprintln!("[!] Invalid format. Use 'hashcat' or 'john'");
         return CerberoCommand::None;
@@ -1015,7 +1015,7 @@ fn parse_convert_command(input: &str) -> CerberoCommand {
         return CerberoCommand::None;
     }
 
-    // Validate format if provided
+    
     if let Some(ref f) = format {
         if !matches!(f.as_str(), "krb" | "ccache" | "auto") {
             eprintln!("[!] Invalid format. Use 'krb', 'ccache', or 'auto'");

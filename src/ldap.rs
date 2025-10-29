@@ -47,7 +47,7 @@ pub fn ldap_connect(config: &mut LdapConfig) -> Result<(LdapConn, String), LdapE
                 source: std::io::Error::new(std::io::ErrorKind::NotFound, e),
             })?;
 
-        // Validate DC address for Kerberos
+        
         if config.dc_ip.parse::<std::net::IpAddr>().is_ok() {
             eprintln!(
                 "[!] Error: Kerberos authentication requires a hostname/FQDN, not an IP address."
@@ -66,7 +66,7 @@ pub fn ldap_connect(config: &mut LdapConfig) -> Result<(LdapConn, String), LdapE
             });
         }
 
-        // Warn if using short hostname (best practice is FQDN)
+        
         if !config.dc_ip.contains('.') {
             eprintln!(
                 "[!] Warning: Kerberos works best with FQDNs, not short hostnames."
@@ -79,13 +79,9 @@ pub fn ldap_connect(config: &mut LdapConfig) -> Result<(LdapConn, String), LdapE
             );
         }
 
-        // Normalize hostname to lowercase (Kerberos convention)
-        let normalized_dc = config.dc_ip.to_lowercase();
-        if normalized_dc != config.dc_ip {
-            //println!("[*] Normalized hostname: {} -> {}", config.dc_ip, normalized_dc);
-        }
+        
 
-        //println!("[*] Using Kerberos authentication for LDAP.");
+        
         println!("[*] Ccache file: {}", ccache_to_use);
 
         match parse_ccache_file(&ccache_to_use) {
@@ -116,7 +112,7 @@ pub fn ldap_connect(config: &mut LdapConfig) -> Result<(LdapConn, String), LdapE
                     }
                 }
 
-                // Extract username from ccache if not provided
+                
                 if config.username.is_empty() && !ccache.default_principal.components.is_empty() {
                     config.username = ccache.default_principal.components[0].clone();
                 }
@@ -212,7 +208,7 @@ pub fn ldap_connect(config: &mut LdapConfig) -> Result<(LdapConn, String), LdapE
                 source: std::io::Error::new(std::io::ErrorKind::NotFound, e),
             })?;
 
-        // Validate DC address for Kerberos
+        
         if config.dc_ip.parse::<std::net::IpAddr>().is_ok() {
             eprintln!(
                 "[!] Error: Kerberos authentication requires a hostname/FQDN, not an IP address."
@@ -231,7 +227,7 @@ pub fn ldap_connect(config: &mut LdapConfig) -> Result<(LdapConn, String), LdapE
             });
         }
 
-        // Windows SSPI requires FQDN, not short hostname
+        
         if !config.dc_ip.contains('.') {
             eprintln!(
                 "[!] Warning: Windows Kerberos/SSPI requires a FQDN, not a short hostname."
@@ -244,7 +240,7 @@ pub fn ldap_connect(config: &mut LdapConfig) -> Result<(LdapConn, String), LdapE
             );
         }
 
-        // Normalize hostname to lowercase (Kerberos convention)
+        
         let normalized_dc = config.dc_ip.to_lowercase();
 
         println!("[*] Using Kerberos authentication for LDAP.");
@@ -278,12 +274,12 @@ pub fn ldap_connect(config: &mut LdapConfig) -> Result<(LdapConn, String), LdapE
                     }
                 }
 
-                // Extract username from ccache if not provided
+                
                 if config.username.is_empty() && !ccache.default_principal.components.is_empty() {
                     config.username = ccache.default_principal.components[0].clone();
                 }
 
-                // Generate krb5.conf from ccache
+                
                 let krb5_conf =
                     generate_krb5_conf_from_ccache(&ccache, &normalized_dc).map_err(|e| {
                         LdapError::Io {
@@ -308,7 +304,7 @@ pub fn ldap_connect(config: &mut LdapConfig) -> Result<(LdapConn, String), LdapE
                 restore_krb5ccname(original_krb5ccname);
                 restore_krb5_config_env(original_krb5_config);
 
-                // Clean up temp file
+                
                 let _ = std::fs::remove_file(krb5_conf_path);
 
                 bind_result?;
