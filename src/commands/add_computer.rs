@@ -69,19 +69,12 @@ pub fn add_computer(
 ) -> Result<(), Box<dyn std::error::Error>> {
     add_terminal_spacing(1);
 
-    if !config.secure_ldaps {
+    if !config.secure_ldaps && !config.kerberos {
         println!("[!] Secure connection required for add_computer operation");
         println!("[!] Either:");
-        #[cfg(target_os = "windows")]
-        {
-            println!("    1. Reconnect with -s flag (uses plain LDAP + Kerberos encryption)");
-            println!("    2. Use 'Reconnect with Secure Connection' from Actions menu");
-        }
-        #[cfg(target_os = "linux")]
-        {
-            println!("    1. Reconnect with -s flag (uses LDAPS)");
-            println!("    2. Use 'Reconnect with Secure Connection' from Actions menu");
-        }
+        println!("    1. Use Kerberos authentication (-k flag)");
+        println!("    2. Use LDAPS (-s flag)");
+        println!("    3. Use 'Reconnect with Secure Connection' from Actions menu");
         add_terminal_spacing(1);
         return Err("Secure connection required".into());
     }

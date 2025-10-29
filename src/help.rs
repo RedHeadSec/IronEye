@@ -72,8 +72,13 @@ pub enum PromptFormat {
     UserAtDomain, // user@domain.local [ldap(s)://ip]
 }
 
-pub fn get_prompt_string(username: &str, domain: &str, use_ssl: bool, server: &str) -> String {
-    let protocol = if use_ssl { "ldaps" } else { "ldap" };
+pub fn get_prompt_string(username: &str, domain: &str, use_ssl: bool, use_kerberos: bool, server: &str) -> String {
+    let protocol = match (use_ssl, use_kerberos) {
+        (true, true) => "ldaps+krb",
+        (true, false) => "ldaps",
+        (false, true) => "ldap+krb",
+        (false, false) => "ldap",
+    };
     format!("{}@{}\n({}:{})", username, domain, server, protocol)
 }
 

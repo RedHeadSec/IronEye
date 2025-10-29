@@ -29,25 +29,9 @@ pub struct LdapConfig {
 
 #[cfg(target_os = "linux")]
 pub fn ldap_connect(config: &mut LdapConfig) -> Result<(LdapConn, String), LdapError> {
-    use native_tls::TlsConnector;
-
-    let settings = if config.secure_ldaps {
-        let tls_connector = TlsConnector::builder()
-            .danger_accept_invalid_certs(true)
-            .danger_accept_invalid_hostnames(true)
-            .build()
-            .map_err(|e| LdapError::Io {
-                source: std::io::Error::new(std::io::ErrorKind::Other, e.to_string()),
-            })?;
-
-        LdapConnSettings::new()
-            .set_conn_timeout(Duration::from_secs(CONNECTION_TIMEOUT_SECS))
-            .set_connector(tls_connector)
-    } else {
-        LdapConnSettings::new()
-            .set_conn_timeout(Duration::from_secs(CONNECTION_TIMEOUT_SECS))
-            .set_no_tls_verify(true)
-    };
+    let settings = LdapConnSettings::new()
+        .set_conn_timeout(Duration::from_secs(CONNECTION_TIMEOUT_SECS))
+        .set_no_tls_verify(true);
 
     let ldap_url = if config.secure_ldaps {
         format!("ldaps://{}", config.dc_ip.to_lowercase())
@@ -255,14 +239,6 @@ pub fn ldap_connect(config: &mut LdapConfig) -> Result<(LdapConn, String), LdapE
                 "[!] Example: -i {}.{} instead of -i {}",
                 config.dc_ip, config.domain, config.dc_ip
             );
-        }
-
-        // Note about secure connection on Windows
-        if config.secure_ldaps {
-            eprintln!(
-                "[*] Note: Using plain LDAP on Windows (LDAPS+Kerberos has compatibility issues)."
-            );
-            eprintln!("[*] Kerberos provides encryption, so connection is still secure.");
         }
 
         // Normalize hostname to lowercase (Kerberos convention)

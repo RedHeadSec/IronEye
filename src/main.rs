@@ -110,6 +110,7 @@ fn run_command_menu(
             &ldap_config.username,
             &ldap_config.domain,
             ldap_config.secure_ldaps,
+            ldap_config.kerberos,
             &ldap_config.dc_ip,
         );
 

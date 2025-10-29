@@ -214,7 +214,7 @@ fn handle_reconnect_starttls(
         Ok((new_ldap, _)) => {
             *ldap = new_ldap;
             #[cfg(target_os = "windows")]
-            println!("[+] Successfully reconnected (plain LDAP + Kerberos encryption)");
+            println!("[+] Successfully reconnected");
             #[cfg(target_os = "linux")]
             println!("[+] Successfully reconnected with LDAPS");
             add_terminal_spacing(1);
