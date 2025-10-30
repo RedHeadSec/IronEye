@@ -1,3 +1,4 @@
+use crate::debug;
 use crate::help::add_terminal_spacing;
 use crate::ldap::{extract_sid, format_guid, LdapConfig};
 use ldap3::{
@@ -12,7 +13,7 @@ fn search_user(
     object_name: &str,
 ) -> Result<Option<SearchEntry>, Box<dyn Error>> {
     let filter = format!("(sAMAccountName={})", object_name);
-    //println!("[DEBUG] Using LDAP Filter: {}", filter);
+    debug::debug_log(2, format!("Searching for user with filter: {}", filter));
 
     let adapters: Vec<Box<dyn Adapter<_, _>>> = vec![
         Box::new(EntriesOnly::new()),
@@ -35,10 +36,12 @@ pub fn query_sid_guid(
     _config: &LdapConfig,
     target: &str,
 ) -> Result<(), Box<dyn Error>> {
+    debug::debug_log(1, format!("Querying SID/GUID for: {}", target));
     println!("\n[*] Starting SID/GUID Query for: {}", target);
 
     match search_user(ldap, search_base, target)? {
         Some(search_entry) => {
+            debug::debug_log(2, format!("User {} found in LDAP", target));
             if let Some(sid) = extract_sid(&search_entry) {
                 println!("{} SID: {}", target, sid);
             } else {

@@ -1,3 +1,4 @@
+use crate::debug;
 use crate::help::add_terminal_spacing;
 use crate::ldap::LdapConfig;
 use ldap3::{Scope, SearchEntry};
@@ -8,6 +9,9 @@ pub fn get_machine_account_quota(
     search_base: &str,
     config: &LdapConfig,
 ) -> Result<(), Box<dyn Error>> {
+    debug::debug_log(1, "Querying machine account quota...");
+    debug::debug_log(2, format!("Search base: {}", search_base));
+    
     let result = ldap.search(
         &search_base,
         Scope::Base,
@@ -27,6 +31,7 @@ pub fn get_machine_account_quota(
             .and_then(|value| value.parse::<i32>().ok())
             .unwrap_or(0);
 
+        debug::debug_log(2, format!("Machine account quota value: {}", quota));
         println!("\nMachine Account Quota for {}:", config.domain);
         println!("----------------------");
         println!("Users can add up to {} computers to the domain", quota);

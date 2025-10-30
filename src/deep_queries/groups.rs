@@ -1,4 +1,5 @@
 use crate::bofhound::export_bofhound;
+use crate::debug;
 use crate::help::add_terminal_spacing;
 use crate::ldap::LdapConfig;
 use chrono::Local;
@@ -11,7 +12,9 @@ pub fn get_groups(
     search_base: &str,
     _config: &LdapConfig,
 ) -> Result<(), Box<dyn Error>> {
+    debug::debug_log(1, "Querying all groups...");
     let entries = query_all_groups(ldap, search_base)?;
+    debug::debug_log(2, format!("Found {} group entries", entries.len()));
 
     if entries.is_empty() {
         println!("No groups found");
@@ -38,6 +41,9 @@ fn query_all_groups(
     ldap: &mut ldap3::LdapConn,
     search_base: &str,
 ) -> Result<Vec<SearchEntry>, Box<dyn Error>> {
+    let search_filter = "(&(objectClass=group)(objectCategory=group))";
+    debug::debug_log(2, format!("Executing group query - Base: {}, Filter: {}", search_base, search_filter));
+    
     let adapters: Vec<Box<dyn Adapter<_, _>>> = vec![
         Box::new(EntriesOnly::new()),
         Box::new(PagedResults::new(500)),
@@ -47,7 +53,7 @@ fn query_all_groups(
         adapters,
         search_base,
         Scope::Subtree,
-        "(&(objectClass=group)(objectCategory=group))",
+        search_filter,
         vec!["*"],
     )?;
 
@@ -56,6 +62,7 @@ fn query_all_groups(
         entries.push(SearchEntry::construct(entry));
     }
     let _ = search.result().success()?;
+    debug::debug_log(3, format!("Retrieved {} raw group entries from LDAP", entries.len()));
 
     Ok(entries)
 }

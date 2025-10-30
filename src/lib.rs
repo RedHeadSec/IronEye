@@ -2,6 +2,7 @@ pub mod acl;
 pub mod args;
 pub mod bofhound;
 pub mod commands;
+pub mod debug;
 pub mod deep_queries;
 pub mod help;
 pub mod kerberos;

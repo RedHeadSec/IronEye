@@ -1,4 +1,5 @@
 use crate::bofhound::{export_bofhound, query_with_security_descriptor};
+use crate::debug::debug_log;
 use crate::help::add_terminal_spacing;
 use crate::ldap::LdapConfig;
 use chrono::Local;
@@ -35,17 +36,22 @@ pub fn get_pki_info(
     _search_base: &str,
     _config: &LdapConfig,
 ) -> Result<(), Box<dyn Error>> {
+    debug_log(1, "Starting PKI/ADCS analysis");
     let config_base = get_configuration_naming_context(ldap)?;
+    debug_log(2, &format!("Configuration base: {}", config_base));
 
     println!("\n=== Active Directory Certificate Services Analysis ===\n");
 
     let (cas, ca_entries, enrollment_entries) = get_certificate_authorities(ldap, &config_base)?;
+    debug_log(1, &format!("Found {} certificate authorities", cas.len()));
     display_certificate_authorities(&cas);
 
     let (templates, template_entries) = get_certificate_templates(ldap, &config_base)?;
+    debug_log(1, &format!("Found {} certificate templates", templates.len()));
     let _interesting_templates = display_certificate_templates(&templates);
 
     let pki_containers = get_pki_containers(ldap, &config_base)?;
+    debug_log(2, &format!("Retrieved {} PKI container entries", pki_containers.len()));
 
     println!("\nWould you like to save the results to a file? (y/N): ");
     let mut input = String::new();
@@ -60,6 +66,7 @@ pub fn get_pki_info(
         
         let timestamp = Local::now().format("%Y%m%d_%H%M%S");
         let filename = format!("pki_export_{}.txt", timestamp);
+        debug_log(1, &format!("Exporting {} PKI entries to: {}", all_entries.len(), filename));
         export_bofhound(&filename, &all_entries)?;
         let date = Local::now().format("%Y%m%d").to_string();
         println!("Results saved to: output_{}/ironeye_{}", date, filename);
@@ -81,6 +88,8 @@ fn get_certificate_authorities(
         "CN=Enrollment Services,CN=Public Key Services,CN=Services,{}",
         config_base
     );
+    debug_log(2, &format!("Querying CA base: {}", ca_base));
+    debug_log(2, &format!("Querying enrollment base: {}", enrollment_base));
 
     let ca_entries = query_with_security_descriptor(
         ldap,
@@ -88,12 +97,15 @@ fn get_certificate_authorities(
         "(objectClass=*)",
         vec!["cn", "dNSHostName", "cACertificate"],
     )?;
+    debug_log(3, &format!("Retrieved {} CA entries", ca_entries.len()));
+    
     let enrollment_entries = query_with_security_descriptor(
         ldap,
         &enrollment_base,
         "(objectClass=*)",
         vec!["cn", "dNSHostName"],
     )?;
+    debug_log(3, &format!("Retrieved {} enrollment service entries", enrollment_entries.len()));
 
     let mut cas = Vec::new();
     let mut raw_entries = Vec::new();
@@ -163,6 +175,7 @@ fn get_certificate_templates(
         "CN=Certificate Templates,CN=Public Key Services,CN=Services,{}",
         config_base
     );
+    debug_log(2, &format!("Querying templates base: {}", templates_base));
 
     let raw_entries = query_with_security_descriptor(
         ldap,
@@ -179,6 +192,7 @@ fn get_certificate_templates(
             "msPKI-Template-Schema-Version",
         ],
     )?;
+    debug_log(3, &format!("Retrieved {} certificate template entries", raw_entries.len()));
 
     let mut templates = Vec::new();
 
@@ -431,6 +445,7 @@ fn get_pki_containers(
         "CN=Public Key Services,CN=Services,{}",
         config_base
     );
+    debug_log(2, &format!("Querying PKI containers base: {}", pki_base));
     
     let pki_entries = query_with_security_descriptor(
         ldap,
@@ -461,6 +476,7 @@ struct CertificateDetails {
 }
 
 fn get_configuration_naming_context(ldap: &mut LdapConn) -> Result<String, Box<dyn Error>> {
+    debug_log(2, "Retrieving configuration naming context from RootDSE");
     let result = ldap.search(
         "",
         Scope::Base,

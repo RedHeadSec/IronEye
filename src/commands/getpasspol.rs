@@ -1,3 +1,4 @@
+use crate::debug;
 use crate::help::add_terminal_spacing;
 use crate::ldap::LdapConfig;
 use ldap3::adapters::{Adapter, EntriesOnly, PagedResults};
@@ -9,8 +10,11 @@ pub fn get_password_policy(
     search_base: &str,
     config: &LdapConfig,
 ) -> Result<(), Box<dyn Error>> {
+    debug::debug_log(1, "Querying password policies...");
     let domain_policy_entries = query_password_policy(ldap, search_base)?;
     let fgpp_entries = query_fine_grained_policies(ldap, search_base)?;
+    debug::debug_log(2, format!("Found {} domain policies and {} fine-grained policies", 
+        domain_policy_entries.len(), fgpp_entries.len()));
 
     // Display Default Domain Password Policy
     for entry in domain_policy_entries {
@@ -42,6 +46,7 @@ fn query_password_policy(
     search_base: &str,
 ) -> Result<Vec<SearchEntry>, Box<dyn Error>> {
     let search_filter = "(&(objectClass=domainDNS)(objectCategory=domain))";
+    debug::debug_log(2, format!("Querying domain password policy with filter: {}", search_filter));
 
     let result = ldap.search(
         search_base,
@@ -70,6 +75,8 @@ fn query_fine_grained_policies(
 ) -> Result<Vec<SearchEntry>, Box<dyn Error>> {
     let fgpp_dn = format!("CN=Password Settings Container,CN=System,{}", search_base);
     let search_filter = "(objectClass=msDS-PasswordSettings)";
+    debug::debug_log(2, format!("Querying fine-grained policies at: {}", fgpp_dn));
+    debug::debug_log(3, format!("FGPP filter: {}", search_filter));
 
     let adapters: Vec<Box<dyn Adapter<_, _>>> = vec![
         Box::new(EntriesOnly::new()),
@@ -101,6 +108,7 @@ fn query_fine_grained_policies(
         entries.push(SearchEntry::construct(entry));
     }
     let _ = search.result().success()?;
+    debug::debug_log(3, format!("Retrieved {} fine-grained policy entries", entries.len()));
 
     Ok(entries)
 }

@@ -11,7 +11,7 @@ Native Cerberos library for Kerberos protocol attacks
 
 use cerbero_lib;
 use dialoguer::{theme::ColorfulTheme, Confirm, Select};
-use ironeye::{args, commands, help, kerberos, ldap, ldapping, spray};
+use ironeye::{args, commands, debug, help, kerberos, ldap, ldapping, spray};
 use std::net::IpAddr;
 
 use args::{calculate_kerberos_hash, get_cerbero_args, CerberoCommand};
@@ -27,6 +27,7 @@ const MAIN_OPTIONS: &[&str] = &[
     "User Enumeration (LDAP Ping Method)",
     "Password Spray (LDAP)",
     "Generate KRB5 Conf",
+    "Debug Settings",
     "Version",
     "Help",
     "Exit",
@@ -49,6 +50,12 @@ const CMD_OPTIONS: &[&str] = &[
 
 fn main() {
     println!("{}", LOGO);
+    
+    // Initialize cerbero_lib logger at startup
+    let debug_level = debug::get_debug_level();
+    if debug_level > 0 {
+        kerberos::set_cerbero_verbosity(debug_level);
+    }
 
     loop {
         add_terminal_spacing(1);
@@ -65,9 +72,10 @@ fn main() {
             2 => handle_user_enumeration(),
             3 => handle_password_spray(),
             4 => handle_krb5_config(),
-            5 => println!("v{}", env!("CARGO_PKG_VERSION")),
-            6 => show_help_main(),
-            7 => {
+            5 => handle_debug_settings(),
+            6 => println!("v{}", env!("CARGO_PKG_VERSION")),
+            7 => show_help_main(),
+            8 => {
                 if confirm_exit() {
                     break;
                 }
@@ -278,6 +286,17 @@ fn handle_net_commands(
 }
 
 fn handle_cerbero() {
+    // Set cerbero_lib verbosity based on current debug level
+    let debug_level = debug::get_debug_level();
+    kerberos::set_cerbero_verbosity(debug_level);
+    
+    // Show note about debug verbosity on first entry
+    if debug_level == 0 {
+        println!("\n[*] Note: For verbose Kerberos output, set Debug level in main menu before entering Cerberos.");
+        println!("    Debug Settings → Level 1 (Info) or Level 2 (Debug) for detailed logging.");
+        println!("    Restart IronEye to reset the debug level for Kerberos module.\n");
+    }
+    
     match get_cerbero_args() {
         CerberoCommand::AskTgt {
             username,
@@ -811,6 +830,57 @@ fn handle_krb5_config() {
     };
     if let Err(e) = generate_conf_files(&args) {
         eprintln!("Error generating config files: {}", e);
+    }
+}
+
+fn handle_debug_settings() {
+    const DEBUG_OPTIONS: &[&str] = &[
+        "Disable Debug (Level 0) - Production mode, no debug output",
+        "Basic Debug (Level 1) - Basic operations: connections, commands executed",
+        "Verbose Debug (Level 2) - Detailed flow: LDAP queries, auth attempts",
+        "Full Debug (Level 3) - Complete trace: raw responses, thread operations",
+        "Back to Main Menu",
+    ];
+
+    loop {
+        let current = debug::get_debug_level();
+        let prompt = format!("Debug Settings (Current Level: {})", current);
+
+        let selection = Select::with_theme(&ColorfulTheme::default())
+            .with_prompt(prompt)
+            .items(DEBUG_OPTIONS)
+            .default(0)
+            .interact()
+            .expect("Failed to display debug menu");
+
+        match selection {
+            0 => {
+                debug::set_debug_level(0);
+                println!("[+] Debug disabled");
+                add_terminal_spacing(1);
+            }
+            1 => {
+                debug::set_debug_level(1);
+                println!("[+] Debug level set to: 1 (Basic)");
+                add_terminal_spacing(1);
+            }
+            2 => {
+                debug::set_debug_level(2);
+                println!("[+] Debug level set to: 2 (Verbose)");
+                add_terminal_spacing(1);
+            }
+            3 => {
+                debug::set_debug_level(3);
+                println!("[+] Debug level set to: 3 (Full)");
+                add_terminal_spacing(1);
+            }
+            4 => {
+                println!("Returning to main menu...");
+                add_terminal_spacing(1);
+                break;
+            }
+            _ => unreachable!(),
+        }
     }
 }
 

@@ -1,3 +1,4 @@
+use crate::debug;
 use crate::help::get_timestamp;
 use crate::kerberos::ccache::{parse_ccache_file, validate_ccache};
 use crate::kerberos::env::{determine_ccache_path, restore_krb5ccname, set_krb5ccname_temp};
@@ -39,13 +40,17 @@ pub fn ldap_connect(config: &mut LdapConfig) -> Result<(LdapConn, String), LdapE
         format!("ldap://{}", config.dc_ip.to_lowercase())
     };
 
+    debug::debug_log(1, format!("Connecting to LDAP: {}", ldap_url));
     let mut ldap = LdapConn::with_settings(settings, &ldap_url)?;
+    debug::debug_log(1, "LDAP connection established");
 
     if config.kerberos {
+        debug::debug_log(1, "Using Kerberos authentication");
         let ccache_to_use =
             determine_ccache_path(config.ccache_path.as_ref()).map_err(|e| LdapError::Io {
                 source: std::io::Error::new(std::io::ErrorKind::NotFound, e),
             })?;
+        debug::debug_log(2, format!("Ccache path: {}", ccache_to_use));
 
         
         if config.dc_ip.parse::<std::net::IpAddr>().is_ok() {
@@ -136,7 +141,9 @@ pub fn ldap_connect(config: &mut LdapConfig) -> Result<(LdapConn, String), LdapE
                 let original_krb5_config = set_krb5_config_env(&krb5_conf_path);
                 let original_krb5ccname = set_krb5ccname_temp(&ccache_to_use);
 
+                debug::debug_log(1, format!("Attempting SASL GSSAPI bind to {}", normalized_dc));
                 let bind_result = ldap.sasl_gssapi_bind(&normalized_dc)?.success();
+                debug::debug_log(1, "SASL GSSAPI bind successful");
 
                 restore_krb5ccname(original_krb5ccname);
                 restore_krb5_config_env(original_krb5_config);
@@ -157,8 +164,12 @@ pub fn ldap_connect(config: &mut LdapConfig) -> Result<(LdapConn, String), LdapE
         }
     } else {
         let bind_dn = format!("{}@{}", config.username, config.domain);
+        debug::debug_log(2, format!("Bind DN: {}", bind_dn));
+        debug::debug_log(1, format!("Attempting simple bind as {}", bind_dn));
         let credential = config.hash.as_ref().unwrap_or(&config.password);
+        debug::debug_log(2, "Using password credential");
         ldap.simple_bind(&bind_dn, credential)?.success()?;
+        debug::debug_log(1, "Simple bind successful");
     }
 
     if config.timestamp_format {
@@ -172,6 +183,8 @@ pub fn ldap_connect(config: &mut LdapConfig) -> Result<(LdapConn, String), LdapE
         .collect::<Vec<_>>()
         .join(",");
 
+    debug::debug_log(2, format!("Search base DN: {}", search_base));
+    debug::debug_log(2, format!("Querying base with filter: (objectClass=*)"));
     let (results, _) = ldap
         .search(
             &search_base,
@@ -184,6 +197,7 @@ pub fn ldap_connect(config: &mut LdapConfig) -> Result<(LdapConn, String), LdapE
     if results.is_empty() {
         println!("[!] Warning: No results returned from the base search.");
     }
+    debug::debug_log(1, "LDAP connection ready");
 
     Ok((ldap, search_base))
 }
@@ -200,7 +214,9 @@ pub fn ldap_connect(config: &mut LdapConfig) -> Result<(LdapConn, String), LdapE
         .set_conn_timeout(Duration::from_secs(CONNECTION_TIMEOUT_SECS))
         .set_no_tls_verify(true);
 
+    debug::debug_log(1, format!("Connecting to LDAP: {}", ldap_url));
     let mut ldap = LdapConn::with_settings(settings, &ldap_url)?;
+    debug::debug_log(1, "LDAP connection established");
 
     if config.kerberos {
         let ccache_to_use =
@@ -321,8 +337,12 @@ pub fn ldap_connect(config: &mut LdapConfig) -> Result<(LdapConn, String), LdapE
         }
     } else {
         let bind_dn = format!("{}@{}", config.username, config.domain);
+        debug::debug_log(2, format!("Bind DN: {}", bind_dn));
+        debug::debug_log(1, format!("Attempting simple bind as {}", bind_dn));
         let credential = config.hash.as_ref().unwrap_or(&config.password);
+        debug::debug_log(2, "Using password credential");
         ldap.simple_bind(&bind_dn, credential)?.success()?;
+        debug::debug_log(1, "Simple bind successful");
     }
 
     if config.timestamp_format {
@@ -336,6 +356,8 @@ pub fn ldap_connect(config: &mut LdapConfig) -> Result<(LdapConn, String), LdapE
         .collect::<Vec<_>>()
         .join(",");
 
+    debug::debug_log(2, format!("Search base DN: {}", search_base));
+    debug::debug_log(2, format!("Querying base with filter: (objectClass=*)"));
     let (results, _) = ldap
         .search(
             &search_base,
@@ -348,6 +370,7 @@ pub fn ldap_connect(config: &mut LdapConfig) -> Result<(LdapConn, String), LdapE
     if results.is_empty() {
         println!("[!] Warning: No results returned from the base search.");
     }
+    debug::debug_log(1, "LDAP connection ready");
 
     Ok((ldap, search_base))
 }
@@ -364,7 +387,9 @@ pub fn ldap_connect(config: &mut LdapConfig) -> Result<(LdapConn, String), LdapE
         format!("ldap://{}", config.dc_ip)
     };
 
+    debug::debug_log(1, format!("Connecting to LDAP: {}", ldap_url));
     let mut ldap = LdapConn::with_settings(settings, &ldap_url)?;
+    debug::debug_log(1, "LDAP connection established");
 
     if config.kerberos {
         println!("[!] Kerberos GSSAPI is not supported on macOS with Heimdal.");
@@ -385,7 +410,11 @@ pub fn ldap_connect(config: &mut LdapConfig) -> Result<(LdapConn, String), LdapE
         });
     } else {
         let bind_dn = format!("{}@{}", config.username, config.domain);
+        debug::debug_log(2, format!("Bind DN: {}", bind_dn));
+        debug::debug_log(1, format!("Attempting simple bind as {}", bind_dn));
+        debug::debug_log(2, "Using password credential");
         ldap.simple_bind(&bind_dn, &config.password)?.success()?;
+        debug::debug_log(1, "Simple bind successful");
     }
 
     if config.timestamp_format {
@@ -399,6 +428,8 @@ pub fn ldap_connect(config: &mut LdapConfig) -> Result<(LdapConn, String), LdapE
         .collect::<Vec<_>>()
         .join(",");
 
+    debug::debug_log(2, format!("Search base DN: {}", search_base));
+    debug::debug_log(2, format!("Querying base with filter: (objectClass=*)"));
     let (results, _) = ldap
         .search(
             &search_base,
@@ -411,6 +442,7 @@ pub fn ldap_connect(config: &mut LdapConfig) -> Result<(LdapConn, String), LdapE
     if results.is_empty() {
         println!("[!] Warning: No results returned from the base search.");
     }
+    debug::debug_log(1, "LDAP connection ready");
 
     Ok((ldap, search_base))
 }

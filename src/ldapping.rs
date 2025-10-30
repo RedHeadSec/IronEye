@@ -1,4 +1,5 @@
 use crate::args::UserEnumArgs;
+use crate::debug;
 use crate::help::get_timestamp;
 use ldap3::{LdapConn, Scope, SearchEntry};
 use std::error::Error;
@@ -23,6 +24,7 @@ pub struct LdapConfig {
 }
 
 pub fn run(args: &UserEnumArgs) -> Result<(), Box<dyn Error>> {
+    debug::debug_log(1, "Starting user enumeration via LDAP ping method...");
     let config = LdapConfig {
         dc: args.dc_ip.clone(),
         base_dn: build_base_dn(&args.domain),
@@ -31,6 +33,8 @@ pub fn run(args: &UserEnumArgs) -> Result<(), Box<dyn Error>> {
         output_file: args.output.clone(),
         port: DEFAULT_LDAP_PORT,
     };
+    debug::debug_log(2, format!("Target DC: {}, Base DN: {}", config.dc, config.base_dn));
+    debug::debug_log(2, format!("Using {} threads", config.threads));
 
     if args.timestamp_format {
         println!("\n[{}]", get_timestamp());
@@ -56,7 +60,9 @@ fn build_base_dn(domain: &str) -> String {
 }
 
 fn enumerate_users(config: LdapConfig) -> Result<(), Box<dyn Error>> {
+    debug::debug_log(1, format!("Loading usernames from: {}", config.file_path));
     let usernames = load_usernames(&config.file_path)?;
+    debug::debug_log(2, format!("Loaded {} usernames", usernames.len()));
     if usernames.is_empty() {
         println!("No usernames found in input file");
         return Ok(());
@@ -195,6 +201,7 @@ fn check_user_validity(conn: &mut LdapConn, username: &str) -> Result<bool, ldap
         "(&(NtVer=\\06\\00\\00\\00)(AAC=\\10\\00\\00\\00)(User={}))",
         username
     );
+    debug::debug_log(3, format!("Checking user: {} with LDAP ping filter", username));
 
     let result = conn.search("", Scope::Base, &filter, vec!["NetLogon"])?;
 
@@ -239,6 +246,9 @@ fn update_progress(current: usize, total: usize) {
 }
 
 fn display_results(total_users: usize, valid_users: &[String]) {
+    debug::debug_log(1, format!("Enumeration complete: {} valid users found out of {}", 
+        valid_users.len(), total_users));
+    
     let success_rate = if total_users > 0 {
         (valid_users.len() as f64 / total_users as f64) * 100.0
     } else {

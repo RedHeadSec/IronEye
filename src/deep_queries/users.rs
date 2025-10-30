@@ -1,4 +1,5 @@
 use crate::bofhound::export_bofhound;
+use crate::debug;
 use crate::help::add_terminal_spacing;
 use crate::ldap::LdapConfig;
 use chrono::Local;
@@ -11,7 +12,9 @@ pub fn get_users(
     search_base: &str,
     _config: &LdapConfig,
 ) -> Result<(), Box<dyn Error>> {
+    debug::debug_log(1, "Querying all users...");
     let entries = query_users(ldap, search_base)?;
+    debug::debug_log(2, format!("Found {} user entries", entries.len()));
 
     println!("\nUsers Query Results:");
     println!("--------------------");
@@ -41,6 +44,8 @@ pub fn get_users(
 
 fn query_users(ldap: &mut LdapConn, search_base: &str) -> Result<Vec<SearchEntry>, Box<dyn Error>> {
     let search_filter = "(objectClass=user)";
+    debug::debug_log(2, format!("Executing user query - Base: {}, Filter: {}", search_base, search_filter));
+    debug::debug_log(3, "Retrieving all attributes (*)");
 
     let adapters: Vec<Box<dyn Adapter<_, _>>> = vec![
         Box::new(EntriesOnly::new()),
@@ -60,6 +65,7 @@ fn query_users(ldap: &mut LdapConn, search_base: &str) -> Result<Vec<SearchEntry
         entries.push(SearchEntry::construct(entry));
     }
     let _ = search.result().success()?;
+    debug::debug_log(3, format!("Retrieved {} raw user entries from LDAP", entries.len()));
 
     Ok(entries)
 }

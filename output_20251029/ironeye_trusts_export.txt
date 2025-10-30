@@ -1,0 +1,45 @@
+--------------------
+cn: north.sevenkingdoms.local
+dSCorePropagationData: 16010101000000.0Z
+distinguishedName: CN=north.sevenkingdoms.local,CN=System,DC=sevenkingdoms,DC=local
+flatName: NORTH
+instanceType: 4
+isCriticalSystemObject: TRUE
+name: north.sevenkingdoms.local
+objectCategory: CN=Trusted-Domain,CN=Schema,CN=Configuration,DC=sevenkingdoms,DC=local
+objectClass: top, leaf, trustedDomain
+showInAdvancedViewOnly: TRUE
+trustAttributes: 32
+trustDirection: 3
+trustPartner: north.sevenkingdoms.local
+trustPosixOffset: -2147483648
+trustType: 2
+uSNChanged: 12703
+uSNCreated: 12702
+whenChanged: 20251029055207.0Z
+whenCreated: 20251029055207.0Z
+objectGUID: 72974214-9c3f-4de1-b486-6a37cd75bd93
+securityIdentifier: AQQAAAAAAAUVAAAAmWBpf35gP6LdQXfo
+--------------------
+cn: essos.local
+dSCorePropagationData: 16010101000000.0Z
+distinguishedName: CN=essos.local,CN=System,DC=sevenkingdoms,DC=local
+flatName: ESSOS
+instanceType: 4
+isCriticalSystemObject: TRUE
+name: essos.local
+objectCategory: CN=Trusted-Domain,CN=Schema,CN=Configuration,DC=sevenkingdoms,DC=local
+objectClass: top, leaf, trustedDomain
+showInAdvancedViewOnly: TRUE
+trustAttributes: 72
+trustDirection: 3
+trustPartner: essos.local
+trustPosixOffset: 1073741824
+trustType: 2
+uSNChanged: 21253
+uSNCreated: 13355
+whenChanged: 20251029063416.0Z
+whenCreated: 20251029060659.0Z
+msDS-TrustForestTrustInfo: AQAAAAMAAAAcAAAAAAAAAJpI3AGkfg6EAAsAAABlc3Nvcy5sb2NhbEEAAAAAAAAAmkjcAaR+DoQCGAAAAAEEAAAAAAAFFQAAAJCUQ87VG+6lNLkYCQsAAABlc3Nvcy5sb2NhbAUAAABFU1NPUy4AAAAAAAAAnUjcAbCBvR4EHQAAAAQAAAAACwAAAGVzc29zLmxvY2FsBQAAAEVTU09T
+objectGUID: 0c05d86f-e721-42f3-a81f-cca3dad2dbc3
+securityIdentifier: AQQAAAAAAAUVAAAAkJRDztUb7qU0uRgJ

@@ -1,4 +1,5 @@
 use crate::args::SprayArgs;
+use crate::debug;
 use crate::help::{add_terminal_spacing, get_timestamp};
 use ldap3::{LdapConn, LdapConnSettings};
 use std::collections::{HashMap, HashSet};
@@ -26,7 +27,6 @@ pub struct SprayConfig {
     pub jitter: u32,
     pub delay: u64,
     pub continue_on_success: bool,
-    pub verbose: u8,
     pub lockout_threshold: u32,
     pub lockout_window_seconds: u32,
     pub use_ldaps: bool,
@@ -92,7 +92,6 @@ impl SprayConfig {
             jitter: args.jitter,
             delay: args.delay,
             continue_on_success: args.continue_on_success,
-            verbose: args.verbose,
             lockout_threshold: args.lockout_threshold.unwrap_or(3),
             lockout_window_seconds: args.lockout_window_seconds.unwrap_or(300),
             use_ldaps: false, // Will be auto-detected or set via args
@@ -121,7 +120,7 @@ impl RateLimiter {
         }
     }
 
-    fn wait_if_needed(&self, verbose: u8) {
+    fn wait_if_needed(&self) {
         let mut last = self.last_attempt.lock().unwrap();
 
         if let Some(last_time) = *last {
@@ -137,14 +136,8 @@ impl RateLimiter {
 
             if elapsed < total_delay {
                 let sleep_time = total_delay - elapsed;
-                if verbose >= 2 {
-                    println!(
-                        "[DEBUG] Rate limiting: sleeping for {:?} ({}s base + {}ms jitter)",
-                        sleep_time,
-                        self.delay_ms / 1000,
-                        jitter.as_millis()
-                    );
-                }
+                debug::debug_log(2, format!("Rate limiting: sleeping for {:?} ({}s base + {}ms jitter)",
+                    sleep_time, self.delay_ms / 1000, jitter.as_millis()));
                 drop(last); // Release the lock before sleeping
                 thread::sleep(sleep_time);
                 let mut last = self.last_attempt.lock().unwrap();
@@ -280,8 +273,8 @@ fn print_spray_info(config: &SprayConfig, users: &[String], passwords: &[String]
         timestamp_prefix, config.lockout_threshold, config.lockout_window_seconds
     );
     println!(
-        "{}[*] Verbosity Level: {}",
-        timestamp_prefix, config.verbose
+        "{}[*] Debug Level: {}",
+        timestamp_prefix, debug::get_debug_level()
     );
     if config.timestamp_format {
         println!("{}[*] Timestamps enabled", timestamp_prefix);
@@ -316,12 +309,7 @@ fn execute_spray(
             passwords.len()
         );
 
-        if config.verbose >= 1 && config.delay > 0 {
-            println!(
-                "{}[*] Using {}s delay + {}ms jitter between attempts...",
-                timestamp_prefix, config.delay, config.jitter
-            );
-        }
+        debug::debug_log(1, format!("Using {}s delay + {}ms jitter between attempts...", config.delay, config.jitter));
 
         // Create work items for this password only
         let mut work_items = Vec::new();
@@ -346,12 +334,7 @@ fn execute_spray(
 
         completed_attempts += users.len();
 
-        if config.verbose >= 1 {
-            println!(
-                "\n{}[*] Completed password '{}' ({}/{} total attempts)",
-                timestamp_prefix, password, completed_attempts, total_combinations
-            );
-        }
+        debug::debug_log(1, format!("Completed password '{}' ({}/{} total attempts)", password, completed_attempts, total_combinations));
 
         // Check for early termination
         if early_stop {
@@ -405,12 +388,8 @@ fn process_password_batch_realtime(
     let mut handles = Vec::new();
     let actual_threads = std::cmp::min(config.threads as usize, 50);
 
-    if config.verbose >= 2 {
-        println!(
-            "[DEBUG] Starting {} worker threads with {}s delay + {}ms jitter",
-            actual_threads, config.delay, config.jitter
-        );
-    }
+    debug::debug_log(2, format!("Starting {} worker threads with {}s delay + {}ms jitter",
+        actual_threads, config.delay, config.jitter));
 
     for thread_id in 0..actual_threads {
         let work_rx_clone = Arc::clone(&work_rx);
@@ -419,23 +398,17 @@ fn process_password_batch_realtime(
         let rate_limiter_clone = Arc::clone(&rate_limiter);
 
         let handle = thread::spawn(move || {
-            if config_clone.verbose >= 2 {
-                println!("[DEBUG] Worker thread {} started", thread_id);
-            }
+            debug::debug_log(2, format!("Worker thread {} started", thread_id));
 
             while let Ok(work_item) = {
                 let rx = work_rx_clone.lock().unwrap();
                 rx.recv()
             } {
                 // Apply global rate limiting before each attempt
-                rate_limiter_clone.wait_if_needed(config_clone.verbose);
+                rate_limiter_clone.wait_if_needed();
 
-                if config_clone.verbose >= 2 {
-                    println!(
-                        "[DEBUG] Thread {} processing {}@{}",
-                        thread_id, work_item.username, config_clone.domain
-                    );
-                }
+                debug::debug_log(2, format!("Thread {} processing {}@{}",
+                    thread_id, work_item.username, config_clone.domain));
 
                 let result = attempt_login(
                     &config_clone,
@@ -457,9 +430,7 @@ fn process_password_batch_realtime(
                 }
             }
 
-            if config_clone.verbose >= 2 {
-                println!("[DEBUG] Worker thread {} finished", thread_id);
-            }
+            debug::debug_log(2, format!("Worker thread {} finished", thread_id));
         });
 
         handles.push(handle);
@@ -494,12 +465,7 @@ fn process_password_batch_realtime(
         handle.join().unwrap_or(());
     }
 
-    if config.verbose >= 2 {
-        println!(
-            "[DEBUG] All worker threads completed, {} results processed",
-            results_processed
-        );
-    }
+    debug::debug_log(2, format!("All worker threads completed, {} results processed", results_processed));
 
     Ok(early_stop)
 }
@@ -524,7 +490,6 @@ fn attempt_login(
             username,
             password,
             &config.domain,
-            config.verbose,
         ) {
             Ok(result) => return (result, None),
             Err(e) => {
@@ -551,32 +516,19 @@ fn try_ldap_login(
     username: &str,
     password: &str,
     domain: &str,
-    verbose: u8,
 ) -> Result<LoginResult, Box<dyn Error>> {
     let ldap_url = format!("{}://{}", protocol, dc);
 
-    if verbose >= 2 {
-        println!(
-            "[DEBUG] Attempting {} bind → {}@{} on {}",
-            protocol.to_uppercase(),
-            username,
-            domain,
-            ldap_url
-        );
-    }
+    debug::debug_log(2, format!("Attempting {} bind → {}@{} on {}",
+        protocol.to_uppercase(), username, domain, ldap_url));
 
     let settings = LdapConnSettings::new()
         .set_conn_timeout(Duration::from_secs(CONNECTION_TIMEOUT_SECS))
         .set_no_tls_verify(true);
 
     let mut ldap = LdapConn::with_settings(settings, &ldap_url).map_err(|e| {
-        if verbose >= 2 {
-            println!(
-                "[DEBUG] Failed to create {} connection: {}",
-                protocol.to_uppercase(),
-                e
-            );
-        }
+        debug::debug_log(2, format!("Failed to create {} connection: {}",
+            protocol.to_uppercase(), e));
         e
     })?;
 
@@ -585,36 +537,19 @@ fn try_ldap_login(
     match ldap.simple_bind(&bind_dn, password) {
         Ok(ldap_result) => match ldap_result.success() {
             Ok(_) => {
-                if verbose >= 2 {
-                    println!(
-                        "[DEBUG] Successful {} bind for {}",
-                        protocol.to_uppercase(),
-                        bind_dn
-                    );
-                }
+                debug::debug_log(2, format!("Successful {} bind for {}",
+                    protocol.to_uppercase(), bind_dn));
                 Ok(LoginResult::Success)
             }
             Err(e) => {
-                if verbose >= 2 {
-                    println!(
-                        "[DEBUG] {} bind failed for {}: {:?}",
-                        protocol.to_uppercase(),
-                        bind_dn,
-                        e
-                    );
-                }
+                debug::debug_log(2, format!("{} bind failed for {}: {:?}",
+                    protocol.to_uppercase(), bind_dn, e));
                 Ok(parse_ldap_error(&e))
             }
         },
         Err(e) => {
-            if verbose >= 2 {
-                println!(
-                    "[DEBUG] {} connection failed for {}: {:?}",
-                    protocol.to_uppercase(),
-                    bind_dn,
-                    e
-                );
-            }
+            debug::debug_log(2, format!("{} connection failed for {}: {:?}",
+                protocol.to_uppercase(), bind_dn, e));
             Err(Box::new(e))
         }
     }
@@ -671,12 +606,8 @@ fn process_attempt_result_realtime(
             println!("{}    Server: {}", timestamp_prefix, attempt.dc);
         }
         LoginResult::InvalidCredentials => {
-            if config.verbose >= 1 {
-                println!(
-                    "{}[-] Failed login: {}@{} with password: {}",
-                    timestamp_prefix, attempt.username, attempt.domain, attempt.password
-                );
-            }
+            debug::debug_log(1, format!("Failed login: {}@{} with password: {}",
+                attempt.username, attempt.domain, attempt.password));
 
             // Track failed attempts for lockout protection
             let should_warn = {
@@ -745,12 +676,8 @@ fn process_attempt_result_realtime(
             );
         }
         LoginResult::ConnectionError(msg) | LoginResult::AuthenticationError(msg) => {
-            if config.verbose >= 1 {
-                println!(
-                    "{}[!] \x1b[31mConnection error: {}@{} on {} - {}\x1b[0m",
-                    timestamp_prefix, attempt.username, attempt.domain, attempt.dc, msg
-                );
-            }
+            debug::debug_log(1, format!("Connection error: {}@{} on {} - {}",
+                attempt.username, attempt.domain, attempt.dc, msg));
         }
     }
 
@@ -758,22 +685,14 @@ fn process_attempt_result_realtime(
 }
 
 fn should_stop_spray(
-    config: &SprayConfig,
+    _config: &SprayConfig,
     state: Arc<Mutex<SprayState>>,
 ) -> Result<bool, Box<dyn Error>> {
     let state_guard = state.lock().unwrap();
 
-    // Only print success summary if we have successful attempts and verbose >= 1
-    if state_guard.successful_attempts > 0 && config.verbose >= 1 {
-        let timestamp_prefix = if config.timestamp_format {
-            format!("[{}] ", get_timestamp())
-        } else {
-            String::new()
-        };
-        println!(
-            "{}[*] {} successful authentication(s) found so far",
-            timestamp_prefix, state_guard.successful_attempts
-        );
+    if state_guard.successful_attempts > 0 {
+        debug::debug_log(1, format!("{} successful authentication(s) found so far",
+            state_guard.successful_attempts));
     }
 
     Ok(false)

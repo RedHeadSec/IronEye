@@ -1,3 +1,4 @@
+use crate::debug;
 use crate::ldap::LdapConfig;
 use base64::engine::general_purpose::STANDARD as BASE64;
 use base64::Engine;
@@ -64,6 +65,8 @@ pub fn custom_ldap_query(
 
                 println!("\nRunning query with filter: {}", filter);
                 println!("Returning attributes: {:?}", attributes);
+                debug::debug_log(1, format!("Custom LDAP query - Filter: {}", filter));
+                debug::debug_log(2, format!("Custom LDAP query - Attributes: {:?}", attributes));
 
                 if let Err(e) = validate_filter(&filter) {
                     println!("Invalid filter: {}", e);
@@ -71,6 +74,7 @@ pub fn custom_ldap_query(
                 }
 
                 let entries = ldap_query(ldap, &search_base, &filter, &attributes)?;
+                debug::debug_log(2, format!("Custom LDAP query returned {} entries", entries.len()));
 
                 let non_empty_entries: Vec<_> = entries
                     .into_iter()
@@ -104,6 +108,9 @@ fn ldap_query(
     filter: &str,
     attributes: &[&str],
 ) -> Result<Vec<SearchEntry>, Box<dyn Error>> {
+    debug::debug_log(2, format!("Executing LDAP search - Base: {}, Filter: {}", search_base, filter));
+    debug::debug_log(3, format!("LDAP search attributes: {:?}", attributes));
+    
     ldap.with_controls(vec![RawControl {
         ctype: String::from("1.2.840.113556.1.4.801"),
         crit: false,
@@ -124,6 +131,7 @@ fn ldap_query(
     }
 
     let _ = search.result().success()?;
+    debug::debug_log(3, format!("Retrieved {} raw entries from LDAP", entries.len()));
 
     Ok(entries)
 }

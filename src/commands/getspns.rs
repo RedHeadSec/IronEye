@@ -1,3 +1,4 @@
+use crate::debug;
 use crate::help::add_terminal_spacing;
 use crate::ldap::LdapConfig;
 use chrono::{DateTime, Local, TimeZone, Utc};
@@ -13,7 +14,9 @@ pub fn get_service_principal_names(
     search_base: &str,
     _config: &LdapConfig,
 ) -> Result<(), Box<dyn Error>> {
+    debug::debug_log(1, "Querying service principal names...");
     let entries = query_spns(ldap, search_base)?;
+    debug::debug_log(2, format!("Found {} entries with SPNs", entries.len()));
 
     let header = format!(
         "{:<50} {:<15} {:<30} {:<30} {}\n",
@@ -95,6 +98,7 @@ pub fn get_service_principal_names(
 
 fn query_spns(ldap: &mut LdapConn, search_base: &str) -> Result<Vec<SearchEntry>, Box<dyn Error>> {
     let search_filter = "(&(servicePrincipalName=*)(!(objectClass=computer)))";
+    debug::debug_log(2, format!("Executing LDAP search with filter: {}", search_filter));
 
     let adapters: Vec<Box<dyn Adapter<_, _>>> = vec![
         Box::new(EntriesOnly::new()),
@@ -120,6 +124,7 @@ fn query_spns(ldap: &mut LdapConn, search_base: &str) -> Result<Vec<SearchEntry>
         entries.push(SearchEntry::construct(entry));
     }
     let _ = search.result().success()?;
+    debug::debug_log(3, format!("Retrieved {} SPN entries from LDAP", entries.len()));
 
     Ok(entries)
 }

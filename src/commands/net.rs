@@ -1,3 +1,4 @@
+use crate::debug::debug_log;
 use crate::help::add_terminal_spacing;
 use crate::ldap::{escape_filter, LdapConfig};
 use chrono::DateTime;
@@ -27,6 +28,7 @@ pub fn net_command(
     command_type: &str,
     name: &str,
 ) -> Result<(), Box<dyn Error>> {
+    debug_log(1, &format!("Executing net {} command for: {}", command_type, name));
     match command_type.to_lowercase().as_str() {
         "user" => net_user(ldap, search_base, config, name),
         "group" => net_group(ldap, search_base, config, name),
@@ -40,13 +42,16 @@ fn net_user(
     _config: &LdapConfig,
     username: &str,
 ) -> Result<(), Box<dyn Error>> {
+    let filter = format!(
+        "(&(objectCategory=person)(objectClass=user)(sAMAccountName={}))",
+        username
+    );
+    debug_log(2, &format!("Searching for user with filter: {}", filter));
+    
     let result = ldap.search(
         &search_base,
         Scope::Subtree,
-        &format!(
-            "(&(objectCategory=person)(objectClass=user)(sAMAccountName={}))",
-            username
-        ),
+        &filter,
         vec![
             "sAMAccountName",
             "cn",
@@ -88,6 +93,7 @@ fn net_user(
     )?;
 
     let (entries, _) = result.success()?;
+    debug_log(1, &format!("Found {} user entries", entries.len()));
 
     if let Some(entry) = entries.first() {
         let user_entry = SearchEntry::construct(entry.clone());
@@ -321,6 +327,7 @@ fn net_user(
             }
         }
     } else {
+        debug_log(1, &format!("User not found: {}", username));
         println!("User not found");
     }
 
@@ -333,6 +340,12 @@ fn net_group(
     _config: &LdapConfig,
     groupname: &str,
 ) -> Result<(), Box<dyn Error>> {
+    let filter = format!(
+        "(&(objectCategory=group)(objectClass=group)(sAMAccountName={}))",
+        escape_filter(groupname)
+    );
+    debug_log(2, &format!("Searching for group with filter: {}", filter));
+    
     let adapters: Vec<Box<dyn Adapter<_, _>>> = vec![
         Box::new(EntriesOnly::new()),
         Box::new(PagedResults::new(500)),
@@ -342,10 +355,7 @@ fn net_group(
         adapters,
         &search_base,
         Scope::Subtree,
-        &format!(
-            "(&(objectCategory=group)(objectClass=group)(sAMAccountName={}))",
-            escape_filter(groupname)
-        ),
+        &filter,
         vec![
             "member",
             "description",
@@ -370,6 +380,12 @@ fn net_group(
         group_entry = Some(SearchEntry::construct(entry));
     }
     let _ = search.result().success()?;
+    
+    if group_entry.is_some() {
+        debug_log(1, &format!("Found group: {}", groupname));
+    } else {
+        debug_log(1, &format!("Group not found: {}", groupname));
+    }
 
     if let Some(group_entry) = group_entry {
         if !group_entry
@@ -464,6 +480,7 @@ fn net_group(
         println!("-------------------------------------------------------------------------------");
 
         if let Some(members) = group_entry.attrs.get("member") {
+            debug_log(2, &format!("Enumerating {} group members", members.len()));
             let mut user_count = 0;
             let mut computer_count = 0;
             let mut group_count = 0;

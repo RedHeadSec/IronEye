@@ -1,4 +1,5 @@
 use crate::acl::{AclParser, AclRelation, LdapSid};
+use crate::debug::debug_log;
 use crate::help::add_terminal_spacing;
 use crate::ldap::LdapConfig;
 use base64::engine::general_purpose::STANDARD as BASE64;
@@ -20,15 +21,19 @@ pub fn get_ace_dacl(
     ldap_config: &LdapConfig,
     username: &str,
 ) -> Result<(), Box<dyn Error>> {
+    debug_log(1, &format!("Starting ACE/DACL analysis for: {}", username));
     println!("[*] Starting ACE/DACL analysis for: {}", username);
 
     let user_filter = format!("(sAMAccountName={})", username);
+    debug_log(2, &format!("Searching for user with filter: {}", user_filter));
     let user_entries = search_objects(ldap, search_base, &user_filter)?;
 
     if user_entries.is_empty() {
+        debug_log(1, &format!("User not found: {}", username));
         eprintln!("[-] Could not find user: {}", username);
         return Ok(());
     }
+    debug_log(1, &format!("Found user entry"));
 
     let user_entry = &user_entries[0];
     let user_dn = user_entry
@@ -62,6 +67,7 @@ pub fn get_ace_dacl(
     relevant_sids.insert(user_sid.clone());
 
     if let Some(member_of) = user_entry.attrs.get("memberOf") {
+        debug_log(2, &format!("Resolving {} group memberships", member_of.len()));
         println!("\n[*] Resolving group memberships...");
         for group_dn in member_of {
             let group_filter = format!("(distinguishedName={})", group_dn);
@@ -82,6 +88,7 @@ pub fn get_ace_dacl(
         }
     }
 
+    debug_log(1, &format!("Checking permissions for {} SIDs", relevant_sids.len()));
     println!(
         "\n[*] Checking permissions for {} SIDs (user + groups)\n",
         relevant_sids.len()
@@ -103,6 +110,7 @@ pub fn get_ace_dacl(
     let mut permissions = PermissionCollector::new();
 
     for (filter, obj_type) in filters {
+        debug_log(3, &format!("Searching objects with filter: {}", filter));
         let entries = match search_objects(ldap, search_base, filter) {
             Ok(e) => e,
             Err(_) => continue,
@@ -131,6 +139,7 @@ pub fn get_ace_dacl(
         }
     }
 
+    debug_log(1, &format!("Found {} total permissions", permissions.total_count()));
     resolver.resolve_batch(&permissions.get_all_sids(), ldap, search_base)?;
 
     permissions.print(&resolver);
@@ -148,6 +157,7 @@ pub fn get_ace_dacl(
             .default(format!("acl_{}.txt", username))
             .interact()?;
 
+        debug_log(1, &format!("Exporting results to: {}", filename));
         permissions.export_bofhound(&filename, ldap, search_base)?;
         let date = Local::now().format("%Y%m%d").to_string();
         println!("\nResults exported to: output_{}/ironeye_{}", date, filename);
@@ -453,6 +463,7 @@ fn search_objects(
     search_base: &str,
     filter: &str,
 ) -> Result<Vec<SearchEntry>, Box<dyn Error>> {
+    debug_log(3, &format!("LDAP search - Base: {}, Filter: {}", search_base, filter));
     let adapters: Vec<Box<dyn Adapter<_, _>>> = vec![
         Box::new(EntriesOnly::new()),
         Box::new(PagedResults::new(500)),
@@ -477,6 +488,7 @@ fn search_objects(
         entries.push(SearchEntry::construct(entry));
     }
     let _ = search.result().success()?;
+    debug_log(3, &format!("Retrieved {} entries", entries.len()));
 
     Ok(entries)
 }

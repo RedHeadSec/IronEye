@@ -1,3 +1,4 @@
+use crate::debug;
 use crate::help::add_terminal_spacing;
 use crate::ldap::format_guid_for_ldap;
 use ldap3::{
@@ -112,18 +113,22 @@ pub fn resolve_sid_guid(
     search_base: &str,
     identifier: &str,
 ) -> Result<Option<String>, Box<dyn Error>> {
+    debug::debug_log(1, format!("Resolving SID/GUID: {}", identifier));
     let well_known_sids = get_well_known_sids();
 
     if let Some(name) = well_known_sids.get(identifier) {
+        debug::debug_log(2, format!("Found well-known SID: {}", name));
         return Ok(Some(name.to_string()));
     }
 
     
     let filter = if validate_sid(identifier) {
+        debug::debug_log(2, format!("Searching by SID: {}", identifier));
         format!("(objectSid={})", identifier) 
     } else if validate_guid(identifier) {
+        debug::debug_log(2, format!("Searching by GUID: {}", identifier));
         let escaped_guid = format_guid_for_ldap(identifier);
-        //println!("DEBUG - Escaped GUID: {}", escaped_guid);
+        debug::debug_log(3, format!("Escaped GUID: {}", escaped_guid));
         format!("(objectGUID={})", escaped_guid) 
     } else {
         return Err("Invalid SID or GUID format".into());
@@ -143,7 +148,7 @@ pub fn resolve_sid_guid(
     )?;
     add_terminal_spacing(1);
     println!("Result for SID/GUID: {}", identifier);
-    //println!("DEBUG - Filter: {}", filter);
+    debug::debug_log(2, format!("Executing LDAP filter: {}", filter));
     while let Ok(Some(entry)) = stream.next() {
         let search_entry = SearchEntry::construct(entry);
 

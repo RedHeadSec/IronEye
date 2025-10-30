@@ -1,4 +1,5 @@
 use crate::bofhound::export_bofhound;
+use crate::debug;
 use crate::help::add_terminal_spacing;
 use crate::ldap::LdapConfig;
 use chrono::Local;
@@ -11,7 +12,9 @@ pub fn get_delegations(
     search_base: &str,
     _config: &LdapConfig,
 ) -> Result<(), Box<dyn Error>> {
+    debug::debug_log(1, "Querying delegation settings...");
     let delegation_filter = "(&(objectClass=User)(|(userAccountControl:1.2.840.113556.1.4.803:=524288)(msDS-AllowedToDelegateTo=*)(msDS-AllowedToActOnBehalfOfOtherIdentity=*)))";
+    debug::debug_log(2, format!("Delegation filter: {}", delegation_filter));
 
     let adapters: Vec<Box<dyn Adapter<_, _>>> = vec![
         Box::new(EntriesOnly::new()),
@@ -31,6 +34,7 @@ pub fn get_delegations(
         entries.push(SearchEntry::construct(entry));
     }
     let _ = search.result().success()?;
+    debug::debug_log(2, format!("Found {} delegation entries", entries.len()));
 
     if entries.is_empty() {
         println!("\nNo delegation settings found in Active Directory.");
