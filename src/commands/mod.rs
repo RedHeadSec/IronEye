@@ -1,6 +1,7 @@
 pub mod actions;
 pub mod add_computer;
 pub mod add_user_to_group;
+pub mod adidns;
 pub mod customldap;
 pub mod del_computer;
 pub mod disable_account;

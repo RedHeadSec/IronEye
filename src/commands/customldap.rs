@@ -6,7 +6,7 @@ use chrono::Local;
 use ldap3::adapters::{Adapter, EntriesOnly, PagedResults};
 use ldap3::controls::RawControl;
 use ldap3::{LdapConn, Scope, SearchEntry};
-use rustyline::DefaultEditor;
+use crate::history::HistoryEditor;
 use std::error::Error;
 use std::fs::{self, File};
 use std::io::{self, Write};
@@ -17,8 +17,8 @@ pub fn custom_ldap_query(
     search_base: &str,
     _config: &LdapConfig,
 ) -> Result<(), Box<dyn Error>> {
-    let mut rl = DefaultEditor::new()?;
-    rl.load_history(".ldap_query_history.txt").ok();
+    let mut rl = HistoryEditor::new("ldapquery")
+        .map_err(|e| Box::new(e) as Box<dyn Error>)?;
 
     println!("\nCustom LDAP Query (Bofhound Compatible)");
     println!("-------------------");
@@ -93,12 +93,10 @@ pub fn custom_ldap_query(
             }
             _ => {
                 query_line = Some(trimmed_input.to_string());
-                rl.add_history_entry(trimmed_input).ok();
             }
         }
     }
 
-    rl.save_history(".ldap_query_history.txt").ok();
     Ok(())
 }
 
@@ -161,8 +159,8 @@ fn print_ldap_results_bofhound<W1: Write, W2: Write>(
             let val_list = &entry.bin_attrs[key];
             for val in val_list.iter() {
                 let output_value = match key.as_str() {
-                    "objectGUID" => decode_guid(val),
-                    "objectSid" => decode_sid(val),
+                    "objectGUID" => crate::ldap::format_guid(val),
+                    "objectSid" => crate::ldap::format_sid(val),
                     _ => BASE64.encode(val),
                 };
                 writeln!(console, "{}: {}", key, output_value)?;
@@ -214,50 +212,4 @@ fn validate_filter(filter: &str) -> Result<(), String> {
     Ok(())
 }
 
-fn decode_guid(bytes: &[u8]) -> String {
-    if bytes.len() != 16 {
-        return "<invalid GUID>".to_string();
-    }
-    format!(
-        "{:08x}-{:04x}-{:04x}-{:02x}{:02x}-{:02x}{:02x}{:02x}{:02x}{:02x}{:02x}",
-        u32::from_le_bytes([bytes[0], bytes[1], bytes[2], bytes[3]]),
-        u16::from_le_bytes([bytes[4], bytes[5]]),
-        u16::from_le_bytes([bytes[6], bytes[7]]),
-        bytes[8],
-        bytes[9],
-        bytes[10],
-        bytes[11],
-        bytes[12],
-        bytes[13],
-        bytes[14],
-        bytes[15],
-    )
-}
 
-fn decode_sid(bytes: &[u8]) -> String {
-    if bytes.len() < 8 {
-        return "<invalid SID>".to_string();
-    }
-    let revision = bytes[0];
-    let subauth_count = bytes[1] as usize;
-    let mut authority = 0u64;
-    for i in 2..8 {
-        authority <<= 8;
-        authority |= bytes[i] as u64;
-    }
-    let mut sid = format!("S-{}-{}", revision, authority);
-    for i in 0..subauth_count {
-        let start = 8 + i * 4;
-        if start + 4 > bytes.len() {
-            break;
-        }
-        let subauth = u32::from_le_bytes([
-            bytes[start],
-            bytes[start + 1],
-            bytes[start + 2],
-            bytes[start + 3],
-        ]);
-        sid = format!("{}-{}", sid, subauth);
-    }
-    sid
-}

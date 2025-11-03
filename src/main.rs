@@ -27,6 +27,7 @@ const MAIN_OPTIONS: &[&str] = &[
     "User Enumeration (LDAP Ping Method)",
     "Password Spray (LDAP)",
     "Generate KRB5 Conf",
+    "History Management",
     "Debug Settings",
     "Version",
     "Help",
@@ -51,7 +52,6 @@ const CMD_OPTIONS: &[&str] = &[
 fn main() {
     println!("{}", LOGO);
     
-    // Initialize cerbero_lib logger at startup
     let debug_level = debug::get_debug_level();
     if debug_level > 0 {
         kerberos::set_cerbero_verbosity(debug_level);
@@ -72,10 +72,11 @@ fn main() {
             2 => handle_user_enumeration(),
             3 => handle_password_spray(),
             4 => handle_krb5_config(),
-            5 => handle_debug_settings(),
-            6 => println!("v{}", env!("CARGO_PKG_VERSION")),
-            7 => show_help_main(),
-            8 => {
+            5 => handle_history_management(),
+            6 => handle_debug_settings(),
+            7 => println!("v{}", env!("CARGO_PKG_VERSION")),
+            8 => show_help_main(),
+            9 => {
                 if confirm_exit() {
                     break;
                 }
@@ -161,7 +162,6 @@ fn run_command_menu(
             let error_msg = e.to_string();
             eprintln!("Error: {}", e);
 
-            // Check if it's a connection error
             if is_connection_error(&error_msg) {
                 eprintln!("\n[!] Session expired or connection lost");
                 
@@ -176,7 +176,7 @@ fn run_command_menu(
                         Ok(new_ldap) => {
                             println!("[+] Successfully reconnected to LDAP server.\n");
                             ldap = new_ldap;
-                            
+
                             let retry = Confirm::with_theme(&ColorfulTheme::default())
                                 .with_prompt("Retry last command?")
                                 .default(true)
@@ -830,6 +830,195 @@ fn handle_krb5_config() {
     };
     if let Err(e) = generate_conf_files(&args) {
         eprintln!("Error generating config files: {}", e);
+    }
+}
+
+fn handle_history_management() {
+    use ironeye::history::HistoryManager;
+    
+    const HISTORY_OPTIONS: &[&str] = &[
+        "View Recent Commands (All Modules)",
+        "Search History",
+        "View Statistics",
+        "Clear Module History",
+        "Cleanup Old Entries (>30 days)",
+        "Export History to File",
+        "Clear All History",
+        "Back to Main Menu",
+    ];
+
+    loop {
+        add_terminal_spacing(1);
+        let selection = Select::with_theme(&ColorfulTheme::default())
+            .with_prompt("History Management")
+            .items(HISTORY_OPTIONS)
+            .default(0)
+            .interact()
+            .expect("Failed to display history menu");
+
+        let manager = match HistoryManager::new() {
+            Ok(m) => m,
+            Err(e) => {
+                eprintln!("[!] Failed to access history: {}", e);
+                return;
+            }
+        };
+
+        match selection {
+            0 => {
+                // View Recent Commands
+                let limit_str = read_input("Number of commands to show (default: 20): ");
+                let limit: usize = limit_str.parse().unwrap_or(20);
+                
+                match manager.get_all_recent(limit) {
+                    Ok(entries) => {
+                        if entries.is_empty() {
+                            println!("\n[*] No history entries found.");
+                        } else {
+                            println!("\n=== Recent Commands ===");
+                            for (module, command, timestamp) in entries {
+                                let dt = chrono::DateTime::from_timestamp(timestamp, 0)
+                                    .unwrap_or_else(|| chrono::Utc::now());
+                                println!("[{}] [{}] {}", 
+                                    dt.format("%Y-%m-%d %H:%M:%S"),
+                                    module,
+                                    command
+                                );
+                            }
+                        }
+                    }
+                    Err(e) => eprintln!("[!] Error retrieving history: {}", e),
+                }
+            }
+            1 => {
+                // Search History
+                let pattern = read_input("Enter search term: ");
+                if !pattern.is_empty() {
+                    match manager.search(&pattern) {
+                        Ok(results) => {
+                            if results.is_empty() {
+                                println!("\n[*] No matches found for '{}'", pattern);
+                            } else {
+                                println!("\n=== Search Results for '{}' ===", pattern);
+                                for (module, command, timestamp) in results {
+                                    let dt = chrono::DateTime::from_timestamp(timestamp, 0)
+                                        .unwrap_or_else(|| chrono::Utc::now());
+                                    println!("[{}] [{}] {}", 
+                                        dt.format("%Y-%m-%d %H:%M:%S"),
+                                        module,
+                                        command
+                                    );
+                                }
+                            }
+                        }
+                        Err(e) => eprintln!("[!] Error searching history: {}", e),
+                    }
+                }
+            }
+            2 => {
+                // View Statistics
+                match manager.get_stats() {
+                    Ok(stats) => {
+                        if stats.is_empty() {
+                            println!("\n[*] No history entries found.");
+                        } else {
+                            println!("\n=== History Statistics ===");
+                            let total: usize = stats.iter().map(|(_, count)| count).sum();
+                            println!("Total commands: {}\n", total);
+                            for (module, count) in stats {
+                                let percentage = (count as f64 / total as f64) * 100.0;
+                                println!("{:12} : {:4} ({:.1}%)", module, count, percentage);
+                            }
+                        }
+                    }
+                    Err(e) => eprintln!("[!] Error retrieving statistics: {}", e),
+                }
+            }
+            3 => {
+                // Clear Module History
+                println!("\nAvailable modules: connect, cerbero, spray, userenum, ldapquery");
+                let module = read_input("Enter module name to clear: ");
+                if !module.is_empty() {
+                    match Confirm::with_theme(&ColorfulTheme::default())
+                        .with_prompt(format!("Clear all history for '{}' module?", module))
+                        .default(false)
+                        .interact()
+                    {
+                        Ok(true) => {
+                            match manager.clear_module(&module) {
+                                Ok(count) => println!("[+] Deleted {} entries from '{}'", count, module),
+                                Err(e) => eprintln!("[!] Error clearing module history: {}", e),
+                            }
+                        }
+                        Ok(false) => println!("[*] Cancelled"),
+                        Err(e) => eprintln!("[!] Error: {}", e),
+                    }
+                }
+            }
+            4 => {
+                // Cleanup Old Entries
+                match Confirm::with_theme(&ColorfulTheme::default())
+                    .with_prompt("Delete all entries older than 30 days?")
+                    .default(false)
+                    .interact()
+                {
+                    Ok(true) => {
+                        match manager.cleanup_old(30) {
+                            Ok(count) => println!("[+] Deleted {} old entries", count),
+                            Err(e) => eprintln!("[!] Error cleaning up history: {}", e),
+                        }
+                    }
+                    Ok(false) => println!("[*] Cancelled"),
+                    Err(e) => eprintln!("[!] Error: {}", e),
+                }
+            }
+            5 => {
+                // Export History
+                let filename = read_input("Enter output filename (default: history_export.txt): ");
+                let filename = if filename.is_empty() {
+                    "history_export.txt".to_string()
+                } else {
+                    filename
+                };
+                
+                match manager.export_to_file(&filename) {
+                    Ok(count) => println!("[+] Exported {} entries to {}", count, filename),
+                    Err(e) => eprintln!("[!] Error exporting history: {}", e),
+                }
+            }
+            6 => {
+                // Clear All History
+                match Confirm::with_theme(&ColorfulTheme::default())
+                    .with_prompt("⚠️  Delete ALL history? This cannot be undone!")
+                    .default(false)
+                    .interact()
+                {
+                    Ok(true) => {
+                        match Confirm::with_theme(&ColorfulTheme::default())
+                            .with_prompt("Are you absolutely sure?")
+                            .default(false)
+                            .interact()
+                        {
+                            Ok(true) => {
+                                match manager.clear_all() {
+                                    Ok(count) => println!("[+] Deleted {} entries", count),
+                                    Err(e) => eprintln!("[!] Error clearing history: {}", e),
+                                }
+                            }
+                            Ok(false) => println!("[*] Cancelled"),
+                            Err(e) => eprintln!("[!] Error: {}", e),
+                        }
+                    }
+                    Ok(false) => println!("[*] Cancelled"),
+                    Err(e) => eprintln!("[!] Error: {}", e),
+                }
+            }
+            7 => {
+                println!("Returning to main menu...");
+                break;
+            }
+            _ => unreachable!(),
+        }
     }
 }
 

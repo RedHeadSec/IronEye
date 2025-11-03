@@ -3,7 +3,7 @@ use crate::help::add_terminal_spacing;
 use crate::kerberos::hash;
 use crate::ldap::LdapConfig;
 use dialoguer::{theme::ColorfulTheme, Input, Select};
-use rustyline::DefaultEditor;
+use crate::history::HistoryEditor;
 
 pub struct ConnectionArgs {
     pub username: String,
@@ -206,14 +206,14 @@ pub fn calculate_kerberos_hash() {
 }
 
 pub fn get_connect_arguments() -> Option<LdapConfig> {
-    let mut rl = create_editor(".connect_history.txt");
+    let mut rl = HistoryEditor::new("connect").ok()?;
     println!("Enter Connect arguments:");
     println!("  Password Auth: -u <user> -p <pass> -d <domain> -i <dc_ip> [-s] [-t]");
     println!("  Kerberos Auth: -k -d <domain> -i <dc_fqdn> [-c <ccache_path>] [-s] [-t]");
     println!("  Example: -k -c /tmp/krb5cc_1000 -d domain.local -i dc01.domain.local");
     println!("  Note: Kerberos requires FQDN/hostname, not IP address");
 
-    let line = read_with_history(&mut rl, ".connect_history.txt")?;
+    let line = read_with_history(&mut rl)?;
     parse_connect_args(&line)
 }
 
@@ -233,8 +233,8 @@ pub fn get_spray_arguments() -> Option<SprayArgs> {
     println!("  2: Full debug output with raw LDAP responses and thread details");
     add_terminal_spacing(1);
 
-    let mut rl = create_editor(".spray_history.txt");
-    let args_input = read_with_history(&mut rl, ".spray_history.txt")?;
+    let mut rl = HistoryEditor::new("spray").ok()?;
+    let args_input = read_with_history(&mut rl)?;
     parse_spray_args(&args_input)
 }
 
@@ -267,13 +267,18 @@ pub fn get_cerbero_args() -> CerberoCommand {
     println!("  craft -u contoso.local/administrator --sid S-1-5-21-123456789-987654321-111111111 --aes256 <KRBTGT key> (Golden Ticket)");
     println!("  craft -u under.world/kratos --sid S-1-5-21-658410550-3858838999-180593761 --ntlm 29f9ab984728cc7d18c8497c9ee76c77 -s cifs/styx,under.world (Silver Ticket)");
 
-    let mut rl = create_editor(".cerbero_history.txt");
+    let mut rl = match HistoryEditor::new("cerbero") {
+        Ok(editor) => editor,
+        Err(e) => {
+            eprintln!("Failed to initialize history: {}", e);
+            return CerberoCommand::None;
+        }
+    };
+    
     println!("\nEnter command:");
 
     match rl.readline("> ") {
         Ok(input) => {
-            rl.add_history_entry(input.as_str()).ok();
-            rl.save_history(".cerbero_history.txt").ok();
             let input = input.trim();
 
             if input.is_empty() {
@@ -327,8 +332,8 @@ pub fn get_userenum_arguments() -> Option<UserEnumArgs> {
     println!("Example: --userfile users.txt --domain corp.local --dc-ip 192.168.1.10 --output results.txt --threads 8 --timestamp");
     add_terminal_spacing(1);
 
-    let mut rl = create_editor(".userenum_history.txt");
-    let args_input = read_with_history(&mut rl, ".userenum_history.txt")?;
+    let mut rl = HistoryEditor::new("userenum").ok()?;
+    let args_input = read_with_history(&mut rl)?;
     parse_userenum_args(&args_input)
 }
 
@@ -380,19 +385,9 @@ pub fn run_nested_query_menu(
     Ok(())
 }
 
-fn create_editor(history_file: &str) -> DefaultEditor {
-    let mut rl = DefaultEditor::new().expect("Failed to initialize input editor");
-    rl.load_history(history_file).ok();
-    rl
-}
-
-fn read_with_history(rl: &mut DefaultEditor, history_file: &str) -> Option<String> {
+fn read_with_history(rl: &mut HistoryEditor) -> Option<String> {
     match rl.readline("> ") {
-        Ok(line) => {
-            rl.add_history_entry(line.as_str()).ok();
-            rl.save_history(history_file).ok();
-            Some(line)
-        }
+        Ok(line) => Some(line),
         Err(e) => {
             eprintln!("Error reading input: {}", e);
             None

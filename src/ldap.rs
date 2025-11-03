@@ -28,6 +28,179 @@ pub struct LdapConfig {
     pub ccache_path: Option<String>,
 }
 
+fn validate_kerberos_hostname(dc_ip: &str, domain: &str) -> Result<(), LdapError> {
+    if dc_ip.parse::<std::net::IpAddr>().is_ok() {
+        eprintln!(
+            "[!] Error: Kerberos authentication requires a hostname/FQDN, not an IP address."
+        );
+        eprintln!("[!] Current value: {}", dc_ip);
+        eprintln!("[!] Please use the DC's FQDN instead.");
+        eprintln!(
+            "[!] Example: -i dc01.redheadsec.local instead of -i {}",
+            dc_ip
+        );
+        return Err(LdapError::Io {
+            source: std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                "Kerberos requires hostname/FQDN, not IP address",
+            ),
+        });
+    }
+
+    if !dc_ip.contains('.') {
+        eprintln!(
+            "[!] Warning: Kerberos works best with FQDNs, not short hostnames."
+        );
+        eprintln!("[!] Current value: {}", dc_ip);
+        eprintln!("[!] If connection fails, use the full domain name instead.");
+        eprintln!(
+            "[!] Example: -i {}.{} instead of -i {}",
+            dc_ip, domain, dc_ip
+        );
+    }
+
+    Ok(())
+}
+
+fn validate_and_prepare_ccache(
+    config: &mut LdapConfig,
+    normalized_dc: &str,
+) -> Result<(String, String), LdapError> {
+    let ccache_to_use =
+        determine_ccache_path(config.ccache_path.as_ref()).map_err(|e| LdapError::Io {
+            source: std::io::Error::new(std::io::ErrorKind::NotFound, e),
+        })?;
+
+    debug::debug_log(2, format!("Ccache path: {}", ccache_to_use));
+    println!("[*] Ccache file: {}", ccache_to_use);
+
+    let ccache = parse_ccache_file(&ccache_to_use).map_err(|e| {
+        eprintln!("[!] Failed to parse ccache file: {}", e);
+        LdapError::Io {
+            source: std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                format!("Failed to parse ccache: {}", e),
+            ),
+        }
+    })?;
+
+    match validate_ccache(&ccache) {
+        Ok(info) => {
+            println!("[+] Valid TGT found for {}", info.principal);
+            println!(
+                "[+] Ticket expires: {} ({} remaining)",
+                info.end_time, info.time_remaining
+            );
+
+            if let Some(tgt) = crate::kerberos::ccache::find_tgt(&ccache) {
+                let minutes_remaining = tgt.expires_in_minutes();
+                if minutes_remaining < 60 {
+                    println!("[!] Warning: Ticket expires in less than 1 hour!");
+                }
+            }
+        }
+        Err(e) => {
+            eprintln!("[!] Ccache validation failed: {}", e);
+            return Err(LdapError::Io {
+                source: std::io::Error::new(
+                    std::io::ErrorKind::InvalidData,
+                    format!("Invalid ccache: {}", e),
+                ),
+            });
+        }
+    }
+
+    if config.username.is_empty() && !ccache.default_principal.components.is_empty() {
+        config.username = ccache.default_principal.components[0].clone();
+    }
+
+    let krb5_conf = generate_krb5_conf_from_ccache(&ccache, normalized_dc).map_err(|e| {
+        LdapError::Io {
+            source: std::io::Error::new(
+                std::io::ErrorKind::Other,
+                format!("Failed to generate krb5.conf: {}", e),
+            ),
+        }
+    })?;
+
+    let krb5_conf_path = create_temp_krb5_conf(&krb5_conf).map_err(|e| LdapError::Io { source: e })?;
+
+    Ok((ccache_to_use, krb5_conf_path))
+}
+
+fn perform_kerberos_bind(
+    ldap: &mut LdapConn,
+    config: &mut LdapConfig,
+    normalized_dc: &str,
+) -> Result<(), LdapError> {
+    debug::debug_log(1, "Using Kerberos authentication");
+
+    validate_kerberos_hostname(&config.dc_ip, &config.domain)?;
+
+    let (ccache_to_use, krb5_conf_path) = validate_and_prepare_ccache(config, normalized_dc)?;
+
+    let original_krb5_config = set_krb5_config_env(&krb5_conf_path);
+    let original_krb5ccname = set_krb5ccname_temp(&ccache_to_use);
+
+    debug::debug_log(1, format!("Attempting SASL GSSAPI bind to {}", normalized_dc));
+    let bind_result = ldap.sasl_gssapi_bind(normalized_dc)?.success();
+    debug::debug_log(1, "SASL GSSAPI bind successful");
+
+    restore_krb5ccname(original_krb5ccname);
+    restore_krb5_config_env(original_krb5_config);
+
+    let _ = std::fs::remove_file(krb5_conf_path);
+
+    bind_result?;
+    Ok(())
+}
+
+fn perform_simple_bind(
+    ldap: &mut LdapConn,
+    config: &LdapConfig,
+) -> Result<(), LdapError> {
+    let bind_dn = format!("{}@{}", config.username, config.domain);
+    debug::debug_log(2, format!("Bind DN: {}", bind_dn));
+    debug::debug_log(1, format!("Attempting simple bind as {}", bind_dn));
+    let credential = config.hash.as_ref().unwrap_or(&config.password);
+    debug::debug_log(2, "Using password credential");
+    ldap.simple_bind(&bind_dn, credential)?.success()?;
+    Ok(())
+}
+
+fn build_search_base(domain: &str) -> String {
+    domain
+        .split('.')
+        .map(|part| format!("DC={}", part))
+        .collect::<Vec<_>>()
+        .join(",")
+}
+
+fn validate_connection(
+    ldap: &mut LdapConn,
+    search_base: &str,
+    attributes: Vec<&str>,
+) -> Result<(), LdapError> {
+    debug::debug_log(2, format!("Search base DN: {}", search_base));
+    debug::debug_log(2, format!("Querying base with filter: (objectClass=*)"));
+    
+    let (results, _) = ldap
+        .search(
+            search_base,
+            Scope::Base,
+            "(objectClass=*)",
+            attributes,
+        )?
+        .success()?;
+
+    if results.is_empty() {
+        println!("[!] Warning: No results returned from the base search.");
+    }
+    debug::debug_log(1, "LDAP connection ready");
+
+    Ok(())
+}
+
 #[cfg(target_os = "linux")]
 pub fn ldap_connect(config: &mut LdapConfig) -> Result<(LdapConn, String), LdapError> {
     let settings = LdapConnSettings::new()
@@ -45,332 +218,51 @@ pub fn ldap_connect(config: &mut LdapConfig) -> Result<(LdapConn, String), LdapE
     debug::debug_log(1, "LDAP connection established");
 
     if config.kerberos {
-        debug::debug_log(1, "Using Kerberos authentication");
-        let ccache_to_use =
-            determine_ccache_path(config.ccache_path.as_ref()).map_err(|e| LdapError::Io {
-                source: std::io::Error::new(std::io::ErrorKind::NotFound, e),
-            })?;
-        debug::debug_log(2, format!("Ccache path: {}", ccache_to_use));
-
-        
-        if config.dc_ip.parse::<std::net::IpAddr>().is_ok() {
-            eprintln!(
-                "[!] Error: Kerberos authentication requires a hostname/FQDN, not an IP address."
-            );
-            eprintln!("[!] Current value: {}", config.dc_ip);
-            eprintln!("[!] Please use the DC's FQDN instead.");
-            eprintln!(
-                "[!] Example: -i dc01.redheadsec.local instead of -i {}",
-                config.dc_ip
-            );
-            return Err(LdapError::Io {
-                source: std::io::Error::new(
-                    std::io::ErrorKind::InvalidInput,
-                    "Kerberos requires hostname/FQDN, not IP address",
-                ),
-            });
-        }
-
-        
-        if !config.dc_ip.contains('.') {
-            eprintln!(
-                "[!] Warning: Kerberos works best with FQDNs, not short hostnames."
-            );
-            eprintln!("[!] Current value: {}", config.dc_ip);
-            eprintln!("[!] If connection fails, use the full domain name instead.");
-            eprintln!(
-                "[!] Example: -i {}.{} instead of -i {}",
-                config.dc_ip, config.domain, config.dc_ip
-            );
-        }
-
-        
-
-        
-        println!("[*] Ccache file: {}", ccache_to_use);
-
-        match parse_ccache_file(&ccache_to_use) {
-            Ok(ccache) => {
-                match validate_ccache(&ccache) {
-                    Ok(info) => {
-                        println!("[+] Valid TGT found for {}", info.principal);
-                        println!(
-                            "[+] Ticket expires: {} ({} remaining)",
-                            info.end_time, info.time_remaining
-                        );
-
-                        if let Some(tgt) = crate::kerberos::ccache::find_tgt(&ccache) {
-                            let minutes_remaining = tgt.expires_in_minutes();
-                            if minutes_remaining < 60 {
-                                println!("[!] Warning: Ticket expires in less than 1 hour!");
-                            }
-                        }
-                    }
-                    Err(e) => {
-                        eprintln!("[!] Ccache validation failed: {}", e);
-                        return Err(LdapError::Io {
-                            source: std::io::Error::new(
-                                std::io::ErrorKind::InvalidData,
-                                format!("Invalid ccache: {}", e),
-                            ),
-                        });
-                    }
-                }
-
-                
-                if config.username.is_empty() && !ccache.default_principal.components.is_empty() {
-                    config.username = ccache.default_principal.components[0].clone();
-                }
-
-                let krb5_conf =
-                    generate_krb5_conf_from_ccache(&ccache, &normalized_dc).map_err(|e| {
-                        LdapError::Io {
-                            source: std::io::Error::new(
-                                std::io::ErrorKind::Other,
-                                format!("Failed to generate krb5.conf: {}", e),
-                            ),
-                        }
-                    })?;
-
-                let krb5_conf_path =
-                    create_temp_krb5_conf(&krb5_conf).map_err(|e| LdapError::Io { source: e })?;
-
-                //println!("[*] Generated temporary krb5.conf at {}", krb5_conf_path);
-                //println!("[*] Service Principal: ldap/{}@{}", normalized_dc, ccache.default_principal.realm);
-
-                let original_krb5_config = set_krb5_config_env(&krb5_conf_path);
-                let original_krb5ccname = set_krb5ccname_temp(&ccache_to_use);
-
-                debug::debug_log(1, format!("Attempting SASL GSSAPI bind to {}", normalized_dc));
-                let bind_result = ldap.sasl_gssapi_bind(&normalized_dc)?.success();
-                debug::debug_log(1, "SASL GSSAPI bind successful");
-
-                restore_krb5ccname(original_krb5ccname);
-                restore_krb5_config_env(original_krb5_config);
-
-                let _ = std::fs::remove_file(krb5_conf_path);
-
-                bind_result?;
-            }
-            Err(e) => {
-                eprintln!("[!] Failed to parse ccache file: {}", e);
-                return Err(LdapError::Io {
-                    source: std::io::Error::new(
-                        std::io::ErrorKind::InvalidData,
-                        format!("Failed to parse ccache: {}", e),
-                    ),
-                });
-            }
-        }
+        let normalized_dc = config.dc_ip.to_lowercase();
+        perform_kerberos_bind(&mut ldap, config, &normalized_dc)?;
     } else {
-        let bind_dn = format!("{}@{}", config.username, config.domain);
-        debug::debug_log(2, format!("Bind DN: {}", bind_dn));
-        debug::debug_log(1, format!("Attempting simple bind as {}", bind_dn));
-        let credential = config.hash.as_ref().unwrap_or(&config.password);
-        debug::debug_log(2, "Using password credential");
-        ldap.simple_bind(&bind_dn, credential)?.success()?;
-        debug::debug_log(1, "Simple bind successful");
+        perform_simple_bind(&mut ldap, config)?;
     }
 
     if config.timestamp_format {
         println!("\n[{}]\n", get_timestamp());
     }
 
-    let search_base = config
-        .domain
-        .split('.')
-        .map(|part| format!("DC={}", part))
-        .collect::<Vec<_>>()
-        .join(",");
-
-    debug::debug_log(2, format!("Search base DN: {}", search_base));
-    debug::debug_log(2, format!("Querying base with filter: (objectClass=*)"));
-    let (results, _) = ldap
-        .search(
-            &search_base,
-            Scope::Base,
-            "(objectClass=*)",
-            vec!["defaultNamingContext"],
-        )?
-        .success()?;
-
-    if results.is_empty() {
-        println!("[!] Warning: No results returned from the base search.");
-    }
-    debug::debug_log(1, "LDAP connection ready");
+    let search_base = build_search_base(&config.domain);
+    validate_connection(&mut ldap, &search_base, vec!["defaultNamingContext"])?;
 
     Ok((ldap, search_base))
 }
 
 #[cfg(target_os = "windows")]
 pub fn ldap_connect(config: &mut LdapConfig) -> Result<(LdapConn, String), LdapError> {
+    let settings = LdapConnSettings::new()
+        .set_conn_timeout(Duration::from_secs(CONNECTION_TIMEOUT_SECS))
+        .set_no_tls_verify(true);
+
     let ldap_url = if config.secure_ldaps {
         format!("ldaps://{}", config.dc_ip.to_lowercase())
     } else {
         format!("ldap://{}", config.dc_ip.to_lowercase())
     };
     
-    let settings = LdapConnSettings::new()
-        .set_conn_timeout(Duration::from_secs(CONNECTION_TIMEOUT_SECS))
-        .set_no_tls_verify(true);
-
     debug::debug_log(1, format!("Connecting to LDAP: {}", ldap_url));
     let mut ldap = LdapConn::with_settings(settings, &ldap_url)?;
     debug::debug_log(1, "LDAP connection established");
 
     if config.kerberos {
-        let ccache_to_use =
-            determine_ccache_path(config.ccache_path.as_ref()).map_err(|e| LdapError::Io {
-                source: std::io::Error::new(std::io::ErrorKind::NotFound, e),
-            })?;
-
-        
-        if config.dc_ip.parse::<std::net::IpAddr>().is_ok() {
-            eprintln!(
-                "[!] Error: Kerberos authentication requires a hostname/FQDN, not an IP address."
-            );
-            eprintln!("[!] Current value: {}", config.dc_ip);
-            eprintln!("[!] Please use the DC's FQDN instead.");
-            eprintln!(
-                "[!] Example: -i dc01.redheadsec.local instead of -i {}",
-                config.dc_ip
-            );
-            return Err(LdapError::Io {
-                source: std::io::Error::new(
-                    std::io::ErrorKind::InvalidInput,
-                    "Kerberos requires hostname/FQDN, not IP address",
-                ),
-            });
-        }
-
-        
-        if !config.dc_ip.contains('.') {
-            eprintln!(
-                "[!] Warning: Windows Kerberos/SSPI requires a FQDN, not a short hostname."
-            );
-            eprintln!("[!] Current value: {}", config.dc_ip);
-            eprintln!("[!] If connection fails, use the full domain name instead.");
-            eprintln!(
-                "[!] Example: -i {}.{} instead of -i {}",
-                config.dc_ip, config.domain, config.dc_ip
-            );
-        }
-
-        
-        let normalized_dc = config.dc_ip.to_lowercase();
-
-        println!("[*] Using Kerberos authentication for LDAP.");
-        println!("[*] Ccache file: {}", ccache_to_use);
-
-        match parse_ccache_file(&ccache_to_use) {
-            Ok(ccache) => {
-                match validate_ccache(&ccache) {
-                    Ok(info) => {
-                        println!("[+] Valid TGT found for {}", info.principal);
-                        println!(
-                            "[+] Ticket expires: {} ({} remaining)",
-                            info.end_time, info.time_remaining
-                        );
-
-                        if let Some(tgt) = crate::kerberos::ccache::find_tgt(&ccache) {
-                            let minutes_remaining = tgt.expires_in_minutes();
-                            if minutes_remaining < 60 {
-                                println!("[!] Warning: Ticket expires in less than 1 hour!");
-                            }
-                        }
-                    }
-                    Err(e) => {
-                        eprintln!("[!] Ccache validation failed: {}", e);
-                        return Err(LdapError::Io {
-                            source: std::io::Error::new(
-                                std::io::ErrorKind::InvalidData,
-                                format!("Invalid ccache: {}", e),
-                            ),
-                        });
-                    }
-                }
-
-                
-                if config.username.is_empty() && !ccache.default_principal.components.is_empty() {
-                    config.username = ccache.default_principal.components[0].clone();
-                }
-
-                
-                let krb5_conf =
-                    generate_krb5_conf_from_ccache(&ccache, &normalized_dc).map_err(|e| {
-                        LdapError::Io {
-                            source: std::io::Error::new(
-                                std::io::ErrorKind::Other,
-                                format!("Failed to generate krb5.conf: {}", e),
-                            ),
-                        }
-                    })?;
-
-                let krb5_conf_path =
-                    create_temp_krb5_conf(&krb5_conf).map_err(|e| LdapError::Io { source: e })?;
-
-                //println!("[*] Generated temporary krb5.conf at {}", krb5_conf_path);
-                //println!("[*] Service Principal: ldap/{}@{}",normalized_dc, ccache.default_principal.realm);
-                
-                let original_krb5_config = set_krb5_config_env(&krb5_conf_path);
-                let original_krb5ccname = set_krb5ccname_temp(&ccache_to_use);
-
-                let bind_result = ldap.sasl_gssapi_bind(&normalized_dc)?.success();
-
-                restore_krb5ccname(original_krb5ccname);
-                restore_krb5_config_env(original_krb5_config);
-
-                
-                let _ = std::fs::remove_file(krb5_conf_path);
-
-                bind_result?;
-            }
-            Err(e) => {
-                eprintln!("[!] Failed to parse ccache file: {}", e);
-                return Err(LdapError::Io {
-                    source: std::io::Error::new(
-                        std::io::ErrorKind::InvalidData,
-                        format!("Failed to parse ccache: {}", e),
-                    ),
-                });
-            }
-        }
+        let dc_ip = config.dc_ip.clone();
+        perform_kerberos_bind(&mut ldap, config, &dc_ip)?;
     } else {
-        let bind_dn = format!("{}@{}", config.username, config.domain);
-        debug::debug_log(2, format!("Bind DN: {}", bind_dn));
-        debug::debug_log(1, format!("Attempting simple bind as {}", bind_dn));
-        let credential = config.hash.as_ref().unwrap_or(&config.password);
-        debug::debug_log(2, "Using password credential");
-        ldap.simple_bind(&bind_dn, credential)?.success()?;
-        debug::debug_log(1, "Simple bind successful");
+        perform_simple_bind(&mut ldap, config)?;
     }
 
     if config.timestamp_format {
         println!("[{}]\n", get_timestamp());
     }
 
-    let search_base = config
-        .domain
-        .split('.')
-        .map(|part| format!("DC={}", part))
-        .collect::<Vec<_>>()
-        .join(",");
-
-    debug::debug_log(2, format!("Search base DN: {}", search_base));
-    debug::debug_log(2, format!("Querying base with filter: (objectClass=*)"));
-    let (results, _) = ldap
-        .search(
-            &search_base,
-            Scope::Base,
-            "(objectClass=*)",
-            vec!["distinguishedName"],
-        )?
-        .success()?;
-
-    if results.is_empty() {
-        println!("[!] Warning: No results returned from the base search.");
-    }
-    debug::debug_log(1, "LDAP connection ready");
+    let search_base = build_search_base(&config.domain);
+    validate_connection(&mut ldap, &search_base, vec!["distinguishedName"])?;
 
     Ok((ldap, search_base))
 }
@@ -409,40 +301,15 @@ pub fn ldap_connect(config: &mut LdapConfig) -> Result<(LdapConn, String), LdapE
             ),
         });
     } else {
-        let bind_dn = format!("{}@{}", config.username, config.domain);
-        debug::debug_log(2, format!("Bind DN: {}", bind_dn));
-        debug::debug_log(1, format!("Attempting simple bind as {}", bind_dn));
-        debug::debug_log(2, "Using password credential");
-        ldap.simple_bind(&bind_dn, &config.password)?.success()?;
-        debug::debug_log(1, "Simple bind successful");
+        perform_simple_bind(&mut ldap, config)?;
     }
 
     if config.timestamp_format {
         println!("[{}]\n", get_timestamp());
     }
 
-    let search_base = config
-        .domain
-        .split('.')
-        .map(|part| format!("DC={}", part))
-        .collect::<Vec<_>>()
-        .join(",");
-
-    debug::debug_log(2, format!("Search base DN: {}", search_base));
-    debug::debug_log(2, format!("Querying base with filter: (objectClass=*)"));
-    let (results, _) = ldap
-        .search(
-            &search_base,
-            Scope::Base,
-            "(objectClass=*)",
-            vec!["distinguishedName"],
-        )?
-        .success()?;
-
-    if results.is_empty() {
-        println!("[!] Warning: No results returned from the base search.");
-    }
-    debug::debug_log(1, "LDAP connection ready");
+    let search_base = build_search_base(&config.domain);
+    validate_connection(&mut ldap, &search_base, vec!["distinguishedName"])?;
 
     Ok((ldap, search_base))
 }
@@ -581,4 +448,47 @@ pub fn format_guid_for_ldap(guid: &str) -> String {
         .iter()
         .map(|byte| format!("\\{:02X}", byte))
         .collect()
+}
+
+pub fn should_attempt_reconnect(error: &LdapError) -> bool {
+    match error {
+        LdapError::LdapResult { result } => {
+            matches!(result.rc, 1 | 52 | 80 | 81 | 85 | 91)
+        }
+        LdapError::Io { .. } => true,
+        LdapError::EndOfStream => true,
+        _ => false,
+    }
+}
+
+pub fn reconnect_if_needed(
+    ldap: &mut LdapConn,
+    config: &mut LdapConfig,
+    error: &LdapError,
+) -> Result<(), Box<dyn std::error::Error>> {
+    if !should_attempt_reconnect(error) {
+        return Err(Box::new(std::io::Error::new(
+            std::io::ErrorKind::Other,
+            "No reconnect needed",
+        )));
+    }
+
+    debug::debug_log(1, "Connection lost, attempting reconnect");
+    println!("[*] Connection lost, reconnecting...");
+
+    let _ = ldap.unbind();
+
+    match ldap_connect(config) {
+        Ok((new_ldap, _)) => {
+            *ldap = new_ldap;
+            println!("[+] Successfully reconnected");
+            debug::debug_log(1, "Reconnection successful");
+            Ok(())
+        }
+        Err(e) => {
+            eprintln!("[!] Failed to reconnect: {}", e);
+            debug::debug_log(1, format!("Reconnection failed: {:?}", e));
+            Err(e.into())
+        }
+    }
 }

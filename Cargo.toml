@@ -12,6 +12,7 @@ dialoguer = "0.10"
 clap = { version = "4.3", features = ["derive"] }
 chrono = "0.4"
 rustyline = "11.0.0"
+rusqlite = { version = "0.31", features = ["bundled"] }
 base64 = "0.21" 
 hex = "0.4"
 rand = "0.8"

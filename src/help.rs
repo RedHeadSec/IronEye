@@ -1,4 +1,5 @@
 use chrono::Local;
+use crate::history::HistoryEditor;
 use std::error::Error;
 use std::fs::File;
 use std::io::{self, BufRead, BufReader, Write};
@@ -110,6 +111,24 @@ pub fn read_input(prompt: &str) -> String {
     let mut input = String::new();
     io::stdin().read_line(&mut input).unwrap();
     input.trim().to_string()
+}
+
+pub fn read_input_with_history(prompt: &str, module: &str) -> Option<String> {
+    let mut editor = match HistoryEditor::new(module) {
+        Ok(e) => e,
+        Err(_) => {
+            // Fallback to regular input if history fails
+            return Some(read_input(prompt));
+        }
+    };
+    
+    print!("{}", prompt);
+    let _ = io::stdout().flush();
+    
+    match editor.readline("") {
+        Ok(input) => Some(input.trim().to_string()),
+        Err(_) => None,
+    }
 }
 
 pub fn generate_conf_files(args: &ConfGenArgs) -> std::io::Result<()> {
