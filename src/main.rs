@@ -21,6 +21,12 @@ use args::{
 use help::*;
 use spray::*;
 
+pub fn track_history(module: &str, command: &str) {
+    if let Ok(manager) = ironeye::history::HistoryManager::new() {
+        let _ = manager.add(module, command);
+    }
+}
+
 const MAIN_OPTIONS: &[&str] = &[
     "Connect (LDAP Reconissance)",
     "Cerberos (Kerberos Protocol Attacks)",
@@ -225,6 +231,7 @@ fn handle_get_sid_guid(
 ) -> Result<(), Box<dyn std::error::Error>> {
     let target = read_input("Enter target object: ");
     if !target.is_empty() {
+        track_history("get-sid-guid", &target);
         commands::get_sid_guid::query_sid_guid(ldap, search_base, ldap_config, &target)?;
     }
     Ok(())
@@ -240,6 +247,7 @@ fn handle_from_sid_guid(
 
     let target = read_input("Enter SID/GUID: ");
     if !target.is_empty() {
+        track_history("from-sid-guid", &target);
         commands::from_sid_guid::resolve_sid_guid(ldap, search_base, &target)?;
     }
     Ok(())
@@ -252,6 +260,7 @@ fn handle_get_acedacl(
 ) -> Result<(), Box<dyn std::error::Error>> {
     let username = read_input("Enter username to analyze: ");
     if !username.is_empty() {
+        track_history("ace-dacl", &username);
         commands::get_acedacl::get_ace_dacl(ldap, search_base, ldap_config, &username)?;
     }
     Ok(())
@@ -265,6 +274,7 @@ fn handle_net_commands(
     let input = read_input(
         "Enter the net command arguments (e.g., user administrator OR group \"Domain Admins\"): ",
     );
+    track_history("net", &input);
     let args = parse_quoted_args(&input);
 
     if args.len() < 2 {
@@ -306,6 +316,7 @@ fn handle_cerbero() {
             output,
             hash,
         } => {
+            track_history("ask-tgt", &format!("{}@{}", username, domain));
             let ip: IpAddr = match dc_ip.parse() {
                 Ok(ip) => ip,
                 Err(_) => {
@@ -335,6 +346,7 @@ fn handle_cerbero() {
             service,
             output,
         } => {
+            track_history("ask-tgs", &format!("{}@{} -> {}", username, domain, service));
             let ip: IpAddr = match dc_ip.parse() {
                 Ok(ip) => ip,
                 Err(_) => {
@@ -404,6 +416,7 @@ fn handle_cerbero() {
             output,
             format,
         } => {
+            track_history("asrep-roast", &format!("{}", target));
             use std::path::Path;
 
             let ip: IpAddr = match dc_ip.parse() {
@@ -472,6 +485,7 @@ fn handle_cerbero() {
             output,
             format,
         } => {
+            track_history("kerberoast", &format!("{}", target));
             use std::path::Path;
 
             let ip: IpAddr = match dc_ip.parse() {

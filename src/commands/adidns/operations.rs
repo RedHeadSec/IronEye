@@ -127,6 +127,7 @@ fn handle_query_record(
     }
     
     let zone = read_input("Enter zone (leave empty for domain default): ");
+    crate::track_history("adidns", &format!("query {}.{}", record_name, if zone.is_empty() { &ldap_config.domain } else { &zone }));
     let zone = if zone.is_empty() {
         ldap_config.domain.clone()
     } else {
@@ -418,6 +419,7 @@ fn handle_add_record(
         println!("[!] IP address is required");
         return Ok(());
     }
+    crate::track_history("adidns", &format!("add {} -> {}", record_name, ip_address));
     
     
     if ip_address.split('.').count() != 4 {
@@ -591,6 +593,7 @@ fn handle_modify_record(
         println!("[!] IP address is required");
         return Ok(());
     }
+    crate::track_history("adidns", &format!("modify {} -> {}", record_name, new_ip));
     
     
     if new_ip.split('.').count() != 4 {
@@ -776,6 +779,7 @@ fn handle_remove_record(
     }
     
     let zone = read_input("Enter zone (leave empty for domain default): ");
+    crate::track_history("adidns", &format!("tombstone {}.{}", record_name, if zone.is_empty() { &ldap_config.domain } else { &zone }));
     let zone = if zone.is_empty() {
         ldap_config.domain.clone()
     } else {
@@ -998,6 +1002,7 @@ fn handle_delete_record(
     }
     
     let zone = read_input("Enter zone (leave empty for domain default): ");
+    crate::track_history("adidns", &format!("delete {}.{}", record_name, if zone.is_empty() { &ldap_config.domain } else { &zone }));
     let zone = if zone.is_empty() {
         ldap_config.domain.clone()
     } else {

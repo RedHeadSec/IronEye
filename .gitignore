@@ -13,7 +13,6 @@ found_cred*
 domain_groups*
 DS_STORE
 users_export.csv
-*history*
 results.txt
 *.csv
 proxychains*

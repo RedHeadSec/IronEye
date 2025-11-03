@@ -64,6 +64,7 @@ fn handle_add_computer(
         println!("[!] Computer name is required");
         return Ok(());
     }
+    crate::track_history("actions", &format!("add-computer {}", computer_name));
 
     let password = read_input("Enter password (leave empty for random): ");
     let password = if password.is_empty() {
@@ -98,6 +99,7 @@ fn handle_del_computer(
         println!("[!] Computer name is required");
         return Ok(());
     }
+    crate::track_history("actions", &format!("del-computer {}", computer_name));
 
     del_computer::del_computer(ldap, search_base, &computer_name)
 }
@@ -117,6 +119,7 @@ fn handle_set_spn(
         println!("[!] Action is required");
         return Ok(());
     }
+    crate::track_history("actions", &format!("spn-mgmt {} {}", action, target));
 
     let spn = if action.to_lowercase() == "list" {
         None
@@ -147,6 +150,7 @@ fn handle_add_user_to_group(
         println!("[!] Group is required");
         return Ok(());
     }
+    crate::track_history("actions", &format!("add-to-group {} -> {}", user, group));
 
     add_user_to_group::add_user_to_group(ldap, search_base, &user, &group)
 }
@@ -163,6 +167,7 @@ fn handle_set_dontreqpreauth(
 
     let flag = read_input("Enable DONT_REQUIRE_PREAUTH? (true/false): ");
     let enable = flag.trim().to_lowercase() == "true";
+    crate::track_history("actions", &format!("set-preauth {} {}", target, enable));
 
     set_dontreqpreauth::set_dontreqpreauth(ldap, search_base, &target, enable)
 }
@@ -176,6 +181,7 @@ fn handle_enable_account(
         println!("[!] Username is required");
         return Ok(());
     }
+    crate::track_history("actions", &format!("enable-account {}", username));
 
     enable_account::enable_account(ldap, search_base, &username)
 }
@@ -189,6 +195,7 @@ fn handle_disable_account(
         println!("[!] Username is required");
         return Ok(());
     }
+    crate::track_history("actions", &format!("disable-account {}", username));
 
     disable_account::disable_account(ldap, search_base, &username)
 }
