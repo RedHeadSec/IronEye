@@ -48,13 +48,8 @@ fn validate_kerberos_hostname(dc_ip: &str, domain: &str) -> Result<(), LdapError
     }
 
     if !dc_ip.contains('.') {
-        eprintln!("[!] Warning: Kerberos works best with FQDNs, not short hostnames.");
-        eprintln!("[!] Current value: {}", dc_ip);
-        eprintln!("[!] If connection fails, use the full domain name instead.");
-        eprintln!(
-            "[!] Example: -i {}.{} instead of -i {}",
-            dc_ip, domain, dc_ip
-        );
+        debug::debug_log(2, format!("Warning: Kerberos works best with FQDNs, not short hostnames. Current value: {}", dc_ip));
+        debug::debug_log(2, format!("If connection fails, use the full domain name instead. Example: -i {}.{} instead of -i {}", dc_ip, domain, dc_ip));
     }
 
     Ok(())
