@@ -110,12 +110,23 @@ pub fn get_ace_dacl(
     let mut permissions = PermissionCollector::new();
 
     for (filter, obj_type) in filters {
-        debug_log(3, &format!("Searching objects with filter: {}", filter));
+        debug_log(2, &format!("Searching objects with filter: {}", filter));
         let entries = match search_objects(ldap, search_base, filter) {
-            Ok(e) => e,
-            Err(_) => continue,
+            Ok(e) => {
+                debug_log(3, &format!("Retrieved {} entries for filter", e.len()));
+                e
+            },
+            Err(e) => {
+                debug_log(2, &format!("Search failed: {}", e));
+                continue;
+            },
         };
 
+        debug_log(3, &format!("Processing {} entries for type: {}", entries.len(), obj_type));
+        let mut sd_found = 0;
+        let mut sd_parsed = 0;
+        let mut perms_found = 0;
+        
         for entry in entries.iter().take(500) {
             let dn = entry
                 .attrs
@@ -124,19 +135,33 @@ pub fn get_ace_dacl(
                 .map(|s| s.as_str())
                 .unwrap_or("Unknown");
 
+            let has_sd = entry.bin_attrs.contains_key("nTSecurityDescriptor");
+            if !has_sd {
+                debug_log(4, &format!("No SD attribute for: {}", dn));
+            }
+            
             if let Some(sd_values) = entry.bin_attrs.get("nTSecurityDescriptor") {
+                sd_found += 1;
                 if let Some(sd_bytes) = sd_values.first() {
-                    if let Ok((_, relations)) = parser.parse_security_descriptor(sd_bytes, obj_type)
-                    {
-                        for rel in relations {
-                            if relevant_sids.contains(&rel.sid) {
-                                permissions.add(dn.to_string(), rel);
+                    match parser.parse_security_descriptor(sd_bytes, obj_type) {
+                        Ok((_, relations)) => {
+                            sd_parsed += 1;
+                            for rel in relations {
+                                if relevant_sids.contains(&rel.sid) {
+                                    perms_found += 1;
+                                    permissions.add(dn.to_string(), rel);
+                                }
                             }
+                        }
+                        Err(e) => {
+                            debug_log(4, &format!("Failed to parse SD for {}: {}", dn, e));
                         }
                     }
                 }
             }
         }
+        debug_log(3, &format!("Type {}: SD found: {}, parsed: {}, matching perms: {}", 
+            obj_type, sd_found, sd_parsed, perms_found));
     }
 
     debug_log(1, &format!("Found {} total permissions", permissions.total_count()));
@@ -464,33 +489,65 @@ fn search_objects(
     filter: &str,
 ) -> Result<Vec<SearchEntry>, Box<dyn Error>> {
     debug_log(3, &format!("LDAP search - Base: {}, Filter: {}", search_base, filter));
-    let adapters: Vec<Box<dyn Adapter<_, _>>> = vec![
-        Box::new(EntriesOnly::new()),
-        Box::new(PagedResults::new(500)),
-    ];
-
-    let mut search = ldap.streaming_search_with(
-        adapters,
-        search_base,
-        Scope::Subtree,
-        filter,
-        vec![
-            "sAMAccountName",
-            "distinguishedName",
-            "memberOf",
-            "objectSid",
-            "nTSecurityDescriptor",
-        ],
-    )?;
-
-    let mut entries = Vec::new();
-    while let Some(entry) = search.next()? {
-        entries.push(SearchEntry::construct(entry));
+    
+    let sd_control = RawControl {
+        ctype: "1.2.840.113556.1.4.801".to_string(),
+        crit: false,
+        val: Some(vec![0x30, 0x03, 0x02, 0x01, 0x07]),
+    };
+    
+    let mut all_entries = Vec::new();
+    let mut cookie: Option<Vec<u8>> = None;
+    let page_size = 500;
+    
+    loop {
+        let paging_control = if let Some(ref c) = cookie {
+            ldap3::controls::PagedResults::new(page_size, c.clone())
+        } else {
+            ldap3::controls::PagedResults::new(page_size, vec![])
+        };
+        
+        ldap.with_controls(vec![sd_control.clone(), paging_control.into()]);
+        
+        let (results, res) = ldap.search(
+            search_base,
+            Scope::Subtree,
+            filter,
+            vec![
+                "sAMAccountName",
+                "distinguishedName",
+                "memberOf",
+                "objectSid",
+                "nTSecurityDescriptor",
+            ],
+        )?.success()?;
+        
+        for entry in results {
+            all_entries.push(SearchEntry::construct(entry));
+        }
+        
+        cookie = None;
+        for control in res.ctrls {
+            if control.ctype == "1.2.840.113556.1.4.319" {
+                if let Some(val) = control.val {
+                    if val.len() > 4 {
+                        let cookie_len = val[val.len() - 2] as usize;
+                        if cookie_len > 0 && val.len() >= cookie_len {
+                            cookie = Some(val[val.len() - cookie_len..].to_vec());
+                        }
+                    }
+                }
+                break;
+            }
+        }
+        
+        if cookie.is_none() {
+            break;
+        }
     }
-    let _ = search.result().success()?;
-    debug_log(3, &format!("Retrieved {} entries", entries.len()));
-
-    Ok(entries)
+    
+    debug_log(3, &format!("Retrieved {} entries", all_entries.len()));
+    Ok(all_entries)
 }
 
 struct SidResolver {
@@ -625,7 +682,7 @@ fn query_full_object(
     ldap.with_controls(vec![RawControl {
         ctype: String::from("1.2.840.113556.1.4.801"),
         crit: false,
-        val: Some(vec![7, 0, 0, 0]),
+        val: Some(vec![0x30, 0x03, 0x02, 0x01, 0x07]),
     }]);
 
     let adapters: Vec<Box<dyn Adapter<_, _>>> = vec![
