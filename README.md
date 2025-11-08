@@ -63,9 +63,6 @@ Connection Arguments:
 <img width="1364" height="753" alt="image" src="https://github.com/user-attachments/assets/c5eae49e-546b-41d6-ab70-88f23a1b586c" /> <br>
 
 
-**Using https://github.com/coffeegist/bofhound:**
-<img width="695" height="855" alt="image" src="https://github.com/user-attachments/assets/beb0f125-6778-41ce-9eba-96a2aada34e2" />
-
 ### Actions Module
 Direct Active Directory object modification for post-exploitation scenarios through LDAP.
 
@@ -116,6 +113,14 @@ Comprehensive Active Directory-Integrated DNS manipulation for poisoning and tra
 - **Delete Record** - Permanent LDAP removal
 
 <img width="523" height="356" alt="image" src="https://github.com/user-attachments/assets/c7e35ca9-d5a6-4260-9d1a-10f93e3afb80" />
+
+---
+
+**Using https://github.com/coffeegist/bofhound:**
+
+Almost all output files are in a BofHound ingestiable format, meaning you can be targeted and pull just the data you need to graph in BloodHound or pull everything and have a pretty good picture of the whole network. Obviously not near as comprehensive as an collector, but also should be far less noisey.
+
+<img width="695" height="855" alt="image" src="https://github.com/user-attachments/assets/beb0f125-6778-41ce-9eba-96a2aada34e2" />
 
 
 ## Cerberos Module
