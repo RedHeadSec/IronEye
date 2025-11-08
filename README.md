@@ -174,7 +174,7 @@ Example: --users users.txt --passwords passwords.txt --domain corp.local --dc-ip
 
 | Feature           | Description                                  | Status   |
 |------------------|----------------------------------|---------|
-| Kerberos Auth   | Supports Kerberos-based authentication | ✅ Working (For Linux) - Does not work currently for MAC due to differences in dependencies - Not tested on Windows|
+| Kerberos Auth   | Supports Kerberos-based authentication | ✅ Working (For Linux/Windows) - Does not work currently for MAC due to differences in dependencies
 | Threading Support   | Threading for the password spray has not been implemented yet.       |  ✅ Implemented 08/24/25 |
 | Proxy Support   | While native SOCKS support is desired, this tool works well with proxychains4/Proxifer so currently is on the back burner.       | ❌ TBD  |
 | SMB Modules | Currently on the table but not under active implementation at this time   | ❌ TBD |
