@@ -1,4 +1,4 @@
-// src/commands/getspns.rs
+use crate::debug;
 use crate::help::add_terminal_spacing;
 use crate::ldap::LdapConfig;
 use chrono::{DateTime, Local, TimeZone, Utc};
@@ -9,9 +9,14 @@ use std::error::Error;
 use std::fs::File;
 use std::io::Write;
 
-pub fn get_service_principal_names(config: &mut LdapConfig) -> Result<(), Box<dyn Error>> {
-    let (mut ldap, search_base) = crate::ldap::ldap_connect(config)?;
-    let entries = query_spns(&mut ldap, &search_base)?;
+pub fn get_service_principal_names(
+    ldap: &mut LdapConn,
+    search_base: &str,
+    _config: &LdapConfig,
+) -> Result<(), Box<dyn Error>> {
+    debug::debug_log(1, "Querying service principal names...");
+    let entries = query_spns(ldap, search_base)?;
+    debug::debug_log(2, format!("Found {} entries with SPNs", entries.len()));
 
     let header = format!(
         "{:<50} {:<15} {:<30} {:<30} {}\n",
@@ -19,7 +24,6 @@ pub fn get_service_principal_names(config: &mut LdapConfig) -> Result<(), Box<dy
     );
     let mut output = String::from(&header);
 
-    // Print header
     println!(
         "{:<50} {:<15} {:<30} {:<30} {}",
         "SPN", "Username", "PasswordLastSet", "LastLogon", "Delegation"
@@ -32,7 +36,6 @@ pub fn get_service_principal_names(config: &mut LdapConfig) -> Result<(), Box<dy
             .map(|s| s.clone())
             .unwrap_or_default();
 
-        // Fix: Create a String that lives long enough
         let sam_account_name = entry
             .attrs
             .get("sAMAccountName")
@@ -64,7 +67,6 @@ pub fn get_service_principal_names(config: &mut LdapConfig) -> Result<(), Box<dy
             .map(|uac| check_delegation(uac))
             .unwrap_or_default();
 
-        // Print each SPN for this account
         for spn in spns {
             let line = format!(
                 "{:<50} {:<15} {:<30} {:<30} {}\n",
@@ -74,7 +76,6 @@ pub fn get_service_principal_names(config: &mut LdapConfig) -> Result<(), Box<dy
             println!("{}", line.trim());
         }
     }
-    // Ask if user wants to export results
     add_terminal_spacing(1);
     if Confirm::new()
         .with_prompt("Would you like to export the results to a file?")
@@ -97,6 +98,10 @@ pub fn get_service_principal_names(config: &mut LdapConfig) -> Result<(), Box<dy
 
 fn query_spns(ldap: &mut LdapConn, search_base: &str) -> Result<Vec<SearchEntry>, Box<dyn Error>> {
     let search_filter = "(&(servicePrincipalName=*)(!(objectClass=computer)))";
+    debug::debug_log(
+        2,
+        format!("Executing LDAP search with filter: {}", search_filter),
+    );
 
     let adapters: Vec<Box<dyn Adapter<_, _>>> = vec![
         Box::new(EntriesOnly::new()),
@@ -122,6 +127,10 @@ fn query_spns(ldap: &mut LdapConn, search_base: &str) -> Result<Vec<SearchEntry>
         entries.push(SearchEntry::construct(entry));
     }
     let _ = search.result().success()?;
+    debug::debug_log(
+        3,
+        format!("Retrieved {} SPN entries from LDAP", entries.len()),
+    );
 
     Ok(entries)
 }
@@ -131,13 +140,10 @@ fn windows_timestamp_to_datetime(windows_time: i64) -> String {
         return "Never".to_string();
     }
 
-    // Windows timestamp is in 100-nanosecond intervals since January 1, 1601 UTC
-    // Need to convert to Unix timestamp (seconds since January 1, 1970 UTC)
     let unix_time = (windows_time - 116444736000000000) / 10000000;
 
     match Utc.timestamp_opt(unix_time, 0) {
         chrono::LocalResult::Single(dt) => {
-            // Convert to local time
             let local_time: DateTime<Local> = DateTime::from(dt);
             local_time.format("%Y-%m-%d %H:%M:%S").to_string()
         }

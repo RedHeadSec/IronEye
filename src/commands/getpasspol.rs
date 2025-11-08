@@ -1,15 +1,26 @@
-// src/commands/getpasspol.rs
+use crate::debug;
 use crate::help::add_terminal_spacing;
 use crate::ldap::LdapConfig;
 use ldap3::adapters::{Adapter, EntriesOnly, PagedResults};
 use ldap3::{LdapConn, Scope, SearchEntry};
 use std::error::Error;
 
-pub fn get_password_policy(config: &mut LdapConfig) -> Result<(), Box<dyn Error>> {
-    let (mut ldap, search_base) = crate::ldap::ldap_connect(config)?;
-
-    let domain_policy_entries = query_password_policy(&mut ldap, &search_base)?;
-    let fgpp_entries = query_fine_grained_policies(&mut ldap, &search_base)?;
+pub fn get_password_policy(
+    ldap: &mut LdapConn,
+    search_base: &str,
+    config: &LdapConfig,
+) -> Result<(), Box<dyn Error>> {
+    debug::debug_log(1, "Querying password policies...");
+    let domain_policy_entries = query_password_policy(ldap, search_base)?;
+    let fgpp_entries = query_fine_grained_policies(ldap, search_base)?;
+    debug::debug_log(
+        2,
+        format!(
+            "Found {} domain policies and {} fine-grained policies",
+            domain_policy_entries.len(),
+            fgpp_entries.len()
+        ),
+    );
 
     // Display Default Domain Password Policy
     for entry in domain_policy_entries {
@@ -36,12 +47,18 @@ pub fn get_password_policy(config: &mut LdapConfig) -> Result<(), Box<dyn Error>
     Ok(())
 }
 
-/// Queries the Default Domain Password Policy
 fn query_password_policy(
     ldap: &mut LdapConn,
     search_base: &str,
 ) -> Result<Vec<SearchEntry>, Box<dyn Error>> {
     let search_filter = "(&(objectClass=domainDNS)(objectCategory=domain))";
+    debug::debug_log(
+        2,
+        format!(
+            "Querying domain password policy with filter: {}",
+            search_filter
+        ),
+    );
 
     let result = ldap.search(
         search_base,
@@ -64,17 +81,18 @@ fn query_password_policy(
     Ok(entries.into_iter().map(SearchEntry::construct).collect())
 }
 
-/// Queries Fine-Grained Password Policies (FGPPs)
 fn query_fine_grained_policies(
     ldap: &mut LdapConn,
     search_base: &str,
 ) -> Result<Vec<SearchEntry>, Box<dyn Error>> {
     let fgpp_dn = format!("CN=Password Settings Container,CN=System,{}", search_base);
     let search_filter = "(objectClass=msDS-PasswordSettings)";
+    debug::debug_log(2, format!("Querying fine-grained policies at: {}", fgpp_dn));
+    debug::debug_log(3, format!("FGPP filter: {}", search_filter));
 
     let adapters: Vec<Box<dyn Adapter<_, _>>> = vec![
         Box::new(EntriesOnly::new()),
-        Box::new(PagedResults::new(500)), // Enable paging
+        Box::new(PagedResults::new(500)),
     ];
 
     let mut search = ldap.streaming_search_with(
@@ -101,12 +119,15 @@ fn query_fine_grained_policies(
     while let Some(entry) = search.next()? {
         entries.push(SearchEntry::construct(entry));
     }
-    let _ = search.result().success()?; // Ensure search completes successfully
+    let _ = search.result().success()?;
+    debug::debug_log(
+        3,
+        format!("Retrieved {} fine-grained policy entries", entries.len()),
+    );
 
     Ok(entries)
 }
 
-/// Displays the Default Domain Password Policy
 fn display_password_policy(entry: &SearchEntry) {
     if let Some(min_pwd_length) = entry.attrs.get("minPwdLength").and_then(|v| v.first()) {
         println!("Minimum Password Length: {}", min_pwd_length);
@@ -157,7 +178,6 @@ fn display_password_policy(entry: &SearchEntry) {
     }
 }
 
-/// Displays Fine-Grained Password Policy (FGPP) Details
 fn display_fine_grained_policy(entry: &SearchEntry) {
     if let Some(precedence) = entry
         .attrs
@@ -200,7 +220,6 @@ fn display_fine_grained_policy(entry: &SearchEntry) {
     }
 }
 
-/// Converts Windows time intervals to readable format
 fn format_time_interval(interval: i64) -> String {
     if interval == -9223372036854775808 || interval == 0 {
         return "Never".to_string();
@@ -214,7 +233,7 @@ fn format_time_interval(interval: i64) -> String {
     format!("{}d {}h {}m", days, hours, minutes)
 }
 
-/// Interprets `pwdProperties` bitmask into human-readable flags
+// Interprets `pwdProperties` bitmask into human-readable flags
 fn interpret_pwd_properties(pwd_properties: &str) -> Vec<String> {
     let properties = pwd_properties.parse::<i32>().unwrap_or(0);
     let mut policies = Vec::new();

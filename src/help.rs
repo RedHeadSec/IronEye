@@ -1,3 +1,4 @@
+use crate::history::HistoryEditor;
 use chrono::Local;
 use std::error::Error;
 use std::fs::File;
@@ -6,7 +7,7 @@ use std::io::{self, BufRead, BufReader, Write};
 pub fn show_help_main() {
     println!("\nHelp Information:");
     println!("1. 'Connect' - Connect to a ldap server and run queries.");
-    println!("2. 'Cerberos' - Kerberos Attacks using https://github.com/zer1t0/cerbero");
+    println!("2. 'Cerberos' - Kerberos Attacks using a library conversion of https://github.com/zer1t0/cerbero");
     println!("3. 'User Enumeration' - Enumerate valid users via ldap ping in an internal domain.");
     println!("4. 'Password Spray' - Perform Password Spraying against the internal domain.");
     println!("5. 'Generate KRB Conf' -  Generate a KRB5 configuration file.");
@@ -16,19 +17,45 @@ pub fn show_help_main() {
 }
 
 pub fn show_help_connect() {
-    println!("\nHelp Information for 'Connect' Submodules:");
-    println!("The 'Connect' module allows you to perform various LDAP-related actions after connecting to a server.");
-    println!("\nAvailable Options:");
+    println!("\n=== LDAP Connection Authentication Methods ===");
+    println!("\n1. Password Authentication:");
+    println!("   -u <username> -p <password> -d <domain> -i <dc_ip>");
+    println!("   Example: -u admin -p 'P@ssw0rd' -d corp.local -i 10.0.0.1\n");
+
+    println!("2. Kerberos with Explicit Ccache:");
+    println!("   -k -c <ccache_path> -d <domain> -i <dc_ip>");
+    println!("   Example: -k -c /tmp/krb5cc_1000 -d corp.local -i 10.0.0.1\n");
+
+    println!("3. Kerberos with KRB5CCNAME Environment Variable:");
+    println!("   export KRB5CCNAME=/tmp/krb5cc_1000");
+    println!("   Then use: -k -d <domain> -i <dc_ip>");
+    println!("   Example: -k -d corp.local -i 10.0.0.1");
+    println!("   Note: krb5.conf is auto-generated from ccache\n");
+
+    println!("4. Kerberos with Auto-Detection:");
+    println!("   Searches: KRB5CCNAME → /tmp/krb5cc_$(uid) → default locations");
+    println!("   Example: -k -d corp.local -i 10.0.0.1\n");
+
+    println!("Supported KRB5CCNAME Formats:");
+    println!("   FILE:/path/to/ccache  - File-based cache (most common)");
+    println!("   /path/to/ccache       - Plain path (assumed FILE:)");
+    println!("   DIR:/path/to/dir      - Directory collection (not yet supported)");
+    println!("   KEYRING:type:name     - Kernel keyring (not yet supported)");
+    println!("   KCM:                  - Credential Manager (not yet supported)\n");
+
+    println!("\n=== Connect Submodule Options ===");
     println!("  1. 'Get SID/GUID' - Get SID/GUID of AD object.");
     println!("  2. 'From SID/GUID' - Resolve object from SID/GUID");
     println!("  3. 'Get SPNs' - Retrieve Service Principal Names (SPNs) for Kerberos services in the domain.");
-    println!("  4. 'Query Groups' - Enumerate groups and their memberships in the domain.");
+    println!("  4. 'Get ACE/DACL' - Analyze ACL permissions for a given user across all object categories.");
     println!("  5. 'Machine Quota' - Check the machine account quota for the domain.");
     println!("  6. 'Net Commands' - Execute predefined or custom network commands.");
     println!("  7. 'Password Policy' - Retrieve and display the domain's password policy.");
     println!("  8. 'Deep-Queries' - Perform predefined deep LDAP queries (e.g., users, computers, trusts).");
     println!("  9. 'Custom LDAP Query' - Execute a custom LDAP query by providing a filter and attributes. BOFHound output compatiable!");
-    println!("  10. 'Back' - Return to the main menu.");
+    println!("  10. 'Actions' - Perform actions on AD objects.");
+    println!("  11. 'Help' - Show this help message.");
+    println!("  12. 'Back' - Return to the main menu.");
     println!("\n");
 }
 
@@ -43,11 +70,22 @@ pub fn add_terminal_spacing(lines: u8) {
 }
 
 pub enum PromptFormat {
-    UserAtDomain, // user@domain.local [ldap(s)://ip]
+    UserAtDomain,
 }
 
-pub fn get_prompt_string(username: &str, domain: &str, use_ssl: bool, server: &str) -> String {
-    let protocol = if use_ssl { "ldaps" } else { "ldap" };
+pub fn get_prompt_string(
+    username: &str,
+    domain: &str,
+    use_ssl: bool,
+    use_kerberos: bool,
+    server: &str,
+) -> String {
+    let protocol = match (use_ssl, use_kerberos) {
+        (true, true) => "ldaps+krb",
+        (true, false) => "ldaps",
+        (false, true) => "ldap+krb",
+        (false, false) => "ldap",
+    };
     format!("{}@{}\n({}:{})", username, domain, server, protocol)
 }
 
@@ -79,6 +117,24 @@ pub fn read_input(prompt: &str) -> String {
     let mut input = String::new();
     io::stdin().read_line(&mut input).unwrap();
     input.trim().to_string()
+}
+
+pub fn read_input_with_history(prompt: &str, module: &str) -> Option<String> {
+    let mut editor = match HistoryEditor::new(module) {
+        Ok(e) => e,
+        Err(_) => {
+            // Fallback to regular input if history fails
+            return Some(read_input(prompt));
+        }
+    };
+
+    print!("{}", prompt);
+    let _ = io::stdout().flush();
+
+    match editor.readline("") {
+        Ok(input) => Some(input.trim().to_string()),
+        Err(_) => None,
+    }
 }
 
 pub fn generate_conf_files(args: &ConfGenArgs) -> std::io::Result<()> {

@@ -1,0 +1,7 @@
+#V2
+(objectCategory=user)
+(objectCategory=user) dBCSPwd
+(|(cn=*admin*)(sAMAccountName=*admin*)(displayName=*admin*)(description=*admin*))
+(objectCategory=user) dBCSPwd
+(|(cn=*admin*)(sAMAccountName=*admin*)(displayName=*admin*)(description=*admin*))
+(objectCategory=user)

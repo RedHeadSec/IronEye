@@ -13,13 +13,10 @@ found_cred*
 domain_groups*
 DS_STORE
 users_export.csv
-*history*
 results.txt
 *.csv
 proxychains*
-
-# History Files
-*_history.txt
+output_*
 
 # Generated Kerberos tickets
 *.ticket
@@ -46,3 +43,4 @@ Thumbs.db
 *.tmp
 temp/
 logs/
+ironeye_history.db

@@ -1,5 +1,6 @@
+use crate::debug;
 use crate::help::add_terminal_spacing;
-use crate::ldap::{format_guid_for_ldap, ldap_connect, LdapConfig};
+use crate::ldap::format_guid_for_ldap;
 use ldap3::{
     adapters::{Adapter, EntriesOnly, PagedResults},
     Scope, SearchEntry,
@@ -99,40 +100,39 @@ fn get_well_known_sids() -> HashMap<&'static str, &'static str> {
     WELL_KNOWN_SIDS.iter().cloned().collect()
 }
 
-/// Validates whether a given SID format is correct.
 fn validate_sid(sid: &str) -> bool {
     sid.starts_with("S-1-") && sid.split('-').count() >= 3
 }
 
-/// Validates whether a given GUID format is correct.
 fn validate_guid(guid: &str) -> bool {
     uuid::Uuid::parse_str(guid).is_ok()
 }
 
-/// Resolves a given SID or GUID to a human-readable name.
 pub fn resolve_sid_guid(
-    config: &mut LdapConfig,
+    ldap: &mut ldap3::LdapConn,
+    search_base: &str,
     identifier: &str,
 ) -> Result<Option<String>, Box<dyn Error>> {
+    debug::debug_log(1, format!("Resolving SID/GUID: {}", identifier));
     let well_known_sids = get_well_known_sids();
 
-    // Check for well-known SID
     if let Some(name) = well_known_sids.get(identifier) {
+        debug::debug_log(2, format!("Found well-known SID: {}", name));
         return Ok(Some(name.to_string()));
     }
 
-    // Determine if it's a SID or GUID
     let filter = if validate_sid(identifier) {
-        format!("(objectSid={})", identifier) // SID search
+        debug::debug_log(2, format!("Searching by SID: {}", identifier));
+        format!("(objectSid={})", identifier)
     } else if validate_guid(identifier) {
+        debug::debug_log(2, format!("Searching by GUID: {}", identifier));
         let escaped_guid = format_guid_for_ldap(identifier);
-        //println!("DEBUG - Escaped GUID: {}", escaped_guid);
-        format!("(objectGUID={})", escaped_guid) // GUID search
+        debug::debug_log(3, format!("Escaped GUID: {}", escaped_guid));
+        format!("(objectGUID={})", escaped_guid)
     } else {
         return Err("Invalid SID or GUID format".into());
     };
 
-    let (mut ldap, search_base) = ldap_connect(config)?;
     let adapters: Vec<Box<dyn Adapter<_, _>>> = vec![
         Box::new(EntriesOnly::new()),
         Box::new(PagedResults::new(400)),
@@ -140,14 +140,14 @@ pub fn resolve_sid_guid(
 
     let mut stream = ldap.streaming_search_with(
         adapters,
-        &search_base,
+        search_base,
         Scope::Subtree,
         &filter,
         vec!["sAMAccountName", "distinguishedName"],
     )?;
     add_terminal_spacing(1);
     println!("Result for SID/GUID: {}", identifier);
-    //println!("DEBUG - Filter: {}", filter);
+    debug::debug_log(2, format!("Executing LDAP filter: {}", filter));
     while let Ok(Some(entry)) = stream.next() {
         let search_entry = SearchEntry::construct(entry);
 

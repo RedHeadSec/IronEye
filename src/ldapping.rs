@@ -1,4 +1,5 @@
 use crate::args::UserEnumArgs;
+use crate::debug;
 use crate::help::get_timestamp;
 use ldap3::{LdapConn, Scope, SearchEntry};
 use std::error::Error;
@@ -23,6 +24,7 @@ pub struct LdapConfig {
 }
 
 pub fn run(args: &UserEnumArgs) -> Result<(), Box<dyn Error>> {
+    debug::debug_log(1, "Starting user enumeration via LDAP ping method...");
     let config = LdapConfig {
         dc: args.dc_ip.clone(),
         base_dn: build_base_dn(&args.domain),
@@ -31,19 +33,24 @@ pub fn run(args: &UserEnumArgs) -> Result<(), Box<dyn Error>> {
         output_file: args.output.clone(),
         port: DEFAULT_LDAP_PORT,
     };
-    
+    debug::debug_log(
+        2,
+        format!("Target DC: {}, Base DN: {}", config.dc, config.base_dn),
+    );
+    debug::debug_log(2, format!("Using {} threads", config.threads));
+
     if args.timestamp_format {
         println!("\n[{}]", get_timestamp());
     }
     println!("\n[*] User enumeration started\n");
-    
+
     enumerate_users(config)?;
-    
+
     if args.timestamp_format {
         println!("[{}]", get_timestamp());
     }
     println!("[*] User enumeration complete\n");
-    
+
     Ok(())
 }
 
@@ -56,7 +63,9 @@ fn build_base_dn(domain: &str) -> String {
 }
 
 fn enumerate_users(config: LdapConfig) -> Result<(), Box<dyn Error>> {
+    debug::debug_log(1, format!("Loading usernames from: {}", config.file_path));
     let usernames = load_usernames(&config.file_path)?;
+    debug::debug_log(2, format!("Loaded {} usernames", usernames.len()));
     if usernames.is_empty() {
         println!("No usernames found in input file");
         return Ok(());
@@ -64,15 +73,18 @@ fn enumerate_users(config: LdapConfig) -> Result<(), Box<dyn Error>> {
 
     let total_users = usernames.len();
     let thread_count = determine_thread_count(total_users, config.threads);
-    
-    println!("[*] Processing {} usernames with {} threads", total_users, thread_count);
+
+    println!(
+        "[*] Processing {} usernames with {} threads",
+        total_users, thread_count
+    );
     println!("[*] Target: {}\n", config.dc);
-    
+
     let valid_users = process_usernames_threaded(&config, usernames, thread_count)?;
-    
+
     display_results(total_users, &valid_users);
     write_results_if_requested(&config, &valid_users)?;
-    
+
     Ok(())
 }
 
@@ -90,7 +102,7 @@ fn load_usernames(file_path: &str) -> Result<Vec<String>, Box<dyn Error>> {
 fn determine_thread_count(total_users: usize, requested_threads: usize) -> usize {
     std::cmp::min(
         std::cmp::min(requested_threads, MAX_THREAD_COUNT),
-        total_users
+        total_users,
     )
 }
 
@@ -133,7 +145,6 @@ fn process_usernames_threaded(
         handles.push(handle);
     }
 
-    // Wait for all threads to complete
     for handle in handles {
         if let Err(e) = handle.join() {
             eprintln!("Thread panicked: {:?}", e);
@@ -167,9 +178,7 @@ fn process_username_chunk(
                     }
                     Err(e) => {
                         if is_recoverable_error(&e) {
-                            // Log recoverable errors but continue
                             if e.to_string().contains("ResultCode: 201") {
-                                // This is a normal "no such object" response, continue silently
                             } else {
                                 eprintln!("Recoverable LDAP error for {}: {}", username, e);
                             }
@@ -179,7 +188,6 @@ fn process_username_chunk(
                     }
                 }
 
-                // Update progress
                 let count = progress.fetch_add(1, Ordering::SeqCst) + 1;
                 update_progress(count, total_users);
             }
@@ -195,6 +203,10 @@ fn check_user_validity(conn: &mut LdapConn, username: &str) -> Result<bool, ldap
         "(&(NtVer=\\06\\00\\00\\00)(AAC=\\10\\00\\00\\00)(User={}))",
         username
     );
+    debug::debug_log(
+        3,
+        format!("Checking user: {} with LDAP ping filter", username),
+    );
 
     let result = conn.search("", Scope::Base, &filter, vec!["NetLogon"])?;
 
@@ -204,14 +216,12 @@ fn check_user_validity(conn: &mut LdapConn, username: &str) -> Result<bool, ldap
 
     let entry = SearchEntry::construct(result.0[0].clone());
 
-    // Check binary attributes first (most reliable)
     if let Some(values) = entry.bin_attrs.get("NetLogon") {
         if let Some(bytes) = values.first() {
             return Ok(is_valid_netlogon_response(bytes));
         }
     }
 
-    // Fallback to text attributes if binary not available
     if let Some(values) = entry.attrs.get("NetLogon") {
         if let Some(value) = values.first() {
             let bytes = value.as_bytes();
@@ -241,6 +251,15 @@ fn update_progress(current: usize, total: usize) {
 }
 
 fn display_results(total_users: usize, valid_users: &[String]) {
+    debug::debug_log(
+        1,
+        format!(
+            "Enumeration complete: {} valid users found out of {}",
+            valid_users.len(),
+            total_users
+        ),
+    );
+
     let success_rate = if total_users > 0 {
         (valid_users.len() as f64 / total_users as f64) * 100.0
     } else {
@@ -250,8 +269,7 @@ fn display_results(total_users: usize, valid_users: &[String]) {
     println!("\n[+] Users checked: {}", total_users);
     println!("[+] Valid users found: {}", valid_users.len());
     println!("[+] Success rate: {:.2}%", success_rate);
-    
-    // Print valid users to stdout if any were found
+
     if !valid_users.is_empty() {
         println!("\n[+] Valid users:");
         for user in valid_users {
@@ -280,7 +298,7 @@ fn write_results_to_file(filename: &str, valid_users: &[String]) -> Result<(), B
     let content = valid_users.join("\n");
     if !content.is_empty() {
         file.write_all(content.as_bytes())?;
-        file.write_all(b"\n")?; // Add final newline
+        file.write_all(b"\n")?;
     }
     file.flush()?;
     Ok(())

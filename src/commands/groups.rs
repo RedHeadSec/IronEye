@@ -1,4 +1,4 @@
-// src/commands/groups.rs
+use crate::bofhound;
 use crate::help::add_terminal_spacing;
 use crate::ldap::LdapConfig;
 use chrono::Local;
@@ -6,24 +6,20 @@ use ldap3::adapters::{Adapter, EntriesOnly, PagedResults};
 use ldap3::{Scope, SearchEntry};
 use std::collections::HashSet;
 use std::error::Error;
-use std::fs::File;
-use std::io::Write;
 
 pub fn query_groups(
-    config: &mut LdapConfig,
+    ldap: &mut ldap3::LdapConn,
+    search_base: &str,
+    _config: &LdapConfig,
     username: Option<&str>,
     export: bool,
 ) -> Result<(), Box<dyn Error>> {
-    let (mut ldap, search_base) = crate::ldap::ldap_connect(config)?;
-    let mut export_data = Vec::new();
-
     if let Some(user) = username {
         let adapters: Vec<Box<dyn Adapter<_, _>>> = vec![
             Box::new(EntriesOnly::new()),
-            Box::new(PagedResults::new(500)), // Set page size to 500
+            Box::new(PagedResults::new(500)),
         ];
 
-        // Paginated search for the user entry
         let mut search = ldap.streaming_search_with(
             adapters,
             &search_base,
@@ -41,30 +37,22 @@ pub fn query_groups(
         while let Some(entry) = search.next()? {
             user_entry = Some(SearchEntry::construct(entry));
         }
-        let _ = search.result().success()?; // Ensure search completes
+        let _ = search.result().success()?;
 
         if let Some(user_entry) = user_entry {
-            let header = format!("\nGroup Memberships for user: {}", user);
-            println!("{}", header);
+            println!("\nGroup Memberships for user: {}", user);
             println!(
                 "-------------------------------------------------------------------------------"
             );
 
-            if export {
-                export_data.push(header);
-                export_data.push("-------------------------------------------------------------------------------".to_string());
-            }
-
             let mut all_groups = HashSet::new();
 
-            // Add direct memberships
             if let Some(groups) = user_entry.attrs.get("memberOf") {
                 for group_dn in groups {
                     all_groups.insert(group_dn.clone());
                 }
             }
 
-            // Get primary group via objectSid
             if let (Some(primary_group_id), Some(object_sid)) = (
                 user_entry
                     .attrs
@@ -83,7 +71,7 @@ pub fn query_groups(
 
                         let adapters: Vec<Box<dyn Adapter<_, _>>> = vec![
                             Box::new(EntriesOnly::new()),
-                            Box::new(PagedResults::new(500)), // Enable paging
+                            Box::new(PagedResults::new(500)),
                         ];
 
                         let mut search = ldap.streaming_search_with(
@@ -104,23 +92,19 @@ pub fn query_groups(
                                 all_groups.insert(dn.clone());
                             }
                         }
-                        let _ = search.result().success()?; // Ensure search completes
+                        let _ = search.result().success()?;
                     }
                 }
             }
 
-            // Fetch and print group details with pagination
-            for group_dn in all_groups {
-                let adapters: Vec<Box<dyn Adapter<_, _>>> = vec![
-                    Box::new(EntriesOnly::new()),
-                    Box::new(PagedResults::new(500)),
-                ];
+            let mut group_entries = Vec::new();
 
-                let mut search = ldap.streaming_search_with(
-                    adapters,
-                    &search_base,
-                    Scope::Subtree,
-                    &format!("(distinguishedName={})", group_dn),
+            for group_dn in &all_groups {
+                let filter = format!("(distinguishedName={})", group_dn);
+                let entries = bofhound::query_with_security_descriptor(
+                    ldap,
+                    search_base,
+                    &filter,
                     vec![
                         "sAMAccountName",
                         "description",
@@ -130,32 +114,27 @@ pub fn query_groups(
                     ],
                 )?;
 
-                while let Some(entry) = search.next()? {
-                    let group_entry = SearchEntry::construct(entry);
-                    let group_details = get_group_details_string(&group_entry);
-                    print!("{}", group_details);
-
-                    if export {
-                        export_data.push(group_details);
-                    }
+                for entry in entries {
+                    print!("{}", get_group_details_string(&entry));
+                    group_entries.push(entry);
                 }
-                let _ = search.result().success()?; // Ensure search completes
+            }
+
+            if export {
+                let timestamp = Local::now().format("%Y%m%d_%H%M%S");
+                let filename = format!("user_groups_{}_{}.txt", user, timestamp);
+                bofhound::export_bofhound(&filename, &group_entries)?;
+                println!("\nExported group information to: {}", filename);
             }
         } else {
             println!("User not found");
         }
     } else {
-        // Query all groups in the domain using paging
-        let adapters: Vec<Box<dyn Adapter<_, _>>> = vec![
-            Box::new(EntriesOnly::new()),
-            Box::new(PagedResults::new(500)),
-        ];
-
-        let mut search = ldap.streaming_search_with(
-            adapters,
-            &search_base,
-            Scope::Subtree,
-            "(&(objectClass=group)(objectCategory=group))",
+        let filter = "(&(objectClass=group)(objectCategory=group))";
+        let entries = bofhound::query_with_security_descriptor(
+            ldap,
+            search_base,
+            filter,
             vec![
                 "sAMAccountName",
                 "description",
@@ -165,44 +144,19 @@ pub fn query_groups(
             ],
         )?;
 
-        let header = "\nAll Domain Groups:";
-        println!("{}", header);
+        println!("\nAll Domain Groups:");
         println!("-------------------------------------------------------------------------------");
 
+        for entry in &entries {
+            print!("{}", get_group_details_string(entry));
+        }
+
         if export {
-            export_data.push(header.to_string());
-            export_data.push(
-                "-------------------------------------------------------------------------------"
-                    .to_string(),
-            );
+            let timestamp = Local::now().format("%Y%m%d_%H%M%S");
+            let filename = format!("domain_groups_{}.txt", timestamp);
+            bofhound::export_bofhound(&filename, &entries)?;
+            println!("\nExported group information to: {}", filename);
         }
-
-        while let Some(entry) = search.next()? {
-            let group_entry = SearchEntry::construct(entry);
-            let group_details = get_group_details_string(&group_entry);
-
-            // Print to console
-            print!("{}", group_details);
-
-            // Add to export data if needed
-            if export {
-                export_data.push(group_details);
-            }
-        }
-        let _ = search.result().success()?; // Ensure search completes
-    }
-
-    // Export to file if requested
-    if export {
-        let timestamp = Local::now().format("%Y%m%d_%H%M%S");
-        let filename = format!("domain_groups_{}.txt", timestamp);
-
-        let mut file = File::create(&filename)?;
-        for line in export_data {
-            writeln!(file, "{}", line)?;
-        }
-
-        println!("\nExported group information to: {}", filename);
     }
 
     add_terminal_spacing(2);
@@ -276,7 +230,7 @@ fn get_group_type_string(group_type: i32) -> String {
 fn extract_base_sid(sid: &str) -> Option<String> {
     let parts: Vec<&str> = sid.rsplitn(2, '-').collect();
     if parts.len() == 2 {
-        Some(parts[1].to_string()) // Base SID without the last RID
+        Some(parts[1].to_string())
     } else {
         None
     }

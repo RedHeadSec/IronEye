@@ -1,13 +1,17 @@
+use crate::bofhound::export_bofhound;
 use crate::help::add_terminal_spacing;
 use crate::ldap::LdapConfig;
-use csv::Writer;
+use chrono::Local;
+use ldap3::adapters::{Adapter, EntriesOnly, PagedResults};
 use ldap3::{LdapConn, Scope, SearchEntry};
 use std::error::Error;
 
-pub fn get_organizational_units(config: &mut LdapConfig) -> Result<(), Box<dyn Error>> {
-    let (mut ldap, search_base) = crate::ldap::ldap_connect(config)?;
-
-    let entries = query_organizational_units(&mut ldap, &search_base)?;
+pub fn get_organizational_units(
+    ldap: &mut LdapConn,
+    search_base: &str,
+    _config: &LdapConfig,
+) -> Result<(), Box<dyn Error>> {
+    let entries = query_organizational_units(ldap, search_base)?;
 
     if entries.is_empty() {
         println!("No organizational units found.");
@@ -16,6 +20,8 @@ pub fn get_organizational_units(config: &mut LdapConfig) -> Result<(), Box<dyn E
 
     println!("\nOrganizational Units:");
     println!("---------------------");
+    println!("Found {} organizational units", entries.len());
+
     for (i, entry) in entries.iter().enumerate() {
         let ou_name = entry
             .attrs
@@ -27,7 +33,11 @@ pub fn get_organizational_units(config: &mut LdapConfig) -> Result<(), Box<dyn E
             .get("description")
             .and_then(|v| v.get(0))
             .map_or("None", |v| v);
-        let distinguished_name = &entry.dn;
+        let distinguished_name = entry
+            .attrs
+            .get("distinguishedName")
+            .and_then(|v| v.get(0))
+            .map_or("Unknown", |v| v);
 
         println!(
             "[{}] OU Name: {}\n    Description: {}\n    Distinguished Name: {}",
@@ -38,50 +48,32 @@ pub fn get_organizational_units(config: &mut LdapConfig) -> Result<(), Box<dyn E
         );
     }
 
-    export_organizational_units_to_csv(&entries)?;
-
-    println!("\nOrganizational Units query completed successfully. Results saved to 'organizational_units.csv'.");
-    Ok(())
-}
-
-fn export_organizational_units_to_csv(entries: &[SearchEntry]) -> Result<(), Box<dyn Error>> {
-    let mut wtr = Writer::from_path("organizational_units.csv")?;
-
-    wtr.write_record(&["OU Name", "Description", "Distinguished Name"])?;
-
-    for entry in entries {
-        let ou_name = entry
-            .attrs
-            .get("ou")
-            .and_then(|v| v.get(0))
-            .map_or("Unknown", |v| v);
-        let description = entry
-            .attrs
-            .get("description")
-            .and_then(|v| v.get(0))
-            .map_or("None", |v| v);
-        let distinguished_name = &entry.dn;
-
-        wtr.write_record(&[ou_name, description, distinguished_name])?;
-    }
-
-    wtr.flush()?;
+    export_bofhound("organizational_units.txt", &entries)?;
+    let date = Local::now().format("%Y%m%d").to_string();
+    println!("\nOrganizational Units query completed successfully. Results saved to 'output_{}/ironeye_organizational_units.txt'.", date);
     add_terminal_spacing(1);
     Ok(())
 }
 
-// Helper function to perform the LDAP search for organizational units
 fn query_organizational_units(
     ldap: &mut LdapConn,
     search_base: &str,
 ) -> Result<Vec<SearchEntry>, Box<dyn Error>> {
     let filter = "(objectClass=organizationalUnit)";
-    let result = ldap.search(
-        search_base,
-        Scope::Subtree,
-        filter,
-        vec!["ou", "description"],
-    )?;
-    let (entries, _) = result.success()?;
-    Ok(entries.into_iter().map(SearchEntry::construct).collect())
+
+    let adapters: Vec<Box<dyn Adapter<_, _>>> = vec![
+        Box::new(EntriesOnly::new()),
+        Box::new(PagedResults::new(500)),
+    ];
+
+    let mut search =
+        ldap.streaming_search_with(adapters, search_base, Scope::Subtree, filter, vec!["*"])?;
+
+    let mut entries = Vec::new();
+    while let Some(entry) = search.next()? {
+        entries.push(SearchEntry::construct(entry));
+    }
+    let _ = search.result().success()?;
+
+    Ok(entries)
 }
