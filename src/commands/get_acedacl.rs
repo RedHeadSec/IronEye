@@ -497,17 +497,39 @@ fn search_objects(
     };
     
     let mut all_entries = Vec::new();
-    let mut cookie: Option<Vec<u8>> = None;
-    let page_size = 500;
+    let mut cookie: Vec<u8> = vec![];
+    let page_size: i32 = 500;
     
     loop {
-        let paging_control = if let Some(ref c) = cookie {
-            ldap3::controls::PagedResults::new(page_size, c.clone())
+        let mut paging_val = vec![0x30]; // SEQUENCE
+        
+        let size_bytes = page_size.to_be_bytes();
+        let mut size_encoded = vec![0x02]; // INTEGER tag
+        if page_size <= 127 {
+            size_encoded.push(0x01);
+            size_encoded.push(size_bytes[3]);
         } else {
-            ldap3::controls::PagedResults::new(page_size, vec![])
+            size_encoded.push(0x02);
+            size_encoded.push(size_bytes[2]);
+            size_encoded.push(size_bytes[3]);
+        }
+        
+        let mut cookie_encoded = vec![0x04]; // OCTET STRING tag
+        cookie_encoded.push(cookie.len() as u8);
+        cookie_encoded.extend_from_slice(&cookie);
+        
+        let content_len = size_encoded.len() + cookie_encoded.len();
+        paging_val.push(content_len as u8);
+        paging_val.extend(size_encoded);
+        paging_val.extend(cookie_encoded);
+        
+        let paging_control = RawControl {
+            ctype: "1.2.840.113556.1.4.319".to_string(),
+            crit: false,
+            val: Some(paging_val),
         };
         
-        ldap.with_controls(vec![sd_control.clone(), paging_control.into()]);
+        ldap.with_controls(vec![sd_control.clone(), paging_control]);
         
         let (results, res) = ldap.search(
             search_base,
@@ -526,22 +548,26 @@ fn search_objects(
             all_entries.push(SearchEntry::construct(entry));
         }
         
-        cookie = None;
-        for control in res.ctrls {
-            if control.ctype == "1.2.840.113556.1.4.319" {
-                if let Some(val) = control.val {
-                    if val.len() > 4 {
-                        let cookie_len = val[val.len() - 2] as usize;
-                        if cookie_len > 0 && val.len() >= cookie_len {
-                            cookie = Some(val[val.len() - cookie_len..].to_vec());
+        cookie.clear();
+        for ctrl in res.ctrls {
+            match ctrl {
+                ldap3::controls::Control(_, raw) => {
+                    if raw.ctype == "1.2.840.113556.1.4.319" {
+                        if let Some(val) = raw.val {
+                            if val.len() > 4 {
+                                let cookie_start = val.len().saturating_sub(val[val.len() - 2] as usize);
+                                if cookie_start < val.len() {
+                                    cookie = val[cookie_start..].to_vec();
+                                }
+                            }
                         }
+                        break;
                     }
                 }
-                break;
             }
         }
         
-        if cookie.is_none() {
+        if cookie.is_empty() {
             break;
         }
     }
