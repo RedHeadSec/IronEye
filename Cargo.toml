@@ -1,36 +1,47 @@
 [package]
 name = "ironeye"
-version = "0.2.0"
+version = "2.1.0"
 edition = "2021"
 
+[lib]
+name = "ironeye"
+path = "src/lib.rs"
+
 [dependencies]
-cerbero = { path = "./src/kerberos/cerbero" }
 dialoguer = "0.10"
 clap = { version = "4.3", features = ["derive"] }
 chrono = "0.4"
 rustyline = "11.0.0"
+rusqlite = { version = "0.31", features = ["bundled"] }
 base64 = "0.21" 
-hex = "0.4" 
-lazy_static = "1.4.0"
+hex = "0.4"
 rand = "0.8"
 fastrand = "2.0"
-url = "2.5.0"
-tokio = { version = "1", features = ["full"] }
-csv = "1.1"
-x509-parser = "0.12"
-krb5-sys = "0.3.0"
-socks = "0.3.4"
-log = "0.4"
 byteorder = "1.4"
+log = "0.4"
+env_logger = "0.10"
+csv = "1.1"
 uuid = { version = "1", features = ["v4"] }
+x509-parser = "0.12"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+tokio = { version = "1", features = ["rt", "net"] }
 
+# Kerberos attack library
+cerbero_lib = { path = "lib/cerbero_lib", default-features = false }
+kerberos_crypto = "0.3"
+ms_pac = "0.0.4"
 
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
 
 [target.'cfg(target_os = "linux")'.dependencies]
 ldap3 = { version = "0.11", features = ["gssapi"] }
+native-tls = "0.2"
 
 [target.'cfg(target_os = "windows")'.dependencies]
 ldap3 = { version = "0.11", features = ["gssapi"] }
+native-tls = "0.2"
 
 [target.'cfg(target_os = "macos")'.dependencies]
-ldap3 = { version = "0.11" } # No gssapi feature for macOS
+ldap3 = { version = "0.11" }
