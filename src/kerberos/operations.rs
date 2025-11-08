@@ -40,11 +40,11 @@ impl KerberosOps {
     ) -> CerberoResult<()> {
         let user = KrbUser::new(username.to_string(), self.domain.clone());
         let user_key = Key::Secret(password.to_string());
-        
+
         if std::path::Path::new(output_file).exists() {
             std::fs::remove_file(output_file).ok();
         }
-        
+
         let mut vault = FileVault::new(output_file.to_string());
         let kdccomm = self.create_kdccomm();
 
@@ -76,11 +76,11 @@ impl KerberosOps {
     ) -> CerberoResult<()> {
         let user = KrbUser::new(username.to_string(), self.domain.clone());
         let user_key = Key::Secret(password.to_string());
-        
+
         if std::path::Path::new(output_file).exists() {
             std::fs::remove_file(output_file).ok();
         }
-        
+
         let mut vault = FileVault::new(output_file.to_string());
         let kdccomm = self.create_kdccomm();
 
@@ -103,7 +103,6 @@ impl KerberosOps {
         Ok(())
     }
 
-    
     pub fn ask_tgt_hash(
         &mut self,
         username: &str,
@@ -112,7 +111,6 @@ impl KerberosOps {
     ) -> CerberoResult<()> {
         let user = KrbUser::new(username.to_string(), self.domain.clone());
 
-        
         let user_key =
             if hash.len() == 32 {
                 let key_bytes = hex::decode(hash)
@@ -161,7 +159,6 @@ impl KerberosOps {
         Ok(())
     }
 
-    
     pub fn ask_s4u2self(
         &mut self,
         username: &str,
@@ -172,11 +169,11 @@ impl KerberosOps {
         let user = KrbUser::new(username.to_string(), self.domain.clone());
         let imp_user = KrbUser::new(impersonate_user.to_string(), self.domain.clone());
         let user_key = Key::Secret(password.to_string());
-        
+
         if std::path::Path::new(output_file).exists() {
             std::fs::remove_file(output_file).ok();
         }
-        
+
         let mut vault = FileVault::new(output_file.to_string());
         let kdccomm = self.create_kdccomm();
 
@@ -202,7 +199,6 @@ impl KerberosOps {
         Ok(())
     }
 
-    
     pub fn ask_s4u2proxy(
         &mut self,
         username: &str,
@@ -214,11 +210,11 @@ impl KerberosOps {
         let user = KrbUser::new(username.to_string(), self.domain.clone());
         let imp_user = KrbUser::new(impersonate_user.to_string(), self.domain.clone());
         let user_key = Key::Secret(password.to_string());
-        
+
         if std::path::Path::new(output_file).exists() {
             std::fs::remove_file(output_file).ok();
         }
-        
+
         let mut vault = FileVault::new(output_file.to_string());
         let kdccomm = self.create_kdccomm();
 
@@ -244,7 +240,6 @@ impl KerberosOps {
         Ok(())
     }
 
-    
     pub fn asreproast_user(
         &self,
         username: &str,
@@ -263,7 +258,6 @@ impl KerberosOps {
         Ok(hash)
     }
 
-    
     pub fn asreproast_file(
         &self,
         userfile: &str,
@@ -315,7 +309,6 @@ impl KerberosOps {
         Ok(hashes)
     }
 
-    
     pub fn kerberoast_service(
         &mut self,
         username: &str,
@@ -343,7 +336,6 @@ impl KerberosOps {
             &mut kdccomm_mut,
         )?;
 
-        
         let hash = cerbero_lib::tgs_to_crack_string(
             target_user,
             &service_name.to_string(),
@@ -355,7 +347,6 @@ impl KerberosOps {
         Ok(hash)
     }
 
-    
     pub fn kerberoast_file(
         &mut self,
         username: &str,
@@ -384,7 +375,6 @@ impl KerberosOps {
         let user = KrbUser::new(username.to_string(), self.domain.clone());
         let user_key = Key::Secret(password.to_string());
 
-        
         let channel = new_krb_channel(self.dc_ip, self.protocol);
         let tgt = cerbero_lib::request_tgt(user.clone(), &user_key, None, None, &*channel)?;
 

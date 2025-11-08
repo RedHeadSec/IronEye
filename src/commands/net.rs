@@ -28,7 +28,10 @@ pub fn net_command(
     command_type: &str,
     name: &str,
 ) -> Result<(), Box<dyn Error>> {
-    debug_log(1, &format!("Executing net {} command for: {}", command_type, name));
+    debug_log(
+        1,
+        &format!("Executing net {} command for: {}", command_type, name),
+    );
     match command_type.to_lowercase().as_str() {
         "user" => net_user(ldap, search_base, config, name),
         "group" => net_group(ldap, search_base, config, name),
@@ -47,7 +50,7 @@ fn net_user(
         username
     );
     debug_log(2, &format!("Searching for user with filter: {}", filter));
-    
+
     let result = ldap.search(
         &search_base,
         Scope::Subtree,
@@ -345,7 +348,7 @@ fn net_group(
         escape_filter(groupname)
     );
     debug_log(2, &format!("Searching for group with filter: {}", filter));
-    
+
     let adapters: Vec<Box<dyn Adapter<_, _>>> = vec![
         Box::new(EntriesOnly::new()),
         Box::new(PagedResults::new(500)),
@@ -380,7 +383,7 @@ fn net_group(
         group_entry = Some(SearchEntry::construct(entry));
     }
     let _ = search.result().success()?;
-    
+
     if group_entry.is_some() {
         debug_log(1, &format!("Found group: {}", groupname));
     } else {

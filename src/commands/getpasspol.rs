@@ -13,8 +13,14 @@ pub fn get_password_policy(
     debug::debug_log(1, "Querying password policies...");
     let domain_policy_entries = query_password_policy(ldap, search_base)?;
     let fgpp_entries = query_fine_grained_policies(ldap, search_base)?;
-    debug::debug_log(2, format!("Found {} domain policies and {} fine-grained policies", 
-        domain_policy_entries.len(), fgpp_entries.len()));
+    debug::debug_log(
+        2,
+        format!(
+            "Found {} domain policies and {} fine-grained policies",
+            domain_policy_entries.len(),
+            fgpp_entries.len()
+        ),
+    );
 
     // Display Default Domain Password Policy
     for entry in domain_policy_entries {
@@ -46,7 +52,13 @@ fn query_password_policy(
     search_base: &str,
 ) -> Result<Vec<SearchEntry>, Box<dyn Error>> {
     let search_filter = "(&(objectClass=domainDNS)(objectCategory=domain))";
-    debug::debug_log(2, format!("Querying domain password policy with filter: {}", search_filter));
+    debug::debug_log(
+        2,
+        format!(
+            "Querying domain password policy with filter: {}",
+            search_filter
+        ),
+    );
 
     let result = ldap.search(
         search_base,
@@ -108,7 +120,10 @@ fn query_fine_grained_policies(
         entries.push(SearchEntry::construct(entry));
     }
     let _ = search.result().success()?;
-    debug::debug_log(3, format!("Retrieved {} fine-grained policy entries", entries.len()));
+    debug::debug_log(
+        3,
+        format!("Retrieved {} fine-grained policy entries", entries.len()),
+    );
 
     Ok(entries)
 }

@@ -25,7 +25,10 @@ pub fn get_ace_dacl(
     println!("[*] Starting ACE/DACL analysis for: {}", username);
 
     let user_filter = format!("(sAMAccountName={})", username);
-    debug_log(2, &format!("Searching for user with filter: {}", user_filter));
+    debug_log(
+        2,
+        &format!("Searching for user with filter: {}", user_filter),
+    );
     let user_entries = search_objects(ldap, search_base, &user_filter)?;
 
     if user_entries.is_empty() {
@@ -67,7 +70,10 @@ pub fn get_ace_dacl(
     relevant_sids.insert(user_sid.clone());
 
     if let Some(member_of) = user_entry.attrs.get("memberOf") {
-        debug_log(2, &format!("Resolving {} group memberships", member_of.len()));
+        debug_log(
+            2,
+            &format!("Resolving {} group memberships", member_of.len()),
+        );
         println!("\n[*] Resolving group memberships...");
         for group_dn in member_of {
             let group_filter = format!("(distinguishedName={})", group_dn);
@@ -77,7 +83,8 @@ pub fn get_ace_dacl(
                         if let Some(sid_bytes) = sid_values.first() {
                             if let Ok(sid) = LdapSid::from_bytes(sid_bytes) {
                                 let sid_str = sid.to_string();
-                                let resolved_name = resolver.resolve(&sid_str, ldap, search_base)?;
+                                let resolved_name =
+                                    resolver.resolve(&sid_str, ldap, search_base)?;
                                 println!("    [+] {} -> {}", group_dn, resolved_name);
                                 relevant_sids.insert(sid_str);
                             }
@@ -88,7 +95,10 @@ pub fn get_ace_dacl(
         }
     }
 
-    debug_log(1, &format!("Checking permissions for {} SIDs", relevant_sids.len()));
+    debug_log(
+        1,
+        &format!("Checking permissions for {} SIDs", relevant_sids.len()),
+    );
     println!(
         "\n[*] Checking permissions for {} SIDs (user + groups)\n",
         relevant_sids.len()
@@ -115,18 +125,25 @@ pub fn get_ace_dacl(
             Ok(e) => {
                 debug_log(3, &format!("Retrieved {} entries for filter", e.len()));
                 e
-            },
+            }
             Err(e) => {
                 debug_log(2, &format!("Search failed: {}", e));
                 continue;
-            },
+            }
         };
 
-        debug_log(3, &format!("Processing {} entries for type: {}", entries.len(), obj_type));
+        debug_log(
+            3,
+            &format!(
+                "Processing {} entries for type: {}",
+                entries.len(),
+                obj_type
+            ),
+        );
         let mut sd_found = 0;
         let mut sd_parsed = 0;
         let mut perms_found = 0;
-        
+
         for entry in entries.iter().take(500) {
             let dn = entry
                 .attrs
@@ -139,7 +156,7 @@ pub fn get_ace_dacl(
             if !has_sd {
                 debug_log(4, &format!("No SD attribute for: {}", dn));
             }
-            
+
             if let Some(sd_values) = entry.bin_attrs.get("nTSecurityDescriptor") {
                 sd_found += 1;
                 if let Some(sd_bytes) = sd_values.first() {
@@ -160,11 +177,19 @@ pub fn get_ace_dacl(
                 }
             }
         }
-        debug_log(3, &format!("Type {}: SD found: {}, parsed: {}, matching perms: {}", 
-            obj_type, sd_found, sd_parsed, perms_found));
+        debug_log(
+            3,
+            &format!(
+                "Type {}: SD found: {}, parsed: {}, matching perms: {}",
+                obj_type, sd_found, sd_parsed, perms_found
+            ),
+        );
     }
 
-    debug_log(1, &format!("Found {} total permissions", permissions.total_count()));
+    debug_log(
+        1,
+        &format!("Found {} total permissions", permissions.total_count()),
+    );
     resolver.resolve_batch(&permissions.get_all_sids(), ldap, search_base)?;
 
     permissions.print(&resolver);
@@ -185,7 +210,10 @@ pub fn get_ace_dacl(
         debug_log(1, &format!("Exporting results to: {}", filename));
         permissions.export_bofhound(&filename, ldap, search_base)?;
         let date = Local::now().format("%Y%m%d").to_string();
-        println!("\nResults exported to: output_{}/ironeye_{}", date, filename);
+        println!(
+            "\nResults exported to: output_{}/ironeye_{}",
+            date, filename
+        );
     }
 
     add_terminal_spacing(2);
@@ -396,7 +424,10 @@ impl PermissionCollector {
         }
 
         println!("\n=== SUMMARY ===");
-        println!("Total interesting permissions found: {}", self.total_count());
+        println!(
+            "Total interesting permissions found: {}",
+            self.total_count()
+        );
     }
 
     fn print_category(&self, title: &str, entries: &[(String, String)], resolver: &SidResolver) {
@@ -406,7 +437,10 @@ impl PermissionCollector {
         } else {
             let mut grouped: HashMap<String, Vec<String>> = HashMap::new();
             for (dn, sid) in entries {
-                grouped.entry(sid.clone()).or_insert_with(Vec::new).push(dn.clone());
+                grouped
+                    .entry(sid.clone())
+                    .or_insert_with(Vec::new)
+                    .push(dn.clone());
             }
 
             for (sid, dns) in grouped {
@@ -456,11 +490,11 @@ impl PermissionCollector {
         let date = Local::now().format("%Y%m%d").to_string();
         let output_dir = format!("output_{}", date);
         fs::create_dir_all(&output_dir)?;
-        
+
         let prefixed_filename = format!("ironeye_{}", filename);
         let mut path = PathBuf::from(&output_dir);
         path.push(prefixed_filename);
-        
+
         let mut file = File::create(&path)?;
         let separator = "--------------------";
 
@@ -488,21 +522,24 @@ fn search_objects(
     search_base: &str,
     filter: &str,
 ) -> Result<Vec<SearchEntry>, Box<dyn Error>> {
-    debug_log(3, &format!("LDAP search - Base: {}, Filter: {}", search_base, filter));
-    
+    debug_log(
+        3,
+        &format!("LDAP search - Base: {}, Filter: {}", search_base, filter),
+    );
+
     let sd_control = RawControl {
         ctype: "1.2.840.113556.1.4.801".to_string(),
         crit: false,
         val: Some(vec![0x30, 0x03, 0x02, 0x01, 0x07]),
     };
-    
+
     let mut all_entries = Vec::new();
     let mut cookie: Vec<u8> = vec![];
     let page_size: i32 = 500;
-    
+
     loop {
         let mut paging_val = vec![0x30]; // SEQUENCE
-        
+
         let size_bytes = page_size.to_be_bytes();
         let mut size_encoded = vec![0x02]; // INTEGER tag
         if page_size <= 127 {
@@ -513,41 +550,43 @@ fn search_objects(
             size_encoded.push(size_bytes[2]);
             size_encoded.push(size_bytes[3]);
         }
-        
+
         let mut cookie_encoded = vec![0x04]; // OCTET STRING tag
         cookie_encoded.push(cookie.len() as u8);
         cookie_encoded.extend_from_slice(&cookie);
-        
+
         let content_len = size_encoded.len() + cookie_encoded.len();
         paging_val.push(content_len as u8);
         paging_val.extend(size_encoded);
         paging_val.extend(cookie_encoded);
-        
+
         let paging_control = RawControl {
             ctype: "1.2.840.113556.1.4.319".to_string(),
             crit: false,
             val: Some(paging_val),
         };
-        
+
         ldap.with_controls(vec![sd_control.clone(), paging_control]);
-        
-        let (results, res) = ldap.search(
-            search_base,
-            Scope::Subtree,
-            filter,
-            vec![
-                "sAMAccountName",
-                "distinguishedName",
-                "memberOf",
-                "objectSid",
-                "nTSecurityDescriptor",
-            ],
-        )?.success()?;
-        
+
+        let (results, res) = ldap
+            .search(
+                search_base,
+                Scope::Subtree,
+                filter,
+                vec![
+                    "sAMAccountName",
+                    "distinguishedName",
+                    "memberOf",
+                    "objectSid",
+                    "nTSecurityDescriptor",
+                ],
+            )?
+            .success()?;
+
         for entry in results {
             all_entries.push(SearchEntry::construct(entry));
         }
-        
+
         cookie.clear();
         for ctrl in res.ctrls {
             match ctrl {
@@ -555,7 +594,8 @@ fn search_objects(
                     if raw.ctype == "1.2.840.113556.1.4.319" {
                         if let Some(val) = raw.val {
                             if val.len() > 4 {
-                                let cookie_start = val.len().saturating_sub(val[val.len() - 2] as usize);
+                                let cookie_start =
+                                    val.len().saturating_sub(val[val.len() - 2] as usize);
                                 if cookie_start < val.len() {
                                     cookie = val[cookie_start..].to_vec();
                                 }
@@ -566,12 +606,12 @@ fn search_objects(
                 }
             }
         }
-        
+
         if cookie.is_empty() {
             break;
         }
     }
-    
+
     debug_log(3, &format!("Retrieved {} entries", all_entries.len()));
     Ok(all_entries)
 }
@@ -587,35 +627,101 @@ impl SidResolver {
 
         cache.insert("S-1-1-0".to_string(), "Everyone".to_string());
         cache.insert("S-1-5-11".to_string(), "Authenticated Users".to_string());
-        cache.insert("S-1-5-32-544".to_string(), "BUILTIN\\Administrators".to_string());
+        cache.insert(
+            "S-1-5-32-544".to_string(),
+            "BUILTIN\\Administrators".to_string(),
+        );
         cache.insert("S-1-5-32-545".to_string(), "BUILTIN\\Users".to_string());
         cache.insert("S-1-5-32-546".to_string(), "BUILTIN\\Guests".to_string());
-        cache.insert("S-1-5-32-548".to_string(), "BUILTIN\\Account Operators".to_string());
-        cache.insert("S-1-5-32-549".to_string(), "BUILTIN\\Server Operators".to_string());
-        cache.insert("S-1-5-32-550".to_string(), "BUILTIN\\Print Operators".to_string());
-        cache.insert("S-1-5-32-551".to_string(), "BUILTIN\\Backup Operators".to_string());
+        cache.insert(
+            "S-1-5-32-548".to_string(),
+            "BUILTIN\\Account Operators".to_string(),
+        );
+        cache.insert(
+            "S-1-5-32-549".to_string(),
+            "BUILTIN\\Server Operators".to_string(),
+        );
+        cache.insert(
+            "S-1-5-32-550".to_string(),
+            "BUILTIN\\Print Operators".to_string(),
+        );
+        cache.insert(
+            "S-1-5-32-551".to_string(),
+            "BUILTIN\\Backup Operators".to_string(),
+        );
         cache.insert("S-1-5-7".to_string(), "ANONYMOUS LOGON".to_string());
         cache.insert("S-1-3-0".to_string(), "CREATOR OWNER".to_string());
         cache.insert("S-1-5-18".to_string(), "NT AUTHORITY\\SYSTEM".to_string());
         cache.insert("S-1-5-10".to_string(), "NT AUTHORITY\\SELF".to_string());
 
-        cache.insert(format!("{}-500", domain_sid), format!("{}\\Administrator", domain_name));
-        cache.insert(format!("{}-501", domain_sid), format!("{}\\Guest", domain_name));
-        cache.insert(format!("{}-502", domain_sid), format!("{}\\krbtgt", domain_name));
-        cache.insert(format!("{}-512", domain_sid), format!("{}\\Domain Admins", domain_name));
-        cache.insert(format!("{}-513", domain_sid), format!("{}\\Domain Users", domain_name));
-        cache.insert(format!("{}-514", domain_sid), format!("{}\\Domain Guests", domain_name));
-        cache.insert(format!("{}-515", domain_sid), format!("{}\\Domain Computers", domain_name));
-        cache.insert(format!("{}-516", domain_sid), format!("{}\\Domain Controllers", domain_name));
-        cache.insert(format!("{}-517", domain_sid), format!("{}\\Cert Publishers", domain_name));
-        cache.insert(format!("{}-518", domain_sid), format!("{}\\Schema Admins", domain_name));
-        cache.insert(format!("{}-519", domain_sid), format!("{}\\Enterprise Admins", domain_name));
-        cache.insert(format!("{}-520", domain_sid), format!("{}\\Group Policy Creator Owners", domain_name));
-        cache.insert(format!("{}-521", domain_sid), format!("{}\\Read-only Domain Controllers", domain_name));
-        cache.insert(format!("{}-522", domain_sid), format!("{}\\Cloneable Domain Controllers", domain_name));
-        cache.insert(format!("{}-525", domain_sid), format!("{}\\Protected Users", domain_name));
-        cache.insert(format!("{}-526", domain_sid), format!("{}\\Key Admins", domain_name));
-        cache.insert(format!("{}-527", domain_sid), format!("{}\\Enterprise Key Admins", domain_name));
+        cache.insert(
+            format!("{}-500", domain_sid),
+            format!("{}\\Administrator", domain_name),
+        );
+        cache.insert(
+            format!("{}-501", domain_sid),
+            format!("{}\\Guest", domain_name),
+        );
+        cache.insert(
+            format!("{}-502", domain_sid),
+            format!("{}\\krbtgt", domain_name),
+        );
+        cache.insert(
+            format!("{}-512", domain_sid),
+            format!("{}\\Domain Admins", domain_name),
+        );
+        cache.insert(
+            format!("{}-513", domain_sid),
+            format!("{}\\Domain Users", domain_name),
+        );
+        cache.insert(
+            format!("{}-514", domain_sid),
+            format!("{}\\Domain Guests", domain_name),
+        );
+        cache.insert(
+            format!("{}-515", domain_sid),
+            format!("{}\\Domain Computers", domain_name),
+        );
+        cache.insert(
+            format!("{}-516", domain_sid),
+            format!("{}\\Domain Controllers", domain_name),
+        );
+        cache.insert(
+            format!("{}-517", domain_sid),
+            format!("{}\\Cert Publishers", domain_name),
+        );
+        cache.insert(
+            format!("{}-518", domain_sid),
+            format!("{}\\Schema Admins", domain_name),
+        );
+        cache.insert(
+            format!("{}-519", domain_sid),
+            format!("{}\\Enterprise Admins", domain_name),
+        );
+        cache.insert(
+            format!("{}-520", domain_sid),
+            format!("{}\\Group Policy Creator Owners", domain_name),
+        );
+        cache.insert(
+            format!("{}-521", domain_sid),
+            format!("{}\\Read-only Domain Controllers", domain_name),
+        );
+        cache.insert(
+            format!("{}-522", domain_sid),
+            format!("{}\\Cloneable Domain Controllers", domain_name),
+        );
+        cache.insert(
+            format!("{}-525", domain_sid),
+            format!("{}\\Protected Users", domain_name),
+        );
+        cache.insert(
+            format!("{}-526", domain_sid),
+            format!("{}\\Key Admins", domain_name),
+        );
+        cache.insert(
+            format!("{}-527", domain_sid),
+            format!("{}\\Enterprise Key Admins", domain_name),
+        );
 
         Self {
             cache,
@@ -684,8 +790,12 @@ fn sid_to_bytes(sid: &str) -> Result<Vec<u8>, String> {
         return Err("Invalid SID format".to_string());
     }
 
-    let revision: u8 = parts[1].parse().map_err(|_| "Invalid revision".to_string())?;
-    let identifier_authority: u64 = parts[2].parse().map_err(|_| "Invalid authority".to_string())?;
+    let revision: u8 = parts[1]
+        .parse()
+        .map_err(|_| "Invalid revision".to_string())?;
+    let identifier_authority: u64 = parts[2]
+        .parse()
+        .map_err(|_| "Invalid authority".to_string())?;
 
     let mut bytes = Vec::new();
     bytes.push(revision);
@@ -693,7 +803,9 @@ fn sid_to_bytes(sid: &str) -> Result<Vec<u8>, String> {
     bytes.extend_from_slice(&identifier_authority.to_be_bytes()[2..]);
 
     for i in 3..parts.len() {
-        let sub_auth: u32 = parts[i].parse().map_err(|_| "Invalid sub authority".to_string())?;
+        let sub_auth: u32 = parts[i]
+            .parse()
+            .map_err(|_| "Invalid sub authority".to_string())?;
         bytes.extend_from_slice(&sub_auth.to_le_bytes());
     }
 

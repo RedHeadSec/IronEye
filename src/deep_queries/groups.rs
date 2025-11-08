@@ -32,7 +32,10 @@ pub fn get_groups(
 
     export_bofhound("domain_groups_export.txt", &entries)?;
     let date = Local::now().format("%Y%m%d").to_string();
-    println!("\nExported group information to: output_{}/ironeye_domain_groups_export.txt", date);
+    println!(
+        "\nExported group information to: output_{}/ironeye_domain_groups_export.txt",
+        date
+    );
     add_terminal_spacing(2);
     Ok(())
 }
@@ -42,8 +45,14 @@ fn query_all_groups(
     search_base: &str,
 ) -> Result<Vec<SearchEntry>, Box<dyn Error>> {
     let search_filter = "(&(objectClass=group)(objectCategory=group))";
-    debug::debug_log(2, format!("Executing group query - Base: {}, Filter: {}", search_base, search_filter));
-    
+    debug::debug_log(
+        2,
+        format!(
+            "Executing group query - Base: {}, Filter: {}",
+            search_base, search_filter
+        ),
+    );
+
     let adapters: Vec<Box<dyn Adapter<_, _>>> = vec![
         Box::new(EntriesOnly::new()),
         Box::new(PagedResults::new(500)),
@@ -62,7 +71,10 @@ fn query_all_groups(
         entries.push(SearchEntry::construct(entry));
     }
     let _ = search.result().success()?;
-    debug::debug_log(3, format!("Retrieved {} raw group entries from LDAP", entries.len()));
+    debug::debug_log(
+        3,
+        format!("Retrieved {} raw group entries from LDAP", entries.len()),
+    );
 
     Ok(entries)
 }

@@ -55,7 +55,13 @@ fn query_computers(
     search_base: &str,
 ) -> Result<Vec<SearchEntry>, Box<dyn Error>> {
     let search_filter = "(objectClass=computer)";
-    debug::debug_log(2, format!("Executing computer query - Base: {}, Filter: {}", search_base, search_filter));
+    debug::debug_log(
+        2,
+        format!(
+            "Executing computer query - Base: {}, Filter: {}",
+            search_base, search_filter
+        ),
+    );
 
     let adapters: Vec<Box<dyn Adapter<_, _>>> = vec![
         Box::new(EntriesOnly::new()),
@@ -75,7 +81,10 @@ fn query_computers(
         entries.push(SearchEntry::construct(entry));
     }
     let _ = search.result().success()?;
-    debug::debug_log(3, format!("Retrieved {} raw computer entries from LDAP", entries.len()));
+    debug::debug_log(
+        3,
+        format!("Retrieved {} raw computer entries from LDAP", entries.len()),
+    );
 
     Ok(entries)
 }

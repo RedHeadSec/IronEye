@@ -1,4 +1,5 @@
 use crate::debug;
+use crate::history::HistoryEditor;
 use crate::ldap::LdapConfig;
 use base64::engine::general_purpose::STANDARD as BASE64;
 use base64::Engine;
@@ -6,7 +7,6 @@ use chrono::Local;
 use ldap3::adapters::{Adapter, EntriesOnly, PagedResults};
 use ldap3::controls::RawControl;
 use ldap3::{LdapConn, Scope, SearchEntry};
-use crate::history::HistoryEditor;
 use std::error::Error;
 use std::fs::{self, File};
 use std::io::{self, Write};
@@ -17,8 +17,7 @@ pub fn custom_ldap_query(
     search_base: &str,
     _config: &LdapConfig,
 ) -> Result<(), Box<dyn Error>> {
-    let mut rl = HistoryEditor::new("ldapquery")
-        .map_err(|e| Box::new(e) as Box<dyn Error>)?;
+    let mut rl = HistoryEditor::new("ldapquery").map_err(|e| Box::new(e) as Box<dyn Error>)?;
 
     println!("\nCustom LDAP Query (Bofhound Compatible)");
     println!("-------------------");
@@ -66,7 +65,10 @@ pub fn custom_ldap_query(
                 println!("\nRunning query with filter: {}", filter);
                 println!("Returning attributes: {:?}", attributes);
                 debug::debug_log(1, format!("Custom LDAP query - Filter: {}", filter));
-                debug::debug_log(2, format!("Custom LDAP query - Attributes: {:?}", attributes));
+                debug::debug_log(
+                    2,
+                    format!("Custom LDAP query - Attributes: {:?}", attributes),
+                );
 
                 if let Err(e) = validate_filter(&filter) {
                     println!("Invalid filter: {}", e);
@@ -74,7 +76,10 @@ pub fn custom_ldap_query(
                 }
 
                 let entries = ldap_query(ldap, &search_base, &filter, &attributes)?;
-                debug::debug_log(2, format!("Custom LDAP query returned {} entries", entries.len()));
+                debug::debug_log(
+                    2,
+                    format!("Custom LDAP query returned {} entries", entries.len()),
+                );
 
                 let non_empty_entries: Vec<_> = entries
                     .into_iter()
@@ -106,9 +111,15 @@ fn ldap_query(
     filter: &str,
     attributes: &[&str],
 ) -> Result<Vec<SearchEntry>, Box<dyn Error>> {
-    debug::debug_log(2, format!("Executing LDAP search - Base: {}, Filter: {}", search_base, filter));
+    debug::debug_log(
+        2,
+        format!(
+            "Executing LDAP search - Base: {}, Filter: {}",
+            search_base, filter
+        ),
+    );
     debug::debug_log(3, format!("LDAP search attributes: {:?}", attributes));
-    
+
     ldap.with_controls(vec![RawControl {
         ctype: String::from("1.2.840.113556.1.4.801"),
         crit: false,
@@ -129,7 +140,10 @@ fn ldap_query(
     }
 
     let _ = search.result().success()?;
-    debug::debug_log(3, format!("Retrieved {} raw entries from LDAP", entries.len()));
+    debug::debug_log(
+        3,
+        format!("Retrieved {} raw entries from LDAP", entries.len()),
+    );
 
     Ok(entries)
 }
@@ -176,7 +190,7 @@ fn generate_output_path(filter: &str) -> Result<PathBuf, Box<dyn Error>> {
     let date = Local::now().format("%Y%m%d").to_string();
     let output_dir = format!("output_{}", date);
     fs::create_dir_all(&output_dir)?;
-    
+
     let timestamp = Local::now().format("%Y%m%d_%H%M%S");
     let mut safe_part = filter
         .chars()
@@ -190,7 +204,7 @@ fn generate_output_path(filter: &str) -> Result<PathBuf, Box<dyn Error>> {
     let filename = format!("ironeye_ldap_query_{}_{}.txt", safe_part, timestamp);
     let mut path = PathBuf::from(&output_dir);
     path.push(filename);
-    
+
     Ok(path)
 }
 
@@ -211,5 +225,3 @@ fn validate_filter(filter: &str) -> Result<(), String> {
     }
     Ok(())
 }
-
-

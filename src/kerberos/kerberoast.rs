@@ -16,7 +16,6 @@ pub fn run_kerberoast() -> Result<(), Box<dyn std::error::Error>> {
 
     let dc_ip_str: String = Input::new().with_prompt("DC IP").interact_text()?;
 
-    
     let dc_ip: IpAddr = dc_ip_str.parse().map_err(|_| {
         std::io::Error::new(
             std::io::ErrorKind::InvalidInput,

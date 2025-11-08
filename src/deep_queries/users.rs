@@ -32,7 +32,10 @@ pub fn get_users(
             .and_then(|v| v.get(0))
             .map_or("", String::as_str);
 
-        println!("sAMAccountName: {}, displayName: {}", sam_account_name, display_name);
+        println!(
+            "sAMAccountName: {}, displayName: {}",
+            sam_account_name, display_name
+        );
     }
 
     export_bofhound("users_export.txt", &entries)?;
@@ -44,7 +47,13 @@ pub fn get_users(
 
 fn query_users(ldap: &mut LdapConn, search_base: &str) -> Result<Vec<SearchEntry>, Box<dyn Error>> {
     let search_filter = "(objectClass=user)";
-    debug::debug_log(2, format!("Executing user query - Base: {}, Filter: {}", search_base, search_filter));
+    debug::debug_log(
+        2,
+        format!(
+            "Executing user query - Base: {}, Filter: {}",
+            search_base, search_filter
+        ),
+    );
     debug::debug_log(3, "Retrieving all attributes (*)");
 
     let adapters: Vec<Box<dyn Adapter<_, _>>> = vec![
@@ -65,7 +74,10 @@ fn query_users(ldap: &mut LdapConn, search_base: &str) -> Result<Vec<SearchEntry
         entries.push(SearchEntry::construct(entry));
     }
     let _ = search.result().success()?;
-    debug::debug_log(3, format!("Retrieved {} raw user entries from LDAP", entries.len()));
+    debug::debug_log(
+        3,
+        format!("Retrieved {} raw user entries from LDAP", entries.len()),
+    );
 
     Ok(entries)
 }

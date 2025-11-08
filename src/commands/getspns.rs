@@ -98,7 +98,10 @@ pub fn get_service_principal_names(
 
 fn query_spns(ldap: &mut LdapConn, search_base: &str) -> Result<Vec<SearchEntry>, Box<dyn Error>> {
     let search_filter = "(&(servicePrincipalName=*)(!(objectClass=computer)))";
-    debug::debug_log(2, format!("Executing LDAP search with filter: {}", search_filter));
+    debug::debug_log(
+        2,
+        format!("Executing LDAP search with filter: {}", search_filter),
+    );
 
     let adapters: Vec<Box<dyn Adapter<_, _>>> = vec![
         Box::new(EntriesOnly::new()),
@@ -124,7 +127,10 @@ fn query_spns(ldap: &mut LdapConn, search_base: &str) -> Result<Vec<SearchEntry>
         entries.push(SearchEntry::construct(entry));
     }
     let _ = search.result().success()?;
-    debug::debug_log(3, format!("Retrieved {} SPN entries from LDAP", entries.len()));
+    debug::debug_log(
+        3,
+        format!("Retrieved {} SPN entries from LDAP", entries.len()),
+    );
 
     Ok(entries)
 }

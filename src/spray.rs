@@ -70,7 +70,7 @@ struct RateLimiter {
 impl SprayConfig {
     pub fn from_args(args: &SprayArgs) -> Result<Self, Box<dyn Error>> {
         debug::set_debug_level(args.verbose);
-        
+
         let threads = if args.threads > MAX_CONCURRENT_THREADS {
             println!(
                 "[!] Warning: Thread count capped at {}",
@@ -138,8 +138,15 @@ impl RateLimiter {
 
             if elapsed < total_delay {
                 let sleep_time = total_delay - elapsed;
-                debug::debug_log(2, format!("Rate limiting: sleeping for {:?} ({}s base + {}ms jitter)",
-                    sleep_time, self.delay_ms / 1000, jitter.as_millis()));
+                debug::debug_log(
+                    2,
+                    format!(
+                        "Rate limiting: sleeping for {:?} ({}s base + {}ms jitter)",
+                        sleep_time,
+                        self.delay_ms / 1000,
+                        jitter.as_millis()
+                    ),
+                );
                 drop(last); // Release the lock before sleeping
                 thread::sleep(sleep_time);
                 let mut last = self.last_attempt.lock().unwrap();
@@ -194,7 +201,10 @@ fn display_spray_banner(config: &SprayConfig) {
     println!("{}[*] Domain: {}", timestamp_prefix, config.domain);
 }
 
-fn test_domain_controllers(dc_list: &[String], use_ldaps: bool) -> Result<Vec<String>, Box<dyn Error>> {
+fn test_domain_controllers(
+    dc_list: &[String],
+    use_ldaps: bool,
+) -> Result<Vec<String>, Box<dyn Error>> {
     println!("[*] Testing connectivity to Domain Controllers...");
     let mut reachable_dcs = Vec::new();
 
@@ -221,7 +231,11 @@ fn test_domain_controllers(dc_list: &[String], use_ldaps: bool) -> Result<Vec<St
                 .iter()
                 .map(|(proto, ok)| format!("{}: {}", proto, if *ok { "✓" } else { "✗" }))
                 .collect();
-            println!("[+] Successfully connected to {} ({})", dc, status.join(", "));
+            println!(
+                "[+] Successfully connected to {} ({})",
+                dc,
+                status.join(", ")
+            );
             reachable_dcs.push(dc.clone());
         } else {
             println!("[-] Failed to connect to {}", dc);
@@ -288,7 +302,8 @@ fn print_spray_info(config: &SprayConfig, users: &[String], passwords: &[String]
     );
     println!(
         "{}[*] Debug Level: {}",
-        timestamp_prefix, debug::get_debug_level()
+        timestamp_prefix,
+        debug::get_debug_level()
     );
     if config.timestamp_format {
         println!("{}[*] Timestamps enabled", timestamp_prefix);
@@ -322,7 +337,13 @@ fn execute_spray(
             passwords.len()
         );
 
-        debug::debug_log(1, format!("Using {}s delay + {}ms jitter between attempts...", config.delay, config.jitter));
+        debug::debug_log(
+            1,
+            format!(
+                "Using {}s delay + {}ms jitter between attempts...",
+                config.delay, config.jitter
+            ),
+        );
 
         let mut work_items = Vec::new();
         for (user_index, username) in users.iter().enumerate() {
@@ -345,7 +366,13 @@ fn execute_spray(
 
         completed_attempts += users.len();
 
-        debug::debug_log(1, format!("Completed password '{}' ({}/{} total attempts)", password, completed_attempts, total_combinations));
+        debug::debug_log(
+            1,
+            format!(
+                "Completed password '{}' ({}/{} total attempts)",
+                password, completed_attempts, total_combinations
+            ),
+        );
 
         if early_stop {
             println!(
@@ -394,8 +421,13 @@ fn process_password_batch_realtime(
     let mut handles = Vec::new();
     let actual_threads = std::cmp::min(config.threads as usize, 50);
 
-    debug::debug_log(2, format!("Starting {} worker threads with {}s delay + {}ms jitter",
-        actual_threads, config.delay, config.jitter));
+    debug::debug_log(
+        2,
+        format!(
+            "Starting {} worker threads with {}s delay + {}ms jitter",
+            actual_threads, config.delay, config.jitter
+        ),
+    );
 
     for thread_id in 0..actual_threads {
         let work_rx_clone = Arc::clone(&work_rx);
@@ -413,8 +445,13 @@ fn process_password_batch_realtime(
                 // Apply global rate limiting before each attempt
                 rate_limiter_clone.wait_if_needed();
 
-                debug::debug_log(2, format!("Thread {} processing {}@{}",
-                    thread_id, work_item.username, config_clone.domain));
+                debug::debug_log(
+                    2,
+                    format!(
+                        "Thread {} processing {}@{}",
+                        thread_id, work_item.username, config_clone.domain
+                    ),
+                );
 
                 let result = attempt_login(
                     &config_clone,
@@ -466,7 +503,13 @@ fn process_password_batch_realtime(
         handle.join().unwrap_or(());
     }
 
-    debug::debug_log(2, format!("All worker threads completed, {} results processed", results_processed));
+    debug::debug_log(
+        2,
+        format!(
+            "All worker threads completed, {} results processed",
+            results_processed
+        ),
+    );
 
     Ok(early_stop)
 }
@@ -484,13 +527,7 @@ fn attempt_login(
     };
 
     for (protocol, _port) in protocols {
-        match try_ldap_login(
-            protocol,
-            dc,
-            username,
-            password,
-            &config.domain,
-        ) {
+        match try_ldap_login(protocol, dc, username, password, &config.domain) {
             Ok(result) => return (result, None),
             Err(e) => {
                 if protocol == "ldap" {
@@ -518,16 +555,30 @@ fn try_ldap_login(
 ) -> Result<LoginResult, Box<dyn Error>> {
     let ldap_url = format!("{}://{}", protocol, dc);
 
-    debug::debug_log(2, format!("Attempting {} bind → {}@{} on {}",
-        protocol.to_uppercase(), username, domain, ldap_url));
+    debug::debug_log(
+        2,
+        format!(
+            "Attempting {} bind → {}@{} on {}",
+            protocol.to_uppercase(),
+            username,
+            domain,
+            ldap_url
+        ),
+    );
 
     let settings = LdapConnSettings::new()
         .set_conn_timeout(Duration::from_secs(CONNECTION_TIMEOUT_SECS))
         .set_no_tls_verify(true);
 
     let mut ldap = LdapConn::with_settings(settings, &ldap_url).map_err(|e| {
-        debug::debug_log(2, format!("Failed to create {} connection: {}",
-            protocol.to_uppercase(), e));
+        debug::debug_log(
+            2,
+            format!(
+                "Failed to create {} connection: {}",
+                protocol.to_uppercase(),
+                e
+            ),
+        );
         e
     })?;
 
@@ -536,19 +587,39 @@ fn try_ldap_login(
     match ldap.simple_bind(&bind_dn, password) {
         Ok(ldap_result) => match ldap_result.success() {
             Ok(_) => {
-                debug::debug_log(2, format!("Successful {} bind for {}",
-                    protocol.to_uppercase(), bind_dn));
+                debug::debug_log(
+                    2,
+                    format!(
+                        "Successful {} bind for {}",
+                        protocol.to_uppercase(),
+                        bind_dn
+                    ),
+                );
                 Ok(LoginResult::Success)
             }
             Err(e) => {
-                debug::debug_log(2, format!("{} bind failed for {}: {:?}",
-                    protocol.to_uppercase(), bind_dn, e));
+                debug::debug_log(
+                    2,
+                    format!(
+                        "{} bind failed for {}: {:?}",
+                        protocol.to_uppercase(),
+                        bind_dn,
+                        e
+                    ),
+                );
                 Ok(parse_ldap_error(&e))
             }
         },
         Err(e) => {
-            debug::debug_log(2, format!("{} connection failed for {}: {:?}",
-                protocol.to_uppercase(), bind_dn, e));
+            debug::debug_log(
+                2,
+                format!(
+                    "{} connection failed for {}: {:?}",
+                    protocol.to_uppercase(),
+                    bind_dn,
+                    e
+                ),
+            );
             Err(Box::new(e))
         }
     }
@@ -605,8 +676,13 @@ fn process_attempt_result_realtime(
             println!("{}    Server: {}", timestamp_prefix, attempt.dc);
         }
         LoginResult::InvalidCredentials => {
-            debug::debug_log(1, format!("Failed login: {}@{} with password: {}",
-                attempt.username, attempt.domain, attempt.password));
+            debug::debug_log(
+                1,
+                format!(
+                    "Failed login: {}@{} with password: {}",
+                    attempt.username, attempt.domain, attempt.password
+                ),
+            );
 
             // Track failed attempts for lockout protection
             let should_warn = {
@@ -674,8 +750,13 @@ fn process_attempt_result_realtime(
             );
         }
         LoginResult::ConnectionError(msg) | LoginResult::AuthenticationError(msg) => {
-            debug::debug_log(1, format!("Connection error: {}@{} on {} - {}",
-                attempt.username, attempt.domain, attempt.dc, msg));
+            debug::debug_log(
+                1,
+                format!(
+                    "Connection error: {}@{} on {} - {}",
+                    attempt.username, attempt.domain, attempt.dc, msg
+                ),
+            );
         }
     }
 
@@ -689,8 +770,13 @@ fn should_stop_spray(
     let state_guard = state.lock().unwrap();
 
     if state_guard.successful_attempts > 0 {
-        debug::debug_log(1, format!("{} successful authentication(s) found so far",
-            state_guard.successful_attempts));
+        debug::debug_log(
+            1,
+            format!(
+                "{} successful authentication(s) found so far",
+                state_guard.successful_attempts
+            ),
+        );
     }
 
     Ok(false)

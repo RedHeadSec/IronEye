@@ -1,9 +1,9 @@
 use crate::deep_queries::{computers, delegations, groups, ou, pki, sccm, subnets, trusts, users};
 use crate::help::add_terminal_spacing;
+use crate::history::HistoryEditor;
 use crate::kerberos::hash;
 use crate::ldap::LdapConfig;
 use dialoguer::{theme::ColorfulTheme, Input, Select};
-use crate::history::HistoryEditor;
 
 pub struct ConnectionArgs {
     pub username: String,
@@ -274,7 +274,7 @@ pub fn get_cerbero_args() -> CerberoCommand {
             return CerberoCommand::None;
         }
     };
-    
+
     println!("\nEnter command:");
 
     match rl.readline("> ") {
@@ -921,7 +921,6 @@ fn parse_asreproast_command(input: &str) -> CerberoCommand {
         return CerberoCommand::None;
     }
 
-    
     if !matches!(format.as_str(), "hashcat" | "john") {
         eprintln!("[!] Invalid format. Use 'hashcat' or 'john'");
         return CerberoCommand::None;
@@ -972,7 +971,6 @@ fn parse_kerberoast_command(input: &str) -> CerberoCommand {
         return CerberoCommand::None;
     }
 
-    
     if !matches!(format.as_str(), "hashcat" | "john") {
         eprintln!("[!] Invalid format. Use 'hashcat' or 'john'");
         return CerberoCommand::None;
@@ -1010,7 +1008,6 @@ fn parse_convert_command(input: &str) -> CerberoCommand {
         return CerberoCommand::None;
     }
 
-    
     if let Some(ref f) = format {
         if !matches!(f.as_str(), "krb" | "ccache" | "auto") {
             eprintln!("[!] Invalid format. Use 'krb', 'ccache', or 'auto'");

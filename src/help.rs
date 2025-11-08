@@ -1,5 +1,5 @@
-use chrono::Local;
 use crate::history::HistoryEditor;
+use chrono::Local;
 use std::error::Error;
 use std::fs::File;
 use std::io::{self, BufRead, BufReader, Write};
@@ -70,10 +70,16 @@ pub fn add_terminal_spacing(lines: u8) {
 }
 
 pub enum PromptFormat {
-    UserAtDomain, // user@domain.local [ldap(s)://ip]
+    UserAtDomain,
 }
 
-pub fn get_prompt_string(username: &str, domain: &str, use_ssl: bool, use_kerberos: bool, server: &str) -> String {
+pub fn get_prompt_string(
+    username: &str,
+    domain: &str,
+    use_ssl: bool,
+    use_kerberos: bool,
+    server: &str,
+) -> String {
     let protocol = match (use_ssl, use_kerberos) {
         (true, true) => "ldaps+krb",
         (true, false) => "ldaps",
@@ -121,10 +127,10 @@ pub fn read_input_with_history(prompt: &str, module: &str) -> Option<String> {
             return Some(read_input(prompt));
         }
     };
-    
+
     print!("{}", prompt);
     let _ = io::stdout().flush();
-    
+
     match editor.readline("") {
         Ok(input) => Some(input.trim().to_string()),
         Err(_) => None,

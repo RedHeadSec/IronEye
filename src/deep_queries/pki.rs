@@ -47,11 +47,17 @@ pub fn get_pki_info(
     display_certificate_authorities(&cas);
 
     let (templates, template_entries) = get_certificate_templates(ldap, &config_base)?;
-    debug_log(1, &format!("Found {} certificate templates", templates.len()));
+    debug_log(
+        1,
+        &format!("Found {} certificate templates", templates.len()),
+    );
     let _interesting_templates = display_certificate_templates(&templates);
 
     let pki_containers = get_pki_containers(ldap, &config_base)?;
-    debug_log(2, &format!("Retrieved {} PKI container entries", pki_containers.len()));
+    debug_log(
+        2,
+        &format!("Retrieved {} PKI container entries", pki_containers.len()),
+    );
 
     println!("\nWould you like to save the results to a file? (y/N): ");
     let mut input = String::new();
@@ -63,10 +69,17 @@ pub fn get_pki_info(
         all_entries.extend(enrollment_entries);
         all_entries.extend(template_entries);
         all_entries.extend(pki_containers);
-        
+
         let timestamp = Local::now().format("%Y%m%d_%H%M%S");
         let filename = format!("pki_export_{}.txt", timestamp);
-        debug_log(1, &format!("Exporting {} PKI entries to: {}", all_entries.len(), filename));
+        debug_log(
+            1,
+            &format!(
+                "Exporting {} PKI entries to: {}",
+                all_entries.len(),
+                filename
+            ),
+        );
         export_bofhound(&filename, &all_entries)?;
         let date = Local::now().format("%Y%m%d").to_string();
         println!("Results saved to: output_{}/ironeye_{}", date, filename);
@@ -79,7 +92,14 @@ pub fn get_pki_info(
 fn get_certificate_authorities(
     ldap: &mut LdapConn,
     config_base: &str,
-) -> Result<(Vec<CertificateAuthority>, Vec<SearchEntry>, Vec<SearchEntry>), Box<dyn Error>> {
+) -> Result<
+    (
+        Vec<CertificateAuthority>,
+        Vec<SearchEntry>,
+        Vec<SearchEntry>,
+    ),
+    Box<dyn Error>,
+> {
     let ca_base = format!(
         "CN=Certification Authorities,CN=Public Key Services,CN=Services,{}",
         config_base
@@ -98,14 +118,20 @@ fn get_certificate_authorities(
         vec!["cn", "dNSHostName", "cACertificate"],
     )?;
     debug_log(3, &format!("Retrieved {} CA entries", ca_entries.len()));
-    
+
     let enrollment_entries = query_with_security_descriptor(
         ldap,
         &enrollment_base,
         "(objectClass=*)",
         vec!["cn", "dNSHostName"],
     )?;
-    debug_log(3, &format!("Retrieved {} enrollment service entries", enrollment_entries.len()));
+    debug_log(
+        3,
+        &format!(
+            "Retrieved {} enrollment service entries",
+            enrollment_entries.len()
+        ),
+    );
 
     let mut cas = Vec::new();
     let mut raw_entries = Vec::new();
@@ -160,7 +186,7 @@ fn get_certificate_authorities(
             validity_start,
             validity_end,
         });
-        
+
         raw_entries.push(entry);
     }
 
@@ -192,7 +218,13 @@ fn get_certificate_templates(
             "msPKI-Template-Schema-Version",
         ],
     )?;
-    debug_log(3, &format!("Retrieved {} certificate template entries", raw_entries.len()));
+    debug_log(
+        3,
+        &format!(
+            "Retrieved {} certificate template entries",
+            raw_entries.len()
+        ),
+    );
 
     let mut templates = Vec::new();
 
@@ -248,7 +280,6 @@ fn get_certificate_templates(
         let allows_san = (name_flags & 0x1) != 0; // ENROLLEE_SUPPLIES_SUBJECT
         let enrollee_supplies_subject = (name_flags & 0x1) != 0;
 
-        
         let any_purpose_eku = eku_oids
             .map_or(false, |oids| oids.contains(&"2.5.29.37.0".to_string()))
             || app_policy_oids.map_or(false, |oids| oids.contains(&"2.5.29.37.0".to_string()));
@@ -441,19 +472,16 @@ fn get_pki_containers(
     ldap: &mut LdapConn,
     config_base: &str,
 ) -> Result<Vec<SearchEntry>, Box<dyn Error>> {
-    let pki_base = format!(
-        "CN=Public Key Services,CN=Services,{}",
-        config_base
-    );
+    let pki_base = format!("CN=Public Key Services,CN=Services,{}", config_base);
     debug_log(2, &format!("Querying PKI containers base: {}", pki_base));
-    
+
     let pki_entries = query_with_security_descriptor(
         ldap,
         &pki_base,
         "(|(objectClass=certificationAuthority)(objectClass=pKIEnrollmentService)(objectClass=container))",
         vec!["*"],
     )?;
-    
+
     Ok(pki_entries)
 }
 

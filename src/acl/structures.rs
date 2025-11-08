@@ -35,7 +35,9 @@ impl SecurityDescriptor {
         let mut offset_sacl = [0u8; 4];
         let mut offset_dacl = [0u8; 4];
 
-        cursor.read_exact(&mut revision).map_err(|e| e.to_string())?;
+        cursor
+            .read_exact(&mut revision)
+            .map_err(|e| e.to_string())?;
         cursor.read_exact(&mut sbz1).map_err(|e| e.to_string())?;
         cursor.read_exact(&mut control).map_err(|e| e.to_string())?;
         cursor

@@ -57,7 +57,7 @@ const CMD_OPTIONS: &[&str] = &[
 
 fn main() {
     println!("{}", LOGO);
-    
+
     let debug_level = debug::get_debug_level();
     if debug_level > 0 {
         kerberos::set_cerbero_verbosity(debug_level);
@@ -103,9 +103,12 @@ fn handle_connect() {
         Err(e) => {
             let error_msg = e.to_string();
             eprintln!("[!] Failed to connect to LDAP server: {}", e);
-            
-            
-            if ldap_config.secure_ldaps && (error_msg.contains("TLS") || error_msg.contains("tls") || error_msg.contains("EOF during handshake")) {
+
+            if ldap_config.secure_ldaps
+                && (error_msg.contains("TLS")
+                    || error_msg.contains("tls")
+                    || error_msg.contains("EOF during handshake"))
+            {
                 eprintln!("[!] Try without -s flag or use Kerberos auth");
             } else if ldap_config.kerberos {
                 eprintln!("[!] Kerberos auth failed. Obtain a TGT first: ask-tgt -u <user> -p <pass> -d {} -i <dc>", ldap_config.domain);
@@ -144,11 +147,9 @@ fn run_command_menu(
         let result = match cmd_selection {
             0 => handle_get_sid_guid(&mut ldap, &search_base, ldap_config),
             1 => handle_from_sid_guid(&mut ldap, &search_base, ldap_config),
-            2 => commands::getspns::get_service_principal_names(
-                &mut ldap,
-                &search_base,
-                ldap_config,
-            ),
+            2 => {
+                commands::getspns::get_service_principal_names(&mut ldap, &search_base, ldap_config)
+            }
             3 => handle_get_acedacl(&mut ldap, &search_base, ldap_config),
             4 => commands::maq::get_machine_account_quota(&mut ldap, &search_base, ldap_config),
             5 => handle_net_commands(&mut ldap, &search_base, ldap_config),
@@ -170,7 +171,7 @@ fn run_command_menu(
 
             if is_connection_error(&error_msg) {
                 eprintln!("\n[!] Session expired or connection lost");
-                
+
                 let reconnect = Confirm::with_theme(&ColorfulTheme::default())
                     .with_prompt("Reconnect to LDAP server?")
                     .default(true)
@@ -188,22 +189,45 @@ fn run_command_menu(
                                 .default(true)
                                 .interact()
                                 .unwrap_or(false);
-                            
+
                             if retry {
                                 let retry_result = match cmd_selection {
                                     0 => handle_get_sid_guid(&mut ldap, &search_base, ldap_config),
                                     1 => handle_from_sid_guid(&mut ldap, &search_base, ldap_config),
-                                    2 => commands::getspns::get_service_principal_names(&mut ldap, &search_base, ldap_config),
+                                    2 => commands::getspns::get_service_principal_names(
+                                        &mut ldap,
+                                        &search_base,
+                                        ldap_config,
+                                    ),
                                     3 => handle_get_acedacl(&mut ldap, &search_base, ldap_config),
-                                    4 => commands::maq::get_machine_account_quota(&mut ldap, &search_base, ldap_config),
+                                    4 => commands::maq::get_machine_account_quota(
+                                        &mut ldap,
+                                        &search_base,
+                                        ldap_config,
+                                    ),
                                     5 => handle_net_commands(&mut ldap, &search_base, ldap_config),
-                                    6 => commands::getpasspol::get_password_policy(&mut ldap, &search_base, ldap_config),
-                                    7 => run_nested_query_menu(&mut ldap, &search_base, ldap_config).map_err(|e| e.into()),
-                                    8 => commands::customldap::custom_ldap_query(&mut ldap, &search_base, ldap_config),
-                                    9 => commands::actions::run_actions_menu(&mut ldap, &search_base, ldap_config),
+                                    6 => commands::getpasspol::get_password_policy(
+                                        &mut ldap,
+                                        &search_base,
+                                        ldap_config,
+                                    ),
+                                    7 => {
+                                        run_nested_query_menu(&mut ldap, &search_base, ldap_config)
+                                            .map_err(|e| e.into())
+                                    }
+                                    8 => commands::customldap::custom_ldap_query(
+                                        &mut ldap,
+                                        &search_base,
+                                        ldap_config,
+                                    ),
+                                    9 => commands::actions::run_actions_menu(
+                                        &mut ldap,
+                                        &search_base,
+                                        ldap_config,
+                                    ),
                                     _ => Ok(()),
                                 };
-                                
+
                                 if let Err(e) = retry_result {
                                     eprintln!("Error on retry: {}", e);
                                 }
@@ -299,14 +323,14 @@ fn handle_cerbero() {
     // Set cerbero_lib verbosity based on current debug level
     let debug_level = debug::get_debug_level();
     kerberos::set_cerbero_verbosity(debug_level);
-    
+
     // Show note about debug verbosity on first entry
     if debug_level == 0 {
         println!("\n[*] Note: For verbose Kerberos output, set Debug level in main menu before entering Cerberos.");
         println!("    Debug Settings → Level 1 (Info) or Level 2 (Debug) for detailed logging.");
         println!("    Restart IronEye to reset the debug level for Kerberos module.\n");
     }
-    
+
     match get_cerbero_args() {
         CerberoCommand::AskTgt {
             username,
@@ -346,7 +370,10 @@ fn handle_cerbero() {
             service,
             output,
         } => {
-            track_history("ask-tgs", &format!("{}@{} -> {}", username, domain, service));
+            track_history(
+                "ask-tgs",
+                &format!("{}@{} -> {}", username, domain, service),
+            );
             let ip: IpAddr = match dc_ip.parse() {
                 Ok(ip) => ip,
                 Err(_) => {
@@ -849,7 +876,7 @@ fn handle_krb5_config() {
 
 fn handle_history_management() {
     use ironeye::history::HistoryManager;
-    
+
     const HISTORY_OPTIONS: &[&str] = &[
         "View Recent Commands (All Modules)",
         "Search History",
@@ -883,7 +910,7 @@ fn handle_history_management() {
                 // View Recent Commands
                 let limit_str = read_input("Number of commands to show (default: 20): ");
                 let limit: usize = limit_str.parse().unwrap_or(20);
-                
+
                 match manager.get_all_recent(limit) {
                     Ok(entries) => {
                         if entries.is_empty() {
@@ -893,7 +920,8 @@ fn handle_history_management() {
                             for (module, command, timestamp) in entries {
                                 let dt = chrono::DateTime::from_timestamp(timestamp, 0)
                                     .unwrap_or_else(|| chrono::Utc::now());
-                                println!("[{}] [{}] {}", 
+                                println!(
+                                    "[{}] [{}] {}",
                                     dt.format("%Y-%m-%d %H:%M:%S"),
                                     module,
                                     command
@@ -917,7 +945,8 @@ fn handle_history_management() {
                                 for (module, command, timestamp) in results {
                                     let dt = chrono::DateTime::from_timestamp(timestamp, 0)
                                         .unwrap_or_else(|| chrono::Utc::now());
-                                    println!("[{}] [{}] {}", 
+                                    println!(
+                                        "[{}] [{}] {}",
                                         dt.format("%Y-%m-%d %H:%M:%S"),
                                         module,
                                         command
@@ -958,12 +987,12 @@ fn handle_history_management() {
                         .default(false)
                         .interact()
                     {
-                        Ok(true) => {
-                            match manager.clear_module(&module) {
-                                Ok(count) => println!("[+] Deleted {} entries from '{}'", count, module),
-                                Err(e) => eprintln!("[!] Error clearing module history: {}", e),
+                        Ok(true) => match manager.clear_module(&module) {
+                            Ok(count) => {
+                                println!("[+] Deleted {} entries from '{}'", count, module)
                             }
-                        }
+                            Err(e) => eprintln!("[!] Error clearing module history: {}", e),
+                        },
                         Ok(false) => println!("[*] Cancelled"),
                         Err(e) => eprintln!("[!] Error: {}", e),
                     }
@@ -976,12 +1005,10 @@ fn handle_history_management() {
                     .default(false)
                     .interact()
                 {
-                    Ok(true) => {
-                        match manager.cleanup_old(30) {
-                            Ok(count) => println!("[+] Deleted {} old entries", count),
-                            Err(e) => eprintln!("[!] Error cleaning up history: {}", e),
-                        }
-                    }
+                    Ok(true) => match manager.cleanup_old(30) {
+                        Ok(count) => println!("[+] Deleted {} old entries", count),
+                        Err(e) => eprintln!("[!] Error cleaning up history: {}", e),
+                    },
                     Ok(false) => println!("[*] Cancelled"),
                     Err(e) => eprintln!("[!] Error: {}", e),
                 }
@@ -994,7 +1021,7 @@ fn handle_history_management() {
                 } else {
                     filename
                 };
-                
+
                 match manager.export_to_file(&filename) {
                     Ok(count) => println!("[+] Exported {} entries to {}", count, filename),
                     Err(e) => eprintln!("[!] Error exporting history: {}", e),
@@ -1013,12 +1040,10 @@ fn handle_history_management() {
                             .default(false)
                             .interact()
                         {
-                            Ok(true) => {
-                                match manager.clear_all() {
-                                    Ok(count) => println!("[+] Deleted {} entries", count),
-                                    Err(e) => eprintln!("[!] Error clearing history: {}", e),
-                                }
-                            }
+                            Ok(true) => match manager.clear_all() {
+                                Ok(count) => println!("[+] Deleted {} entries", count),
+                                Err(e) => eprintln!("[!] Error clearing history: {}", e),
+                            },
                             Ok(false) => println!("[*] Cancelled"),
                             Err(e) => eprintln!("[!] Error: {}", e),
                         }
@@ -1115,19 +1140,21 @@ fn is_connection_error(error_msg: &str) -> bool {
         || error_msg.contains("timed out")
 }
 
-fn attempt_reconnect(ldap_config: &mut ldap::LdapConfig) -> Result<ldap3::LdapConn, Box<dyn std::error::Error>> {
+fn attempt_reconnect(
+    ldap_config: &mut ldap::LdapConfig,
+) -> Result<ldap3::LdapConn, Box<dyn std::error::Error>> {
     println!("[*] Attempting to reconnect...");
-    
+
     let mut attempts = 0;
     let max_attempts = 3;
-    
+
     while attempts < max_attempts {
         attempts += 1;
         if attempts > 1 {
             println!("[*] Reconnection attempt {} of {}", attempts, max_attempts);
             std::thread::sleep(std::time::Duration::from_secs(2));
         }
-        
+
         match ldap::ldap_connect(ldap_config) {
             Ok((conn, _)) => return Ok(conn),
             Err(e) => {
@@ -1139,7 +1166,7 @@ fn attempt_reconnect(ldap_config: &mut ldap::LdapConfig) -> Result<ldap3::LdapCo
             }
         }
     }
-    
+
     Err("Maximum reconnection attempts reached".into())
 }
 

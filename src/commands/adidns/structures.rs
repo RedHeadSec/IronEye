@@ -1,6 +1,4 @@
-
-
-use byteorder::{LittleEndian, WriteBytesExt, ReadBytesExt};
+use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
 use std::io::Cursor;
 
 #[derive(Debug, Clone)]
@@ -23,7 +21,7 @@ impl DnsRecord {
         if octets.len() != 4 {
             return Err("Invalid IP address format".into());
         }
-        
+
         let mut data = Vec::new();
         for octet in octets {
             data.push(octet.parse::<u8>()?);
@@ -31,9 +29,9 @@ impl DnsRecord {
 
         Ok(DnsRecord {
             data_length: data.len() as u16,
-            record_type: 1, 
+            record_type: 1,
             version: 5,
-            rank: 240, 
+            rank: 240,
             flags: 0,
             serial,
             ttl_seconds: 180,
@@ -63,7 +61,7 @@ impl DnsRecord {
 
     pub fn to_bytes(&self) -> Vec<u8> {
         let mut buf = Vec::new();
-        
+
         buf.write_u16::<LittleEndian>(self.data_length).unwrap();
         buf.write_u16::<LittleEndian>(self.record_type).unwrap();
         buf.write_u8(self.version).unwrap();
@@ -74,13 +72,13 @@ impl DnsRecord {
         buf.write_u32::<LittleEndian>(self.reserved).unwrap();
         buf.write_u32::<LittleEndian>(self.timestamp).unwrap();
         buf.extend_from_slice(&self.data);
-        
+
         buf
     }
 
     pub fn from_bytes(data: &[u8]) -> Result<Self, Box<dyn std::error::Error>> {
         let mut cursor = Cursor::new(data);
-        
+
         let data_length = cursor.read_u16::<LittleEndian>()?;
         let record_type = cursor.read_u16::<LittleEndian>()?;
         let version = cursor.read_u8()?;
@@ -90,10 +88,10 @@ impl DnsRecord {
         let ttl_seconds = cursor.read_u32::<LittleEndian>()?;
         let reserved = cursor.read_u32::<LittleEndian>()?;
         let timestamp = cursor.read_u32::<LittleEndian>()?;
-        
+
         let mut record_data = vec![0u8; data_length as usize];
         std::io::Read::read_exact(&mut cursor, &mut record_data)?;
-        
+
         Ok(DnsRecord {
             data_length,
             record_type,
@@ -109,7 +107,6 @@ impl DnsRecord {
     }
 }
 
-
 #[derive(Debug, Clone)]
 #[allow(dead_code)]
 pub struct DnsCountName {
@@ -123,42 +120,41 @@ impl DnsCountName {
     pub fn to_fqdn(&self) -> String {
         let mut labels = Vec::new();
         let mut index = 0;
-        
+
         for _ in 0..self.label_count {
             if index >= self.raw_name.len() {
                 break;
             }
-            
+
             let len = self.raw_name[index] as usize;
             index += 1;
-            
+
             if index + len > self.raw_name.len() {
                 break;
             }
-            
+
             let label = String::from_utf8_lossy(&self.raw_name[index..index + len]);
             labels.push(label.to_string());
             index += len;
         }
-        
-        labels.push(String::new()); 
+
+        labels.push(String::new());
         labels.join(".")
     }
 }
 
-
 pub mod record_types {
-    pub const ZERO: u16 = 0;      // Tombstone
-    pub const A: u16 = 1;          // A record
+    pub const ZERO: u16 = 0; // Tombstone
+    pub const A: u16 = 1; // A record
     #[allow(dead_code)]
-    pub const NS: u16 = 2;         // Name server
+    pub const NS: u16 = 2; // Name server
     #[allow(dead_code)]
-    pub const CNAME: u16 = 5;      // Canonical name
-    pub const SOA: u16 = 6;        // Start of authority
+    pub const CNAME: u16 = 5; // Canonical name
+    pub const SOA: u16 = 6; // Start of authority
     #[allow(dead_code)]
-    pub const SRV: u16 = 33;       // Service record
+    pub const SRV: u16 = 33; // Service record
     #[allow(dead_code)]
-    pub const AAAA: u16 = 28;      // IPv6 address
+    pub const AAAA: u16 = 28; // IPv6 address
 }
 
 pub fn get_record_type_name(record_type: u16) -> &'static str {
@@ -173,7 +169,6 @@ pub fn get_record_type_name(record_type: u16) -> &'static str {
         _ => "Unknown",
     }
 }
-
 
 pub fn format_a_record(data: &[u8]) -> String {
     if data.len() == 4 {

@@ -213,18 +213,16 @@ fn handle_reconnect_starttls(
     ldap_config: &mut LdapConfig,
 ) -> Result<(), Box<dyn std::error::Error>> {
     use crate::ldap;
-    
+
     #[cfg(target_os = "windows")]
     println!("[*] Reconnecting with secure connection (Kerberos over LDAP)...");
     #[cfg(target_os = "linux")]
     println!("[*] Reconnecting with secure connection (LDAPS)...");
-    
-    
+
     ldap_config.secure_ldaps = true;
-    
-    
+
     let _ = ldap.unbind();
-    
+
     match ldap::ldap_connect(ldap_config) {
         Ok((new_ldap, _)) => {
             *ldap = new_ldap;

@@ -33,7 +33,10 @@ pub fn run(args: &UserEnumArgs) -> Result<(), Box<dyn Error>> {
         output_file: args.output.clone(),
         port: DEFAULT_LDAP_PORT,
     };
-    debug::debug_log(2, format!("Target DC: {}, Base DN: {}", config.dc, config.base_dn));
+    debug::debug_log(
+        2,
+        format!("Target DC: {}, Base DN: {}", config.dc, config.base_dn),
+    );
     debug::debug_log(2, format!("Using {} threads", config.threads));
 
     if args.timestamp_format {
@@ -142,7 +145,6 @@ fn process_usernames_threaded(
         handles.push(handle);
     }
 
-    
     for handle in handles {
         if let Err(e) = handle.join() {
             eprintln!("Thread panicked: {:?}", e);
@@ -201,7 +203,10 @@ fn check_user_validity(conn: &mut LdapConn, username: &str) -> Result<bool, ldap
         "(&(NtVer=\\06\\00\\00\\00)(AAC=\\10\\00\\00\\00)(User={}))",
         username
     );
-    debug::debug_log(3, format!("Checking user: {} with LDAP ping filter", username));
+    debug::debug_log(
+        3,
+        format!("Checking user: {} with LDAP ping filter", username),
+    );
 
     let result = conn.search("", Scope::Base, &filter, vec!["NetLogon"])?;
 
@@ -246,9 +251,15 @@ fn update_progress(current: usize, total: usize) {
 }
 
 fn display_results(total_users: usize, valid_users: &[String]) {
-    debug::debug_log(1, format!("Enumeration complete: {} valid users found out of {}", 
-        valid_users.len(), total_users));
-    
+    debug::debug_log(
+        1,
+        format!(
+            "Enumeration complete: {} valid users found out of {}",
+            valid_users.len(),
+            total_users
+        ),
+    );
+
     let success_rate = if total_users > 0 {
         (valid_users.len() as f64 / total_users as f64) * 100.0
     } else {
@@ -259,7 +270,6 @@ fn display_results(total_users: usize, valid_users: &[String]) {
     println!("[+] Valid users found: {}", valid_users.len());
     println!("[+] Success rate: {:.2}%", success_rate);
 
-    
     if !valid_users.is_empty() {
         println!("\n[+] Valid users:");
         for user in valid_users {

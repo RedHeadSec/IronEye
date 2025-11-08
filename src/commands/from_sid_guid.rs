@@ -121,15 +121,14 @@ pub fn resolve_sid_guid(
         return Ok(Some(name.to_string()));
     }
 
-    
     let filter = if validate_sid(identifier) {
         debug::debug_log(2, format!("Searching by SID: {}", identifier));
-        format!("(objectSid={})", identifier) 
+        format!("(objectSid={})", identifier)
     } else if validate_guid(identifier) {
         debug::debug_log(2, format!("Searching by GUID: {}", identifier));
         let escaped_guid = format_guid_for_ldap(identifier);
         debug::debug_log(3, format!("Escaped GUID: {}", escaped_guid));
-        format!("(objectGUID={})", escaped_guid) 
+        format!("(objectGUID={})", escaped_guid)
     } else {
         return Err("Invalid SID or GUID format".into());
     };

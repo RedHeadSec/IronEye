@@ -1,8 +1,8 @@
 // ADIDNS Management Module
 
-mod structures;
 mod operations;
 mod serial;
+mod structures;
 mod zones;
 
 pub use operations::run_dns_menu;

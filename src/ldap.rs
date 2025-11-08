@@ -48,9 +48,7 @@ fn validate_kerberos_hostname(dc_ip: &str, domain: &str) -> Result<(), LdapError
     }
 
     if !dc_ip.contains('.') {
-        eprintln!(
-            "[!] Warning: Kerberos works best with FQDNs, not short hostnames."
-        );
+        eprintln!("[!] Warning: Kerberos works best with FQDNs, not short hostnames.");
         eprintln!("[!] Current value: {}", dc_ip);
         eprintln!("[!] If connection fails, use the full domain name instead.");
         eprintln!(
@@ -114,16 +112,16 @@ fn validate_and_prepare_ccache(
         config.username = ccache.default_principal.components[0].clone();
     }
 
-    let krb5_conf = generate_krb5_conf_from_ccache(&ccache, normalized_dc).map_err(|e| {
-        LdapError::Io {
+    let krb5_conf =
+        generate_krb5_conf_from_ccache(&ccache, normalized_dc).map_err(|e| LdapError::Io {
             source: std::io::Error::new(
                 std::io::ErrorKind::Other,
                 format!("Failed to generate krb5.conf: {}", e),
             ),
-        }
-    })?;
+        })?;
 
-    let krb5_conf_path = create_temp_krb5_conf(&krb5_conf).map_err(|e| LdapError::Io { source: e })?;
+    let krb5_conf_path =
+        create_temp_krb5_conf(&krb5_conf).map_err(|e| LdapError::Io { source: e })?;
 
     Ok((ccache_to_use, krb5_conf_path))
 }
@@ -142,7 +140,10 @@ fn perform_kerberos_bind(
     let original_krb5_config = set_krb5_config_env(&krb5_conf_path);
     let original_krb5ccname = set_krb5ccname_temp(&ccache_to_use);
 
-    debug::debug_log(1, format!("Attempting SASL GSSAPI bind to {}", normalized_dc));
+    debug::debug_log(
+        1,
+        format!("Attempting SASL GSSAPI bind to {}", normalized_dc),
+    );
     let bind_result = ldap.sasl_gssapi_bind(normalized_dc)?.success();
     debug::debug_log(1, "SASL GSSAPI bind successful");
 
@@ -155,10 +156,7 @@ fn perform_kerberos_bind(
     Ok(())
 }
 
-fn perform_simple_bind(
-    ldap: &mut LdapConn,
-    config: &LdapConfig,
-) -> Result<(), LdapError> {
+fn perform_simple_bind(ldap: &mut LdapConn, config: &LdapConfig) -> Result<(), LdapError> {
     let bind_dn = format!("{}@{}", config.username, config.domain);
     debug::debug_log(2, format!("Bind DN: {}", bind_dn));
     debug::debug_log(1, format!("Attempting simple bind as {}", bind_dn));
@@ -183,14 +181,9 @@ fn validate_connection(
 ) -> Result<(), LdapError> {
     debug::debug_log(2, format!("Search base DN: {}", search_base));
     debug::debug_log(2, format!("Querying base with filter: (objectClass=*)"));
-    
+
     let (results, _) = ldap
-        .search(
-            search_base,
-            Scope::Base,
-            "(objectClass=*)",
-            attributes,
-        )?
+        .search(search_base, Scope::Base, "(objectClass=*)", attributes)?
         .success()?;
 
     if results.is_empty() {
@@ -245,7 +238,7 @@ pub fn ldap_connect(config: &mut LdapConfig) -> Result<(LdapConn, String), LdapE
     } else {
         format!("ldap://{}", config.dc_ip.to_lowercase())
     };
-    
+
     debug::debug_log(1, format!("Connecting to LDAP: {}", ldap_url));
     let mut ldap = LdapConn::with_settings(settings, &ldap_url)?;
     debug::debug_log(1, "LDAP connection established");

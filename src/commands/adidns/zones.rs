@@ -1,14 +1,7 @@
 // DNS Zone Enumeration via LDAP
 
-use ldap3::{LdapConn, Scope, SearchEntry};
 use crate::debug::debug_log;
-
-
-
-
-
-
-
+use ldap3::{LdapConn, Scope, SearchEntry};
 
 pub fn query_dns_zones(
     ldap: &mut LdapConn,
@@ -16,12 +9,14 @@ pub fn query_dns_zones(
     forest: bool,
     legacy: bool,
 ) -> Result<Vec<String>, Box<dyn std::error::Error>> {
-    debug_log(2, format!("Querying DNS zones (forest={}, legacy={})", forest, legacy));
-    
+    debug_log(
+        2,
+        format!("Querying DNS zones (forest={}, legacy={})", forest, legacy),
+    );
+
     let dnsroot = if legacy {
         format!("CN=MicrosoftDNS,CN=System,{}", search_base)
     } else if forest {
-        
         let forest_root = get_forest_root(ldap)?;
         format!("CN=MicrosoftDNS,DC=ForestDnsZones,{}", forest_root)
     } else {
@@ -33,11 +28,11 @@ pub fn query_dns_zones(
 
     debug_log(3, format!("DNS root DN: {}", dnsroot));
     debug_log(3, format!("Search filter: {}", filter));
-    
+
     let (results, _) = ldap
         .search(&dnsroot, Scope::OneLevel, filter, attrs)?
         .success()?;
-    
+
     debug_log(2, format!("Found {} DNS zones", results.len()));
 
     let mut zones = Vec::new();
@@ -53,11 +48,9 @@ pub fn query_dns_zones(
     Ok(zones)
 }
 
-
 fn get_forest_root(ldap: &mut LdapConn) -> Result<String, Box<dyn std::error::Error>> {
     debug_log(3, "Querying rootDomainNamingContext from RootDSE");
-    
-    
+
     let (results, _) = ldap
         .search(
             "",
@@ -88,7 +81,10 @@ pub fn get_zone_dn(
     legacy: bool,
 ) -> Result<String, Box<dyn std::error::Error>> {
     if legacy {
-        Ok(format!("DC={},CN=MicrosoftDNS,CN=System,{}", zone, search_base))
+        Ok(format!(
+            "DC={},CN=MicrosoftDNS,CN=System,{}",
+            zone, search_base
+        ))
     } else if forest {
         let forest_root = get_forest_root(ldap)?;
         Ok(format!(
@@ -96,10 +92,12 @@ pub fn get_zone_dn(
             zone, forest_root
         ))
     } else {
-        Ok(format!("DC={},CN=MicrosoftDNS,DC=DomainDnsZones,{}", zone, search_base))
+        Ok(format!(
+            "DC={},CN=MicrosoftDNS,DC=DomainDnsZones,{}",
+            zone, search_base
+        ))
     }
 }
-
 
 #[allow(dead_code)]
 pub fn get_zone_type(dn: &str) -> &'static str {

@@ -10,18 +10,19 @@ pub fn generate_password(length: usize) -> String {
     let lowercase = b"abcdefghijklmnopqrstuvwxyz";
     let numbers = b"0123456789";
     let special = b"!@#$%^&*()_+-=[]{}|;:,.<>?";
-    
+
     let mut password = Vec::with_capacity(length);
     password.push(uppercase[rng.gen_range(0..uppercase.len())] as char);
     password.push(lowercase[rng.gen_range(0..lowercase.len())] as char);
     password.push(numbers[rng.gen_range(0..numbers.len())] as char);
     password.push(special[rng.gen_range(0..special.len())] as char);
-    
-    let all_chars = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!@#$%^&*()_+-=[]{}|;:,.<>?";
+
+    let all_chars =
+        b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!@#$%^&*()_+-=[]{}|;:,.<>?";
     for _ in 4..length {
         password.push(all_chars[rng.gen_range(0..all_chars.len())] as char);
     }
-    
+
     use rand::seq::SliceRandom;
     password.shuffle(&mut rng);
     password.into_iter().collect()
@@ -33,13 +34,14 @@ fn validate_password_complexity(password: &str) -> bool {
     let has_digit = password.chars().any(|c| c.is_numeric());
     let has_special = password.chars().any(|c| !c.is_alphanumeric());
     let min_length = password.len() >= 8;
-    
+
     has_upper && has_lower && has_digit && has_special && min_length
 }
 
 fn encode_password_for_ad(password: &str) -> Vec<u8> {
     let quoted = format!("\"{}\"", password);
-    quoted.encode_utf16()
+    quoted
+        .encode_utf16()
         .flat_map(|c| c.to_le_bytes())
         .collect()
 }
@@ -220,7 +222,9 @@ pub fn add_computer(
                     Err(e) => {
                         eprintln!("[!] Failed to set password: {}", e);
                         let error_string = format!("{:?}", e);
-                        if error_string.contains("unwillingToPerform") || error_string.contains("53") {
+                        if error_string.contains("unwillingToPerform")
+                            || error_string.contains("53")
+                        {
                             eprintln!("[!] Server unwilling to perform password operation");
                             eprintln!("[!] Common causes:");
                             eprintln!("    - Password doesn't meet complexity requirements");

@@ -24,9 +24,7 @@ impl KerberosHash {
     }
 }
 
-
 pub fn hash_password(password: &str, username: Option<&str>, domain: Option<&str>) -> KerberosHash {
-
     let user = if let (Some(u), Some(d)) = (username, domain) {
         Some(KrbUser::new(u.to_string(), d.to_string()))
     } else {
@@ -51,9 +49,7 @@ pub fn hash_password(password: &str, username: Option<&str>, domain: Option<&str
     }
 }
 
-
 fn calculate_rc4_hash(password: &str) -> String {
-    
     use kerberos_crypto::rc4_hmac_md5;
 
     let key = rc4_hmac_md5::generate_key_from_string(password);
@@ -88,7 +84,7 @@ mod tests {
     fn test_rc4_calculation() {
         let password = "Password123!";
         let hashes = hash_password(password, None, None);
-        assert_eq!(hashes.rc4.len(), 32); 
+        assert_eq!(hashes.rc4.len(), 32);
         assert!(hashes.aes128.is_none());
         assert!(hashes.aes256.is_none());
     }

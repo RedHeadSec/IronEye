@@ -66,13 +66,8 @@ fn query_organizational_units(
         Box::new(PagedResults::new(500)),
     ];
 
-    let mut search = ldap.streaming_search_with(
-        adapters,
-        search_base,
-        Scope::Subtree,
-        filter,
-        vec!["*"],
-    )?;
+    let mut search =
+        ldap.streaming_search_with(adapters, search_base, Scope::Subtree, filter, vec!["*"])?;
 
     let mut entries = Vec::new();
     while let Some(entry) = search.next()? {

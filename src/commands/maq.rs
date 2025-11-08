@@ -11,7 +11,7 @@ pub fn get_machine_account_quota(
 ) -> Result<(), Box<dyn Error>> {
     debug::debug_log(1, "Querying machine account quota...");
     debug::debug_log(2, format!("Search base: {}", search_base));
-    
+
     let result = ldap.search(
         &search_base,
         Scope::Base,

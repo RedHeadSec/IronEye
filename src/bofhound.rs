@@ -1,5 +1,6 @@
 use base64::engine::general_purpose::STANDARD as BASE64;
 use base64::Engine;
+use chrono::Local;
 use ldap3::adapters::{Adapter, EntriesOnly, PagedResults};
 use ldap3::controls::RawControl;
 use ldap3::{LdapConn, Scope, SearchEntry};
@@ -7,7 +8,6 @@ use std::error::Error;
 use std::fs::{self, File};
 use std::io::Write;
 use std::path::PathBuf;
-use chrono::Local;
 
 pub fn query_with_security_descriptor(
     ldap: &mut LdapConn,
@@ -48,11 +48,11 @@ pub fn export_bofhound(filename: &str, entries: &[SearchEntry]) -> Result<(), Bo
     let date = Local::now().format("%Y%m%d").to_string();
     let output_dir = format!("output_{}", date);
     fs::create_dir_all(&output_dir)?;
-    
+
     let prefixed_filename = format!("ironeye_{}", filename);
     let mut path = PathBuf::from(&output_dir);
     path.push(prefixed_filename);
-    
+
     let mut file = File::create(&path)?;
 
     for entry in entries {

@@ -20,7 +20,7 @@ pub fn set_cerbero_verbosity(debug_level: u8) {
         2 => "debug",
         _ => "trace",
     };
-    
+
     std::env::set_var("RUST_LOG", format!("cerbero_lib={}", log_level));
     let _ = env_logger::try_init();
 }

@@ -60,7 +60,13 @@ impl AclParser {
                             continue;
                         }
 
-                        self.parse_object_ace(obj_ace, &sid, object_type, is_inherited, &mut relations);
+                        self.parse_object_ace(
+                            obj_ace,
+                            &sid,
+                            object_type,
+                            is_inherited,
+                            &mut relations,
+                        );
                     }
                     AceData::AccessAllowed(simple_ace) => {
                         let sid = simple_ace.sid.to_string();
@@ -68,7 +74,13 @@ impl AclParser {
                             continue;
                         }
 
-                        self.parse_simple_ace(simple_ace, &sid, object_type, is_inherited, &mut relations);
+                        self.parse_simple_ace(
+                            simple_ace,
+                            &sid,
+                            object_type,
+                            is_inherited,
+                            &mut relations,
+                        );
                     }
                     _ => {}
                 }
