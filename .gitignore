@@ -43,3 +43,4 @@ Thumbs.db
 *.tmp
 temp/
 logs/
+ironeye_history.db
