@@ -1,8 +1,0 @@
-#V2
---userfile users.txt --domain internal-ops.cloud --dc-ip 10.7.10.10 --timestamp
-exit
---userfile users.txt  --domain redheadsec.local --dc-ip 10.2.20.3 --timestamp
---userfile users_lab.txt  --domain redheadsec.local --dc-ip 10.2.20.3 --timestamp
---userfile users_lab.txt  --domain redheadsec.local --dc-ip 10.2.20.3 
---userfile users_lab.txt  --domain redheadsec.local --dc-ip 10.2.20.3 --threads 1
---userfile users_lab.txt  --domain redheadsec.local --dc-ip 10.2.20.3 --threads 1 --timestamp
