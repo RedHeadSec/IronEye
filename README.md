@@ -7,6 +7,7 @@ The tool supports both password and Kerberos authentication, allowing for creden
 ```bash
 sudo apt install pkg-config libssl-dev
 sudo apt install libclang-dev clang
+sudo apt-get install libkrb5-dev
 cargo build --release
 target/release/ironeye
 ```
