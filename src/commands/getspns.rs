@@ -2,7 +2,7 @@ use crate::debug;
 use crate::help::add_terminal_spacing;
 use crate::ldap::LdapConfig;
 use chrono::{DateTime, Local, TimeZone, Utc};
-use dialoguer::{Confirm, Input};
+use dialoguer::{theme::ColorfulTheme, Confirm, Input, Select};
 use ldap3::adapters::{Adapter, EntriesOnly, PagedResults};
 use ldap3::{LdapConn, Scope, SearchEntry};
 use std::error::Error;
@@ -14,8 +14,33 @@ pub fn get_service_principal_names(
     search_base: &str,
     _config: &LdapConfig,
 ) -> Result<(), Box<dyn Error>> {
-    debug::debug_log(1, "Querying service principal names...");
-    let entries = query_spns(ldap, search_base)?;
+    const SPN_OPTIONS: &[&str] = &["Get All SPNs", "Targeted Search"];
+
+    let selection = Select::with_theme(&ColorfulTheme::default())
+        .with_prompt("Select SPN query type")
+        .items(SPN_OPTIONS)
+        .default(0)
+        .interact()?;
+
+    let keyword = match selection {
+        0 => {
+            debug::debug_log(1, "Querying all service principal names...");
+            None
+        }
+        1 => {
+            let input: String = Input::new()
+                .with_prompt("Enter keyword to search for in SPNs")
+                .interact()?;
+            debug::debug_log(
+                1,
+                format!("Querying service principal names with keyword: {}", input),
+            );
+            Some(input)
+        }
+        _ => unreachable!(),
+    };
+
+    let entries = query_spns(ldap, search_base, keyword.as_deref())?;
     debug::debug_log(2, format!("Found {} entries with SPNs", entries.len()));
 
     let header = format!(
@@ -96,8 +121,20 @@ pub fn get_service_principal_names(
     Ok(())
 }
 
-fn query_spns(ldap: &mut LdapConn, search_base: &str) -> Result<Vec<SearchEntry>, Box<dyn Error>> {
-    let search_filter = "(&(servicePrincipalName=*)(!(objectClass=computer)))";
+fn query_spns(
+    ldap: &mut LdapConn,
+    search_base: &str,
+    keyword: Option<&str>,
+) -> Result<Vec<SearchEntry>, Box<dyn Error>> {
+    let search_filter = if let Some(kw) = keyword {
+        format!(
+            "(&(servicePrincipalName=*{}*)(!(objectClass=computer)))",
+            kw
+        )
+    } else {
+        "(&(servicePrincipalName=*)(!(objectClass=computer)))".to_string()
+    };
+
     debug::debug_log(
         2,
         format!("Executing LDAP search with filter: {}", search_filter),
@@ -112,7 +149,7 @@ fn query_spns(ldap: &mut LdapConn, search_base: &str) -> Result<Vec<SearchEntry>
         adapters,
         search_base,
         Scope::Subtree,
-        search_filter,
+        &search_filter,
         vec![
             "servicePrincipalName",
             "sAMAccountName",
