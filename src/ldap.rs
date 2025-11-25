@@ -133,16 +133,35 @@ fn validate_and_prepare_ccache(
     // GSSAPI authenticates as the ccache's default principal
     let (effective_ccache, temp_ccache_path) =
         if ccache_info.impersonated_user.is_some() {
-            // Find the impersonated service ticket
-            let impersonated_cred = ccache
+            // Find the impersonated service ticket - prefer LDAP tickets for the
+            // target host, then any LDAP ticket, then any impersonated ticket
+            let impersonated_creds: Vec<_> = ccache
                 .credentials
                 .iter()
-                .filter(|c| !c.is_expired() && !c.is_tgt())
-                .find(|c| {
-                    c.client.to_string() != ccache.default_principal.to_string()
-                });
+                .filter(|c| {
+                    !c.is_expired()
+                        && !c.is_tgt()
+                        && c.client.to_string() != ccache.default_principal.to_string()
+                })
+                .collect();
+
+            // Priority: LDAP ticket for this host > any LDAP ticket > any ticket
+            let impersonated_cred = impersonated_creds
+                .iter()
+                .find(|c| c.is_ldap_service() && c.matches_service_host(normalized_dc))
+                .or_else(|| impersonated_creds.iter().find(|c| c.is_ldap_service()))
+                .or_else(|| impersonated_creds.first())
+                .copied();
 
             if let Some(cred) = impersonated_cred {
+                debug::debug_log(
+                    2,
+                    format!(
+                        "Selected impersonated ticket: {} -> {} (LDAP: {})",
+                        cred.client, cred.server, cred.is_ldap_service()
+                    ),
+                );
+
                 let temp_path = format!(
                     "/tmp/ironeye_impersonated_{}.ccache",
                     std::process::id()
@@ -167,6 +186,13 @@ fn validate_and_prepare_ccache(
                 );
                 (temp_path.clone(), Some(temp_path))
             } else {
+                debug::debug_log(
+                    1,
+                    format!(
+                        "Warning: No impersonated service ticket found in {} credentials",
+                        impersonated_creds.len()
+                    ),
+                );
                 (ccache_to_use.clone(), None)
             }
         } else {

@@ -87,6 +87,22 @@ impl Credential {
             0
         }
     }
+
+    /// Check if this credential is for an LDAP service
+    pub fn is_ldap_service(&self) -> bool {
+        self.server
+            .components
+            .first()
+            .map_or(false, |s| s.eq_ignore_ascii_case("ldap"))
+    }
+
+    /// Check if this credential is for a service matching the given hostname
+    pub fn matches_service_host(&self, hostname: &str) -> bool {
+        self.server
+            .components
+            .get(1)
+            .map_or(false, |h| h.eq_ignore_ascii_case(hostname))
+    }
 }
 
 #[derive(Debug, Clone)]
