@@ -305,8 +305,8 @@ pub fn ldap_connect(config: &mut LdapConfig) -> Result<(LdapConn, String), LdapE
     debug::debug_log(1, "LDAP connection established");
 
     if config.kerberos {
-        let normalized_dc = config.dc_ip.to_lowercase();
-        perform_kerberos_bind(&mut ldap, config, &normalized_dc)?;
+        // Don't lowercase for Kerberos - SPN matching is case-sensitive
+        perform_kerberos_bind(&mut ldap, config, &config.dc_ip)?;
     } else {
         perform_simple_bind(&mut ldap, config)?;
     }
