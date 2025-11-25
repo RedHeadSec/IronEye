@@ -312,7 +312,8 @@ pub fn ldap_connect(config: &mut LdapConfig) -> Result<(LdapConn, String), LdapE
 
     if config.kerberos {
         // Don't lowercase for Kerberos - SPN matching is case-sensitive
-        perform_kerberos_bind(&mut ldap, config, &config.dc_ip)?;
+        let dc_ip = config.dc_ip.clone();
+        perform_kerberos_bind(&mut ldap, config, &dc_ip)?;
     } else {
         perform_simple_bind(&mut ldap, config)?;
     }
