@@ -1,9 +1,12 @@
 use crate::debug;
 use crate::help::get_timestamp;
+#[cfg(any(target_os = "linux", target_os = "windows"))]
 use crate::kerberos::ccache::{
     create_impersonated_ccache, parse_ccache_file, validate_ccache, write_ccache_file,
 };
+#[cfg(any(target_os = "linux", target_os = "windows"))]
 use crate::kerberos::env::{determine_ccache_path, restore_krb5ccname, set_krb5ccname_temp};
+#[cfg(any(target_os = "linux", target_os = "windows"))]
 use crate::kerberos::krb5conf::{
     create_temp_krb5_conf, generate_krb5_conf_from_ccache, restore_krb5_config_env,
     set_krb5_config_env,
@@ -30,6 +33,7 @@ pub struct LdapConfig {
     pub ccache_path: Option<String>,
 }
 
+#[cfg(any(target_os = "linux", target_os = "windows"))]
 fn validate_kerberos_hostname(dc_ip: &str, domain: &str) -> Result<(), LdapError> {
     if dc_ip.parse::<std::net::IpAddr>().is_ok() {
         eprintln!(
@@ -57,6 +61,7 @@ fn validate_kerberos_hostname(dc_ip: &str, domain: &str) -> Result<(), LdapError
     Ok(())
 }
 
+#[cfg(any(target_os = "linux", target_os = "windows"))]
 fn validate_and_prepare_ccache(
     config: &mut LdapConfig,
     normalized_dc: &str,
@@ -213,6 +218,7 @@ fn validate_and_prepare_ccache(
     Ok((effective_ccache, krb5_conf_path, temp_ccache_path))
 }
 
+#[cfg(any(target_os = "linux", target_os = "windows"))]
 fn perform_kerberos_bind(
     ldap: &mut LdapConn,
     config: &mut LdapConfig,
