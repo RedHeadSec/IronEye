@@ -801,6 +801,16 @@ fn handle_cerbero() {
             println!("[+] KRB5CCNAME environment variable set to: {}", path);
             std::env::set_var("KRB5CCNAME", path);
         }
+        CerberoCommand::List { filepath } => {
+            #[cfg(windows)]
+            let result = cerbero_lib::commands::list(Some(filepath), false, false, None, false);
+            #[cfg(not(windows))]
+            let result = cerbero_lib::commands::list(Some(filepath), false, false, None);
+
+            if let Err(e) = result {
+                eprintln!("\x1b[31m[!] Error listing ccache: {}\x1b[0m", e);
+            }
+        }
         CerberoCommand::Hash => {
             calculate_kerberos_hash();
         }

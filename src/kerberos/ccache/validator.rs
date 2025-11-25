@@ -6,19 +6,28 @@ pub fn validate_ccache(ccache: &CcacheFile) -> Result<CcacheInfo, String> {
         return Err("No credentials found in ccache".to_string());
     }
 
-    let tgt = find_tgt(ccache).ok_or("No TGT found in ccache")?;
+    // Find valid (non-expired) credential - prefer service tickets, fallback to TGT
+    let valid_cred = ccache
+        .credentials
+        .iter()
+        .filter(|c| !c.is_expired())
+        .max_by_key(|c| if c.is_tgt() { 0 } else { 1 })
+        .ok_or("No valid credentials found in ccache")?;
 
-    if tgt.is_expired() {
-        return Err(format!(
-            "TGT has expired (ended at {})",
-            format_timestamp(tgt.end_time)
-        ));
-    }
+    // Detect impersonation: client differs from default principal
+    let default_principal_str = ccache.default_principal.to_string();
+    let client_str = valid_cred.client.to_string();
+    let impersonated_user = if client_str != default_principal_str {
+        Some(client_str)
+    } else {
+        None
+    };
 
     Ok(CcacheInfo {
-        principal: ccache.default_principal.to_string(),
-        end_time: format_timestamp(tgt.end_time),
-        time_remaining: format_duration(tgt.expires_in_minutes() as u64 * 60),
+        principal: default_principal_str,
+        impersonated_user,
+        end_time: format_timestamp(valid_cred.end_time),
+        time_remaining: format_duration(valid_cred.expires_in_minutes() as u64 * 60),
     })
 }
 

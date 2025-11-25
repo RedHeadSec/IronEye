@@ -61,11 +61,11 @@ impl AclParser {
                         }
 
                         self.parse_object_ace(
-                            obj_ace,
-                            &sid,
-                            object_type,
-                            is_inherited,
-                            &mut relations,
+                        obj_ace,
+                        &sid,
+                        object_type,
+                        is_inherited,
+                        &mut relations,
                         );
                     }
                     AceData::AccessAllowed(simple_ace) => {
@@ -185,6 +185,18 @@ impl AclParser {
                 relations.push(AclRelation {
                     sid: sid.to_string(),
                     right_name: "WriteGPLink".to_string(),
+                    inherited: is_inherited,
+                });
+            }
+        }
+
+        if ace.has_priv(ACCESS_MASK_ADS_RIGHT_DS_CREATE_CHILD) {
+            if (object_type == "organizational-unit" || object_type == "container")
+                && self.can_create_child(ace, &self.guids.computer_object)
+            {
+                relations.push(AclRelation {
+                    sid: sid.to_string(),
+                    right_name: "CreateComputerObject".to_string(),
                     inherited: is_inherited,
                 });
             }
@@ -360,6 +372,22 @@ impl AclParser {
 
         if let Some(object_type) = &ace.object_type {
             return object_type == right_guid;
+        }
+
+        false
+    }
+
+    fn can_create_child(&self, ace: &AccessAllowedObjectAce, object_guid: &Uuid) -> bool {
+        if !ace.has_priv(ACCESS_MASK_ADS_RIGHT_DS_CREATE_CHILD) {
+            return false;
+        }
+
+        if !ace.has_flag(ACE_OBJECT_TYPE_PRESENT) {
+            return true;
+        }
+
+        if let Some(object_type) = &ace.object_type {
+            return object_type == object_guid;
         }
 
         false

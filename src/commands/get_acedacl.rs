@@ -238,6 +238,7 @@ struct PermissionCollector {
     write_gp_link: Vec<(String, String)>,
     generic_write: Vec<(String, String)>,
     generic_all: Vec<(String, String)>,
+    create_computer_object: Vec<(String, String)>,
 }
 
 impl PermissionCollector {
@@ -260,6 +261,7 @@ impl PermissionCollector {
             write_gp_link: Vec::new(),
             generic_write: Vec::new(),
             generic_all: Vec::new(),
+            create_computer_object: Vec::new(),
         }
     }
 
@@ -281,6 +283,7 @@ impl PermissionCollector {
             "WriteGPLink" => self.write_gp_link.push(entry),
             "GenericWrite" => self.generic_write.push(entry),
             "GenericAll" => self.generic_all.push(entry),
+            "CreateComputerObject" => self.create_computer_object.push(entry),
             _ => {}
         }
     }
@@ -305,6 +308,7 @@ impl PermissionCollector {
             &self.write_gp_link,
             &self.generic_write,
             &self.generic_all,
+            &self.create_computer_object,
         ] {
             for (_, sid) in list {
                 sids.insert(sid.clone());
@@ -331,6 +335,7 @@ impl PermissionCollector {
             + self.write_gp_link.len()
             + self.generic_write.len()
             + self.generic_all.len()
+            + self.create_computer_object.len()
     }
 
     fn print(&self, resolver: &SidResolver) {
@@ -473,6 +478,7 @@ impl PermissionCollector {
             &self.write_gp_link,
             &self.generic_write,
             &self.generic_all,
+            &self.create_computer_object,
         ] {
             for (dn, _) in list {
                 objects.insert(dn.clone());

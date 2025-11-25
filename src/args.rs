@@ -108,6 +108,9 @@ pub enum CerberoCommand {
         format: String,
     },
     Export(String),
+    List {
+        filepath: String,
+    },
     Hash,
     None,
 }
@@ -254,6 +257,7 @@ pub fn get_cerbero_args() -> CerberoCommand {
     println!("  convert -i <input> -o <output> [--format krb|ccache|auto]");
     println!("  craft -u <user> --sid <sid> [--user-rid <rid>] [--password|--rc4|--aes256 <key>] [--groups <rids>] [-s <service>] [-o output.ccache] [--format ccache|krb]");
     println!("  export /path/to/ccache  - Set KRB5CCNAME environment variable");
+    println!("  list /path/to/ccache    - List tickets in ccache file");
     println!("  hash                    - Calculate Kerberos hashes from password");
     println!("\nExamples:");
     println!("  ask-tgt -u administrator -p Password123! -d contoso.local -i 192.168.1.10");
@@ -314,9 +318,21 @@ pub fn get_cerbero_args() -> CerberoCommand {
                     std::env::set_var("KRB5CCNAME", path);
                     CerberoCommand::Export(path.to_string())
                 }
+            } else if let Some(path) = input.strip_prefix("list ") {
+                let path = path.trim();
+                if path.is_empty() {
+                    eprintln!(
+                        "\x1b[31m[!] Invalid list command. Usage: list /path/to/ccache\x1b[0m"
+                    );
+                    CerberoCommand::None
+                } else {
+                    CerberoCommand::List {
+                        filepath: path.to_string(),
+                    }
+                }
             } else {
                 println!("[!] Unknown command: '{}'", input);
-                println!("[*] Valid commands: ask-tgt, ask-tgs, ask-s4u2self, ask-s4u2proxy, asreproast, kerberoast, convert, craft, export, hash");
+                println!("[*] Valid commands: ask-tgt, ask-tgs, ask-s4u2self, ask-s4u2proxy, asreproast, kerberoast, convert, craft, export, list, hash");
                 CerberoCommand::None
             }
         }

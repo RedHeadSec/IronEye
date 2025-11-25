@@ -124,21 +124,23 @@ fn parse_credential(cursor: &mut Cursor<&[u8]>) -> Result<Credential, ParseError
     let end_time = cursor.read_u32::<BigEndian>()?;
     let renew_till = cursor.read_u32::<BigEndian>()?;
 
-    let _is_skey = cursor.read_u8()?;
-    let _ticket_flags = cursor.read_u32::<BigEndian>()?;
+    let is_skey = cursor.read_u8()?;
+    let ticket_flags = cursor.read_u32::<BigEndian>()?;
 
     let num_addrs = cursor.read_u32::<BigEndian>()?;
+    let mut addresses = Vec::with_capacity(num_addrs as usize);
     for _ in 0..num_addrs {
         let addr_type = cursor.read_u16::<BigEndian>()?;
         let addr_data = parse_counted_data(cursor)?;
-        let _ = (addr_type, addr_data);
+        addresses.push(Address { addr_type, addr_data });
     }
 
     let num_authdata = cursor.read_u32::<BigEndian>()?;
+    let mut authdata = Vec::with_capacity(num_authdata as usize);
     for _ in 0..num_authdata {
-        let authdata_type = cursor.read_u16::<BigEndian>()?;
-        let authdata = parse_counted_data(cursor)?;
-        let _ = (authdata_type, authdata);
+        let ad_type = cursor.read_u16::<BigEndian>()?;
+        let ad_data = parse_counted_data(cursor)?;
+        authdata.push(AuthData { ad_type, ad_data });
     }
 
     let ticket = parse_counted_data(cursor)?;
@@ -152,6 +154,10 @@ fn parse_credential(cursor: &mut Cursor<&[u8]>) -> Result<Credential, ParseError
         start_time,
         end_time,
         renew_till,
+        is_skey,
+        ticket_flags,
+        addresses,
+        authdata,
         ticket,
         second_ticket,
     })
