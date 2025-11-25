@@ -44,3 +44,5 @@ Thumbs.db
 temp/
 logs/
 ironeye_history.db
+*.md
+/.claude

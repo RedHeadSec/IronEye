@@ -31,6 +31,18 @@ impl fmt::Display for Principal {
 }
 
 #[derive(Debug, Clone)]
+pub struct Address {
+    pub addr_type: u16,
+    pub addr_data: Vec<u8>,
+}
+
+#[derive(Debug, Clone)]
+pub struct AuthData {
+    pub ad_type: u16,
+    pub ad_data: Vec<u8>,
+}
+
+#[derive(Debug, Clone)]
 pub struct Credential {
     pub client: Principal,
     pub server: Principal,
@@ -39,6 +51,10 @@ pub struct Credential {
     pub start_time: u32,
     pub end_time: u32,
     pub renew_till: u32,
+    pub is_skey: u8,
+    pub ticket_flags: u32,
+    pub addresses: Vec<Address>,
+    pub authdata: Vec<AuthData>,
     pub ticket: Vec<u8>,
     pub second_ticket: Vec<u8>,
 }
@@ -82,6 +98,7 @@ pub struct Keyblock {
 #[derive(Debug)]
 pub struct CcacheInfo {
     pub principal: String,
+    pub impersonated_user: Option<String>,
     pub end_time: String,
     pub time_remaining: String,
 }
