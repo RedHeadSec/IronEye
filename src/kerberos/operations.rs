@@ -237,6 +237,21 @@ impl KerberosOps {
         )?;
 
         println!("[+] S4U2Proxy ticket saved to: {}", output_file);
+
+        // Auto-export ccache path
+        std::env::set_var("KRB5CCNAME", output_file);
+        println!("[+] KRB5CCNAME set to: {}", output_file);
+
+        // Extract hostname from service SPN for user guidance
+        let spn_host = service
+            .split('/')
+            .nth(1)
+            .map(|s| s.split('@').next().unwrap_or(s))
+            .unwrap_or(service);
+        println!();
+        println!("[!] IMPORTANT: S4U2Proxy tickets require exact SPN hostname matching.");
+        println!("[!] When connecting, use: -i {}", spn_host);
+
         Ok(())
     }
 

