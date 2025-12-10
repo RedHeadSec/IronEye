@@ -21,21 +21,21 @@ pub fn build_as_req(
 ) -> AsReq {
     let mut as_req_builder = KdcReqBuilder::new(user.realm).username(user.name);
 
-    if let Some(cipher) = cipher {
+    let final_etypes = if let Some(cipher) = cipher {
         let padata = new_pa_data_encrypted_timestamp(cipher);
-        as_req_builder = as_req_builder
-            .push_padata(padata)
-            .etypes(vec![cipher.etype()]);
-    }
+        as_req_builder = as_req_builder.push_padata(padata);
+        vec![cipher.etype()]
+    } else {
+        match etypes {
+            Some(etypes) => etypes,
+            None => win10_client_as_req_etypes(),
+        }
+    };
+
+    as_req_builder = as_req_builder.etypes(final_etypes);
 
     // Windows client sends PAC Request after encrypted timestamp
     as_req_builder = as_req_builder.request_pac();
-
-    let etypes = match etypes {
-        Some(etypes) => etypes,
-        None => win10_client_as_req_etypes(),
-    };
-    as_req_builder = as_req_builder.etypes(etypes);
 
     if let Some(hostname) = hostname {
         as_req_builder = as_req_builder.hostname(hostname);

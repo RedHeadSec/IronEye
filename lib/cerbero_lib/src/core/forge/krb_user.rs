@@ -10,7 +10,7 @@ pub struct KrbUser {
 
 impl KrbUser {
     pub fn new(name: String, realm: String) -> Self {
-        return Self { name, realm };
+        return Self { name, realm: realm.to_uppercase() };
     }
 }
 
