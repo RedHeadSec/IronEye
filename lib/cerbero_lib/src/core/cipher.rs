@@ -78,6 +78,32 @@ impl Cipher {
             .decrypt(&self.key, key_usage, ciphertext)
             .map_err(|err| format!("Decryption error: {}", err))?);
     }
+
+    /// Generate cipher with manually constructed salt preserving username case
+    /// This works around kerberos_crypto's generate_salt() which force-lowercases usernames
+    pub fn generate_with_preserved_case(
+        user_key: &Key,
+        user: &KrbUser,
+        preferred_etype: Option<i32>,
+    ) -> Self {
+        match user_key {
+            Key::Secret(secret) => {
+                let etype = preferred_etype.unwrap_or(etypes::AES256_CTS_HMAC_SHA1_96);
+                let cipher = new_kerberos_cipher(etype)
+                    .expect(&format!("Unknown etype {}", etype));
+
+                // Manually construct salt: REALM.COMUsername (preserve exact case)
+                let salt = format!("{}{}", user.realm, user.name).into_bytes();
+                let key = cipher.generate_key_from_string(secret, &salt);
+
+                Self::new(cipher, key)
+            },
+            _ => {
+                // For non-password keys, use standard generation
+                Self::generate(user_key, user, preferred_etype)
+            }
+        }
+    }
 }
 
 impl From<EncryptionKey> for Cipher {

@@ -272,8 +272,10 @@ pub fn get_cerbero_args() -> CerberoCommand {
     println!("  craft -u contoso.local/administrator --sid S-1-5-21-123456789-987654321-111111111 --aes256 <KRBTGT key> (Golden Ticket)");
     println!("  craft -u under.world/kratos --sid S-1-5-21-658410550-3858838999-180593761 --ntlm 29f9ab984728cc7d18c8497c9ee76c77 -s cifs/styx,under.world (Silver Ticket)");
     println!();
-    println!("Note: S4U2Proxy tickets require EXACT hostname case matching when connecting.");
-    println!("      Use the same hostname in 'connect -i' as specified in '-s ldap/<hostname>'");
+    println!("IMPORTANT NOTES:");
+    println!("  - Username MUST match EXACT case of sAMAccountName in Active Directory");
+    println!("  - S4U2Proxy tickets require EXACT hostname case matching when connecting");
+    println!("  - Use the same hostname in 'connect -i' as specified in '-s ldap/<hostname>'");
 
     let mut rl = match HistoryEditor::new("cerbero") {
         Ok(editor) => editor,
