@@ -127,12 +127,9 @@ fn query_spns(
     keyword: Option<&str>,
 ) -> Result<Vec<SearchEntry>, Box<dyn Error>> {
     let search_filter = if let Some(kw) = keyword {
-        format!(
-            "(&(servicePrincipalName=*{}*)(!(objectClass=computer)))",
-            kw
-        )
+        format!("(servicePrincipalName=*{}*)", kw)
     } else {
-        "(&(servicePrincipalName=*)(!(objectClass=computer)))".to_string()
+        "(servicePrincipalName=*)".to_string()
     };
 
     debug::debug_log(
