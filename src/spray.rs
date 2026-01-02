@@ -206,6 +206,26 @@ fn test_domain_controllers(
     use_ldaps: bool,
 ) -> Result<Vec<String>, Box<dyn Error>> {
     println!("[*] Testing connectivity to Domain Controllers...");
+    
+    let mut invalid_dcs = Vec::new();
+    let mut valid_dcs = Vec::new();
+    
+    for dc in dc_list {
+        if !is_valid_ip(dc) {
+            invalid_dcs.push(dc.clone());
+        } else {
+            valid_dcs.push(dc.clone());
+        }
+    }
+    
+    if !invalid_dcs.is_empty() {
+        println!("[!] Invalid/malformed DC IP addresses detected:");
+        for dc in &invalid_dcs {
+            println!("    [-] {}", dc);
+        }
+        return Err("Malformed DC IP addresses in configuration".into());
+    }
+    
     let mut reachable_dcs = Vec::new();
 
     let ports_to_test = if use_ldaps {
@@ -214,12 +234,12 @@ fn test_domain_controllers(
         vec![("LDAPS", 636), ("LDAP", 389)]
     };
 
-    for dc in dc_list {
+    for dc in valid_dcs {
         let mut connection_results = Vec::new();
         let mut any_reachable = false;
 
         for (protocol, port) in &ports_to_test {
-            let reachable = test_port(dc, *port);
+            let reachable = test_port(&dc, *port);
             connection_results.push((*protocol, reachable));
             if reachable {
                 any_reachable = true;
@@ -245,12 +265,17 @@ fn test_domain_controllers(
     Ok(reachable_dcs)
 }
 
+fn is_valid_ip(ip: &str) -> bool {
+    use std::net::IpAddr;
+    ip.parse::<IpAddr>().is_ok()
+}
+
 fn test_port(host: &str, port: u16) -> bool {
-    TcpStream::connect_timeout(
-        &format!("{}:{}", host, port).parse().unwrap(),
-        Duration::from_secs(CONNECTION_TIMEOUT_SECS),
-    )
-    .is_ok()
+    let addr = match format!("{}:{}", host, port).parse() {
+        Ok(addr) => addr,
+        Err(_) => return false,
+    };
+    TcpStream::connect_timeout(&addr, Duration::from_secs(CONNECTION_TIMEOUT_SECS)).is_ok()
 }
 
 fn load_input_list(input: &str) -> Result<Vec<String>, Box<dyn Error>> {

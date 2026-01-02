@@ -20,6 +20,8 @@ const UF_USE_DES_KEY_ONLY: i64 = 0x200000;
 const UF_DONT_REQ_PREAUTH: i64 = 0x400000;
 const UF_TRUSTED_TO_AUTH_FOR_DELEGATION: i64 = 0x1000000;
 const UF_NO_AUTH_DATA_REQUIRED: i64 = 0x2000000;
+const UF_WORKSTATION_TRUST_ACCOUNT: i64 = 0x1000;
+const UF_SERVER_TRUST_ACCOUNT: i64 = 0x2000;
 
 pub fn net_command(
     ldap: &mut ldap3::LdapConn,
@@ -35,7 +37,8 @@ pub fn net_command(
     match command_type.to_lowercase().as_str() {
         "user" => net_user(ldap, search_base, config, name),
         "group" => net_group(ldap, search_base, config, name),
-        _ => Err("Invalid net command. Use 'user' or 'group'".into()),
+        "computer" => net_computer(ldap, search_base, config, name),
+        _ => Err("Invalid net command. Use 'user', 'group', or 'computer'".into()),
     }
 }
 
@@ -334,6 +337,229 @@ fn net_user(
         println!("User not found");
     }
 
+    Ok(())
+}
+
+fn net_computer(
+    ldap: &mut ldap3::LdapConn,
+    search_base: &str,
+    _config: &LdapConfig,
+    computername: &str,
+) -> Result<(), Box<dyn Error>> {
+    let filter = format!(
+        "(&(objectCategory=computer)(objectClass=computer)(sAMAccountName={}))",
+        escape_filter(computername)
+    );
+    debug_log(
+        2,
+        &format!("Searching for computer with filter: {}", filter),
+    );
+
+    let result = ldap.search(
+        &search_base,
+        Scope::Subtree,
+        &filter,
+        vec![
+            "sAMAccountName",
+            "cn",
+            "description",
+            "userAccountControl",
+            "operatingSystem",
+            "operatingSystemVersion",
+            "operatingSystemServicePack",
+            "dNSHostName",
+            "servicePrincipalName",
+            "lastLogon",
+            "lastLogonTimestamp",
+            "logonCount",
+            "pwdLastSet",
+            "whenCreated",
+            "whenChanged",
+            "objectClass",
+            "distinguishedName",
+            "memberOf",
+            "managedBy",
+            "location",
+            "msDS-AllowedToDelegateTo",
+            "msDS-AllowedToActOnBehalfOfOtherIdentity",
+            "adminCount",
+            "primaryGroupID",
+        ],
+    )?;
+
+    let (entries, _) = result.success()?;
+    debug_log(1, &format!("Found {} computer entries", entries.len()));
+
+    if let Some(entry) = entries.first() {
+        let comp_entry = SearchEntry::construct(entry.clone());
+
+        if !comp_entry
+            .attrs
+            .get("objectClass")
+            .map_or(false, |classes| classes.iter().any(|c| c == "computer"))
+        {
+            println!("Object class is not of type \"computer\"");
+            return Ok(());
+        }
+
+        println!("\nComputer Information - {}:", computername);
+        println!(
+            "-------------------------------------------------------------------------------"
+        );
+
+        if let Some(cn) = comp_entry.attrs.get("cn").and_then(|v| v.first()) {
+            println!("Computer Name: \t\t{}", cn);
+        }
+
+        if let Some(dns_name) = comp_entry.attrs.get("dNSHostName").and_then(|v| v.first()) {
+            println!("DNS Host Name: \t\t{}", dns_name);
+        }
+
+        if let Some(dn) = comp_entry
+            .attrs
+            .get("distinguishedName")
+            .and_then(|v| v.first())
+        {
+            println!("Distinguished Name: \t{}", dn);
+        }
+
+        if let Some(desc) = comp_entry.attrs.get("description").and_then(|v| v.first()) {
+            println!("Description: \t\t{}", desc);
+        }
+
+        if let Some(os) = comp_entry
+            .attrs
+            .get("operatingSystem")
+            .and_then(|v| v.first())
+        {
+            println!("Operating System: \t{}", os);
+        }
+
+        if let Some(os_ver) = comp_entry
+            .attrs
+            .get("operatingSystemVersion")
+            .and_then(|v| v.first())
+        {
+            println!("OS Version: \t\t{}", os_ver);
+        }
+
+        if let Some(os_sp) = comp_entry
+            .attrs
+            .get("operatingSystemServicePack")
+            .and_then(|v| v.first())
+        {
+            println!("OS Service Pack: \t{}", os_sp);
+        }
+
+        if let Some(uac) = comp_entry
+            .attrs
+            .get("userAccountControl")
+            .and_then(|v| v.first())
+            .and_then(|v| v.parse::<i64>().ok())
+        {
+            println!("User Account Control:");
+            print_computer_uac_flags(uac);
+        }
+
+        if let Some(admin_count) = comp_entry
+            .attrs
+            .get("adminCount")
+            .and_then(|v| v.first())
+            .and_then(|v| v.parse::<i64>().ok())
+        {
+            if admin_count > 0 {
+                println!("Admin Count: \t\t{} (Privileged Account)", admin_count);
+            }
+        }
+
+        if let Some(pwd_last_set) = comp_entry
+            .attrs
+            .get("pwdLastSet")
+            .and_then(|v| v.first())
+            .and_then(|v| v.parse::<i64>().ok())
+        {
+            println!(
+                "Password Last Set: \t{}",
+                windows_time_to_string(pwd_last_set)
+            );
+        }
+
+        if let Some(created) = comp_entry.attrs.get("whenCreated").and_then(|v| v.first()) {
+            println!("Created: \t\t{}", ldap_time_to_string(created));
+        }
+
+        if let Some(changed) = comp_entry.attrs.get("whenChanged").and_then(|v| v.first()) {
+            println!("Last Changed: \t\t{}", ldap_time_to_string(changed));
+        }
+
+        if let Some(last_logon) = comp_entry
+            .attrs
+            .get("lastLogon")
+            .and_then(|v| v.first())
+            .and_then(|v| v.parse::<i64>().ok())
+        {
+            if last_logon != 0 {
+                println!("Last Logon: \t\t{}", windows_time_to_string(last_logon));
+            } else {
+                println!("Last Logon: \t\tNever");
+            }
+        }
+
+        if let Some(count) = comp_entry
+            .attrs
+            .get("logonCount")
+            .and_then(|v| v.first())
+            .and_then(|v| v.parse::<i64>().ok())
+        {
+            println!("Logon Count: \t\t{}", count);
+        }
+
+        if let Some(location) = comp_entry.attrs.get("location").and_then(|v| v.first()) {
+            println!("Location: \t\t{}", location);
+        }
+
+        if let Some(managed_by) = comp_entry.attrs.get("managedBy").and_then(|v| v.first()) {
+            let manager_name = extract_cn_from_dn(managed_by);
+            println!("Managed By: \t\t{}", manager_name);
+        }
+
+        if let Some(delegate_to) = comp_entry.attrs.get("msDS-AllowedToDelegateTo") {
+            println!("Constrained Delegation To:");
+            for target in delegate_to {
+                println!("\t\t\t{}", target);
+            }
+        }
+
+        if comp_entry
+            .attrs
+            .get("msDS-AllowedToActOnBehalfOfOtherIdentity")
+            .is_some()
+        {
+            println!(
+                "RBCD: \t\t\tResource-Based Constrained Delegation configured"
+            );
+        }
+
+        if let Some(spns) = comp_entry.attrs.get("servicePrincipalName") {
+            println!("Service Principal Name(s):");
+            for spn in spns {
+                println!("\t\t\t{}", spn);
+            }
+        }
+
+        if let Some(groups) = comp_entry.attrs.get("memberOf") {
+            println!("Group Memberships:");
+            for group in groups {
+                let group_name = extract_cn_from_dn(group);
+                println!("\t\t\t{}", group_name);
+            }
+        }
+    } else {
+        debug_log(1, &format!("Computer not found: {}", computername));
+        println!("Computer not found");
+    }
+
+    add_terminal_spacing(2);
     Ok(())
 }
 
@@ -656,4 +882,37 @@ fn print_uac_flags(uac: i64) {
         println!("\t\t\tUSER_NO_AUTH_DATA_REQUIRED");
     }
     println!("\t\t\t(If Enabled, Check Last Lockout Time)");
+}
+
+fn print_computer_uac_flags(uac: i64) {
+    if uac & UF_WORKSTATION_TRUST_ACCOUNT != 0 {
+        println!("\t\t\tWORKSTATION_TRUST_ACCOUNT");
+    }
+    if uac & UF_SERVER_TRUST_ACCOUNT != 0 {
+        println!("\t\t\tSERVER_TRUST_ACCOUNT (Domain Controller)");
+    }
+    if uac & UF_ACCOUNTDISABLE != 0 {
+        println!("\t\t\tACCOUNT_DISABLED");
+    }
+    if uac & UF_DONT_EXPIRE_PASSWORD != 0 {
+        println!("\t\t\tDONT_EXPIRE_PASSWORD");
+    }
+    if uac & UF_PASSWD_NOTREQD != 0 {
+        println!("\t\t\tPASSWORD_NOT_REQUIRED");
+    }
+    if uac & UF_TRUSTED_FOR_DELEGATION != 0 {
+        println!("\t\t\tTRUSTED_FOR_DELEGATION (Unconstrained)");
+    }
+    if uac & UF_NOT_DELEGATED != 0 {
+        println!("\t\t\tNOT_DELEGATED");
+    }
+    if uac & UF_TRUSTED_TO_AUTH_FOR_DELEGATION != 0 {
+        println!("\t\t\tTRUSTED_TO_AUTH_FOR_DELEGATION (Constrained)");
+    }
+    if uac & UF_USE_DES_KEY_ONLY != 0 {
+        println!("\t\t\tUSE_DES_KEY_ONLY");
+    }
+    if uac & UF_DONT_REQ_PREAUTH != 0 {
+        println!("\t\t\tDONT_REQUIRE_PREAUTH");
+    }
 }
