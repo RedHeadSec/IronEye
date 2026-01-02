@@ -296,21 +296,21 @@ fn handle_net_commands(
     ldap_config: &ldap::LdapConfig,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let input = read_input(
-        "Enter the net command arguments (e.g., user administrator OR group \"Domain Admins\"): ",
+        "Enter net command (e.g., user administrator, group \"Domain Admins\", computer DC01$): ",
     );
     track_history("net", &input);
     let args = parse_quoted_args(&input);
 
     if args.len() < 2 {
-        eprintln!("Error: net command requires type (user/group) and name");
-        eprintln!("Usage: net <user|group> <n>");
+        eprintln!("Error: net command requires type and name");
+        eprintln!("Usage: net <user|group|computer> <name>");
         return Ok(());
     }
 
     let command_type = args[0].to_lowercase();
-    if !matches!(command_type.as_str(), "user" | "group") {
-        eprintln!("Error: net command type must be either 'user' or 'group'");
-        eprintln!("Usage: net <user|group> <n>");
+    if !matches!(command_type.as_str(), "user" | "group" | "computer") {
+        eprintln!("Error: net command type must be 'user', 'group', or 'computer'");
+        eprintln!("Usage: net <user|group|computer> <name>");
         return Ok(());
     }
 
