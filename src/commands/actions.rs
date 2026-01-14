@@ -2,7 +2,7 @@ use crate::commands::{
     add_computer, add_user_to_group, adidns, del_computer, disable_account, enable_account,
     set_dontreqpreauth, set_spn,
 };
-use crate::help::{add_terminal_spacing, read_input};
+use crate::help::{add_terminal_spacing, read_input, read_input_with_history};
 use crate::ldap::LdapConfig;
 use dialoguer::{theme::ColorfulTheme, Select};
 use ldap3::LdapConn;
@@ -59,7 +59,11 @@ fn handle_add_computer(
     search_base: &str,
     ldap_config: &LdapConfig,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let computer_name = read_input("Enter computer name (e.g., SRV01 or SRV01$): ");
+    let Some(computer_name) =
+        read_input_with_history("Enter computer name (e.g., SRV01 or SRV01$): ", "actions")
+    else {
+        return Ok(());
+    };
     if computer_name.is_empty() {
         println!("[!] Computer name is required");
         return Ok(());
@@ -94,7 +98,12 @@ fn handle_del_computer(
     ldap: &mut LdapConn,
     search_base: &str,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let computer_name = read_input("Enter computer name to delete (e.g., SRV01 or SRV01$): ");
+    let Some(computer_name) = read_input_with_history(
+        "Enter computer name to delete (e.g., SRV01 or SRV01$): ",
+        "actions",
+    ) else {
+        return Ok(());
+    };
     if computer_name.is_empty() {
         println!("[!] Computer name is required");
         return Ok(());
@@ -108,13 +117,19 @@ fn handle_set_spn(
     ldap: &mut LdapConn,
     search_base: &str,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let target = read_input("Enter target object (sAMAccountName): ");
+    let Some(target) =
+        read_input_with_history("Enter target object (sAMAccountName): ", "actions")
+    else {
+        return Ok(());
+    };
     if target.is_empty() {
         println!("[!] Target object is required");
         return Ok(());
     }
 
-    let action = read_input("Enter action (list/add/del): ");
+    let Some(action) = read_input_with_history("Enter action (list/add/del): ", "actions") else {
+        return Ok(());
+    };
     if action.is_empty() {
         println!("[!] Action is required");
         return Ok(());
@@ -124,7 +139,9 @@ fn handle_set_spn(
     let spn = if action.to_lowercase() == "list" {
         None
     } else {
-        let spn_value = read_input("Enter SPN value: ");
+        let Some(spn_value) = read_input_with_history("Enter SPN value: ", "actions") else {
+            return Ok(());
+        };
         if spn_value.is_empty() {
             println!("[!] SPN value is required for add/del actions");
             return Ok(());
@@ -139,13 +156,17 @@ fn handle_add_user_to_group(
     ldap: &mut LdapConn,
     search_base: &str,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let user = read_input("Enter user (sAMAccountName): ");
+    let Some(user) = read_input_with_history("Enter user (sAMAccountName): ", "actions") else {
+        return Ok(());
+    };
     if user.is_empty() {
         println!("[!] User is required");
         return Ok(());
     }
 
-    let group = read_input("Enter group (sAMAccountName): ");
+    let Some(group) = read_input_with_history("Enter group (sAMAccountName): ", "actions") else {
+        return Ok(());
+    };
     if group.is_empty() {
         println!("[!] Group is required");
         return Ok(());
@@ -159,13 +180,21 @@ fn handle_set_dontreqpreauth(
     ldap: &mut LdapConn,
     search_base: &str,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let target = read_input("Enter target user (sAMAccountName): ");
+    let Some(target) =
+        read_input_with_history("Enter target user (sAMAccountName): ", "actions")
+    else {
+        return Ok(());
+    };
     if target.is_empty() {
         println!("[!] Target user is required");
         return Ok(());
     }
 
-    let flag = read_input("Enable DONT_REQUIRE_PREAUTH? (true/false): ");
+    let Some(flag) =
+        read_input_with_history("Enable DONT_REQUIRE_PREAUTH? (true/false): ", "actions")
+    else {
+        return Ok(());
+    };
     let enable = flag.trim().to_lowercase() == "true";
     crate::track_history("actions", &format!("set-preauth {} {}", target, enable));
 
@@ -176,7 +205,9 @@ fn handle_enable_account(
     ldap: &mut LdapConn,
     search_base: &str,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let username = read_input("Enter username to enable: ");
+    let Some(username) = read_input_with_history("Enter username to enable: ", "actions") else {
+        return Ok(());
+    };
     if username.is_empty() {
         println!("[!] Username is required");
         return Ok(());
@@ -190,7 +221,9 @@ fn handle_disable_account(
     ldap: &mut LdapConn,
     search_base: &str,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let username = read_input("Enter username to disable: ");
+    let Some(username) = read_input_with_history("Enter username to disable: ", "actions") else {
+        return Ok(());
+    };
     if username.is_empty() {
         println!("[!] Username is required");
         return Ok(());

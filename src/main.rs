@@ -253,7 +253,9 @@ fn handle_get_sid_guid(
     search_base: &str,
     ldap_config: &ldap::LdapConfig,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let target = read_input("Enter target object: ");
+    let Some(target) = read_input_with_history("Enter target object: ", "get-sid-guid") else {
+        return Ok(());
+    };
     if !target.is_empty() {
         track_history("get-sid-guid", &target);
         commands::get_sid_guid::query_sid_guid(ldap, search_base, ldap_config, &target)?;
@@ -269,7 +271,9 @@ fn handle_from_sid_guid(
     println!("SID Ex:  S-1-5-21-123456789-234567890-345678901-1001");
     println!("GUID Ex: 550e8400-e29b-41d4-a716-446655440000\n");
 
-    let target = read_input("Enter SID/GUID: ");
+    let Some(target) = read_input_with_history("Enter SID/GUID: ", "from-sid-guid") else {
+        return Ok(());
+    };
     if !target.is_empty() {
         track_history("from-sid-guid", &target);
         commands::from_sid_guid::resolve_sid_guid(ldap, search_base, &target)?;
@@ -282,7 +286,9 @@ fn handle_get_acedacl(
     search_base: &str,
     ldap_config: &ldap::LdapConfig,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let username = read_input("Enter username to analyze: ");
+    let Some(username) = read_input_with_history("Enter username to analyze: ", "ace-dacl") else {
+        return Ok(());
+    };
     if !username.is_empty() {
         track_history("ace-dacl", &username);
         commands::get_acedacl::get_ace_dacl(ldap, search_base, ldap_config, &username)?;
