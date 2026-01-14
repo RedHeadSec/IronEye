@@ -147,20 +147,18 @@ pub fn get_machine_account_quota(
             }
         }
 
-        println!("\n=== Summary ===");
-        println!(
-            "Domain quota allows {} computer creation{} per user",
-            if quota == 0 {
-                "NO".to_string()
-            } else {
-                quota.to_string()
-            },
-            if quota == 1 { "" } else { "s" }
-        );
         if perform_acl_lookup {
+            println!("\n=== Summary ===");
+            println!(
+                "Domain quota allows {} computer creation{} per user",
+                if quota == 0 {
+                    "NO".to_string()
+                } else {
+                    quota.to_string()
+                },
+                if quota == 1 { "" } else { "s" }
+            );
             println!("ACL permissions can override quota settings in specific containers");
-        } else {
-            println!("[*] Run with ACL analysis for delegation details");
         }
     } else {
         println!("No machine account quota information found.");
