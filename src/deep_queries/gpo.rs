@@ -2,7 +2,8 @@ use crate::bofhound::{export_bofhound, query_with_security_descriptor};
 use crate::help::add_terminal_spacing;
 use crate::ldap::LdapConfig;
 use chrono::{Local, NaiveDateTime};
-use ldap3::{LdapConn, SearchEntry};
+use ldap3::adapters::{Adapter, EntriesOnly, PagedResults};
+use ldap3::{LdapConn, Scope, SearchEntry};
 use std::error::Error;
 
 pub fn get_gpos(
