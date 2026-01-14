@@ -62,93 +62,106 @@ pub fn get_machine_account_quota(
             _ => println!("- Unexpected quota configuration detected"),
         }
 
-        if config.username.is_empty() {
-            println!("\n[!] Note: Authenticated as anonymous - cannot analyze current user rights");
-        } else {
-            println!("\n=== Current User Analysis ===");
-            match analyze_current_user_rights(ldap, search_base, &config.username, &config.domain) {
-                Ok((can_create, locations)) => {
-                    if can_create {
-                        println!("✓ Current user ({}) has computer creation rights", config.username);
-                        if !locations.is_empty() {
-                            println!("\n  Can create computers in:");
-                            for location in locations {
-                                println!("    - {}", location);
+        add_terminal_spacing(2);
+
+        let perform_acl_lookup = Confirm::new()
+            .with_prompt(
+                "Perform ACL analysis? (enumerates containers/OUs for delegation permissions)",
+            )
+            .default(false)
+            .interact()?;
+
+        if perform_acl_lookup {
+            if config.username.is_empty() {
+                println!("\n[!] Note: Authenticated as anonymous - cannot analyze current user rights");
+            } else {
+                println!("\n=== Current User Analysis ===");
+                match analyze_current_user_rights(ldap, search_base, &config.username, &config.domain) {
+                    Ok((can_create, locations)) => {
+                        if can_create {
+                            println!("✓ Current user ({}) has computer creation rights", config.username);
+                            if !locations.is_empty() {
+                                println!("\n  Can create computers in:");
+                                for location in locations {
+                                    println!("    - {}", location);
+                                }
+                            }
+                        } else {
+                            println!(
+                                "✗ Current user ({}) does NOT have computer creation rights",
+                                config.username
+                            );
+                            println!("  User lacks necessary ACL permissions on containers/OUs");
+                        }
+                    }
+                    Err(e) => {
+                        debug::debug_log(1, format!("Failed to analyze user rights: {}", e));
+                        println!("[!] Could not determine current user's effective rights");
+                    }
+                }
+            }
+
+            println!("\n=== Custom Computer Creation Delegations ===");
+            match find_custom_delegations(ldap, search_base, &config.domain) {
+                Ok(delegations) => {
+                    if delegations.is_empty() {
+                        println!("No non-default delegations found");
+                    } else {
+                        let total_locations = delegations.len();
+                        let total_principals: usize = delegations.values().map(|v| v.len()).sum();
+
+                        println!("Found {} custom delegation{} across {} location{}",
+                            total_principals,
+                            if total_principals == 1 { "" } else { "s" },
+                            total_locations,
+                            if total_locations == 1 { "" } else { "s" });
+
+                        add_terminal_spacing(1);
+                        if Confirm::new()
+                            .with_prompt("Export detailed delegations to file?")
+                            .default(true)
+                            .interact()?
+                        {
+                            export_delegations(&delegations)?;
+                        } else {
+                            println!("\nSample delegations (first 3 locations):");
+                            for (i, (location, principals)) in delegations.iter().take(3).enumerate() {
+                                if i > 0 {
+                                    println!();
+                                }
+                                println!("{}", location);
+                                for principal in principals {
+                                    println!("  -> {}", principal);
+                                }
+                            }
+                            if total_locations > 3 {
+                                println!("\n... and {} more location{}",
+                                    total_locations - 3,
+                                    if total_locations - 3 == 1 { "" } else { "s" });
                             }
                         }
-                    } else {
-                        println!(
-                            "✗ Current user ({}) does NOT have computer creation rights",
-                            config.username
-                        );
-                        println!("  User lacks necessary ACL permissions on containers/OUs");
                     }
                 }
                 Err(e) => {
-                    debug::debug_log(1, format!("Failed to analyze user rights: {}", e));
-                    println!("[!] Could not determine current user's effective rights");
+                    debug::debug_log(1, format!("Failed to enumerate delegations: {}", e));
+                    println!("[!] Could not enumerate delegations (may require elevated privileges)");
                 }
             }
         }
 
-        println!("\n=== Custom Computer Creation Delegations ===");
-        match find_custom_delegations(ldap, search_base, &config.domain) {
-            Ok(delegations) => {
-                if delegations.is_empty() {
-                    println!("No non-default delegations found");
+        if perform_acl_lookup {
+            println!("\n=== Summary ===");
+            println!(
+                "Domain quota allows {} computer creation{} per user",
+                if quota == 0 {
+                    "NO".to_string()
                 } else {
-                    let total_locations = delegations.len();
-                    let total_principals: usize = delegations.values().map(|v| v.len()).sum();
-                    
-                    println!("Found {} custom delegation{} across {} location{}",
-                        total_principals,
-                        if total_principals == 1 { "" } else { "s" },
-                        total_locations,
-                        if total_locations == 1 { "" } else { "s" });
-                    
-                    add_terminal_spacing(1);
-                    if Confirm::new()
-                        .with_prompt("Export detailed delegations to file?")
-                        .default(true)
-                        .interact()?
-                    {
-                        export_delegations(&delegations)?;
-                    } else {
-                        println!("\nSample delegations (first 3 locations):");
-                        for (i, (location, principals)) in delegations.iter().take(3).enumerate() {
-                            if i > 0 {
-                                println!();
-                            }
-                            println!("{}", location);
-                            for principal in principals {
-                                println!("  -> {}", principal);
-                            }
-                        }
-                        if total_locations > 3 {
-                            println!("\n... and {} more location{}", 
-                                total_locations - 3,
-                                if total_locations - 3 == 1 { "" } else { "s" });
-                        }
-                    }
-                }
-            }
-            Err(e) => {
-                debug::debug_log(1, format!("Failed to enumerate delegations: {}", e));
-                println!("[!] Could not enumerate delegations (may require elevated privileges)");
-            }
+                    quota.to_string()
+                },
+                if quota == 1 { "" } else { "s" }
+            );
+            println!("ACL permissions can override quota settings in specific containers");
         }
-
-        println!("\n=== Summary ===");
-        println!(
-            "Domain quota allows {} computer creation{} per user",
-            if quota == 0 {
-                "NO".to_string()
-            } else {
-                quota.to_string()
-            },
-            if quota == 1 { "" } else { "s" }
-        );
-        println!("ACL permissions can override quota settings in specific containers");
     } else {
         println!("No machine account quota information found.");
     }

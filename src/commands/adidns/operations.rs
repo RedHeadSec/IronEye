@@ -2,7 +2,7 @@
 
 use crate::commands::adidns::{serial, structures, zones};
 use crate::debug::debug_log;
-use crate::help::{add_terminal_spacing, read_input};
+use crate::help::{add_terminal_spacing, read_input, read_input_with_history};
 use crate::ldap::{self, LdapConfig};
 use dialoguer::{theme::ColorfulTheme, Select};
 use ldap3::{LdapConn, Scope, SearchEntry};
@@ -123,13 +123,19 @@ fn handle_query_record(
     search_base: &str,
     ldap_config: &mut LdapConfig,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let record_name = read_input("Enter record name (e.g., server01): ");
+    let Some(record_name) =
+        read_input_with_history("Enter record name (e.g., server01): ", "adidns")
+    else {
+        return Ok(());
+    };
     if record_name.is_empty() {
         println!("[!] Record name is required");
         return Ok(());
     }
 
-    let zone = read_input("Enter zone (leave empty for domain default): ");
+    let Some(zone) = read_input_with_history("Enter zone (leave empty for domain default): ", "adidns") else {
+        return Ok(());
+    };
     crate::track_history(
         "adidns",
         &format!(
@@ -422,13 +428,21 @@ fn handle_add_record(
     search_base: &str,
     ldap_config: &mut LdapConfig,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let record_name = read_input("Enter record name (e.g., attacker): ");
+    let Some(record_name) =
+        read_input_with_history("Enter record name (e.g., attacker): ", "adidns")
+    else {
+        return Ok(());
+    };
     if record_name.is_empty() {
         println!("[!] Record name is required");
         return Ok(());
     }
 
-    let ip_address = read_input("Enter IP address (e.g., 192.168.1.100): ");
+    let Some(ip_address) =
+        read_input_with_history("Enter IP address (e.g., 192.168.1.100): ", "adidns")
+    else {
+        return Ok(());
+    };
     if ip_address.is_empty() {
         println!("[!] IP address is required");
         return Ok(());
@@ -441,14 +455,22 @@ fn handle_add_record(
         return Ok(());
     }
 
-    let zone = read_input("Enter zone (leave empty for domain default): ");
+    let Some(zone) =
+        read_input_with_history("Enter zone (leave empty for domain default): ", "adidns")
+    else {
+        return Ok(());
+    };
     let zone = if zone.is_empty() {
         ldap_config.domain.clone()
     } else {
         zone
     };
 
-    let ttl_input = read_input("Enter TTL in seconds (leave empty for 180): ");
+    let Some(ttl_input) =
+        read_input_with_history("Enter TTL in seconds (leave empty for 180): ", "adidns")
+    else {
+        return Ok(());
+    };
     let ttl = if ttl_input.is_empty() {
         180
     } else {
@@ -617,13 +639,19 @@ fn handle_modify_record(
     search_base: &str,
     ldap_config: &mut LdapConfig,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let record_name = read_input("Enter record name to modify: ");
+    let Some(record_name) =
+        read_input_with_history("Enter record name to modify: ", "adidns")
+    else {
+        return Ok(());
+    };
     if record_name.is_empty() {
         println!("[!] Record name is required");
         return Ok(());
     }
 
-    let new_ip = read_input("Enter new IP address: ");
+    let Some(new_ip) = read_input_with_history("Enter new IP address: ", "adidns") else {
+        return Ok(());
+    };
     if new_ip.is_empty() {
         println!("[!] IP address is required");
         return Ok(());
@@ -636,7 +664,11 @@ fn handle_modify_record(
         return Ok(());
     }
 
-    let zone = read_input("Enter zone (leave empty for domain default): ");
+    let Some(zone) =
+        read_input_with_history("Enter zone (leave empty for domain default): ", "adidns")
+    else {
+        return Ok(());
+    };
     let zone = if zone.is_empty() {
         ldap_config.domain.clone()
     } else {
@@ -847,13 +879,21 @@ fn handle_remove_record(
     search_base: &str,
     ldap_config: &mut LdapConfig,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let record_name = read_input("Enter record name to tombstone: ");
+    let Some(record_name) =
+        read_input_with_history("Enter record name to tombstone: ", "adidns")
+    else {
+        return Ok(());
+    };
     if record_name.is_empty() {
         println!("[!] Record name is required");
         return Ok(());
     }
 
-    let zone = read_input("Enter zone (leave empty for domain default): ");
+    let Some(zone) =
+        read_input_with_history("Enter zone (leave empty for domain default): ", "adidns")
+    else {
+        return Ok(());
+    };
     crate::track_history(
         "adidns",
         &format!(
@@ -1093,13 +1133,21 @@ fn handle_delete_record(
     search_base: &str,
     ldap_config: &mut LdapConfig,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let record_name = read_input("Enter record name to delete: ");
+    let Some(record_name) =
+        read_input_with_history("Enter record name to delete: ", "adidns")
+    else {
+        return Ok(());
+    };
     if record_name.is_empty() {
         println!("[!] Record name is required");
         return Ok(());
     }
 
-    let zone = read_input("Enter zone (leave empty for domain default): ");
+    let Some(zone) =
+        read_input_with_history("Enter zone (leave empty for domain default): ", "adidns")
+    else {
+        return Ok(());
+    };
     crate::track_history(
         "adidns",
         &format!(

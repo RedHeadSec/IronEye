@@ -43,6 +43,7 @@ const MAIN_OPTIONS: &[&str] = &[
 const CMD_OPTIONS: &[&str] = &[
     "Get SID/GUID",
     "From SID/GUID",
+    "Get Domain Controllers",
     "Get SPNs",
     "Get ACE/DACL",
     "Machine Quota",
@@ -147,21 +148,22 @@ fn run_command_menu(
         let result = match cmd_selection {
             0 => handle_get_sid_guid(&mut ldap, &search_base, ldap_config),
             1 => handle_from_sid_guid(&mut ldap, &search_base, ldap_config),
-            2 => {
+            2 => commands::get_dcs::get_domain_controllers(&mut ldap, &search_base, ldap_config),
+            3 => {
                 commands::getspns::get_service_principal_names(&mut ldap, &search_base, ldap_config)
             }
-            3 => handle_get_acedacl(&mut ldap, &search_base, ldap_config),
-            4 => commands::maq::get_machine_account_quota(&mut ldap, &search_base, ldap_config),
-            5 => handle_net_commands(&mut ldap, &search_base, ldap_config),
-            6 => commands::getpasspol::get_password_policy(&mut ldap, &search_base, ldap_config),
-            7 => run_nested_query_menu(&mut ldap, &search_base, ldap_config).map_err(|e| e.into()),
-            8 => commands::customldap::custom_ldap_query(&mut ldap, &search_base, ldap_config),
-            9 => commands::actions::run_actions_menu(&mut ldap, &search_base, ldap_config),
-            10 => {
+            4 => handle_get_acedacl(&mut ldap, &search_base, ldap_config),
+            5 => commands::maq::get_machine_account_quota(&mut ldap, &search_base, ldap_config),
+            6 => handle_net_commands(&mut ldap, &search_base, ldap_config),
+            7 => commands::getpasspol::get_password_policy(&mut ldap, &search_base, ldap_config),
+            8 => run_nested_query_menu(&mut ldap, &search_base, ldap_config).map_err(|e| e.into()),
+            9 => commands::customldap::custom_ldap_query(&mut ldap, &search_base, ldap_config),
+            10 => commands::actions::run_actions_menu(&mut ldap, &search_base, ldap_config),
+            11 => {
                 show_help_connect();
                 Ok(())
             }
-            11 => break,
+            12 => break,
             _ => unreachable!(),
         };
 
@@ -194,33 +196,38 @@ fn run_command_menu(
                                 let retry_result = match cmd_selection {
                                     0 => handle_get_sid_guid(&mut ldap, &search_base, ldap_config),
                                     1 => handle_from_sid_guid(&mut ldap, &search_base, ldap_config),
-                                    2 => commands::getspns::get_service_principal_names(
+                                    2 => commands::get_dcs::get_domain_controllers(
                                         &mut ldap,
                                         &search_base,
                                         ldap_config,
                                     ),
-                                    3 => handle_get_acedacl(&mut ldap, &search_base, ldap_config),
-                                    4 => commands::maq::get_machine_account_quota(
+                                    3 => commands::getspns::get_service_principal_names(
                                         &mut ldap,
                                         &search_base,
                                         ldap_config,
                                     ),
-                                    5 => handle_net_commands(&mut ldap, &search_base, ldap_config),
-                                    6 => commands::getpasspol::get_password_policy(
+                                    4 => handle_get_acedacl(&mut ldap, &search_base, ldap_config),
+                                    5 => commands::maq::get_machine_account_quota(
                                         &mut ldap,
                                         &search_base,
                                         ldap_config,
                                     ),
-                                    7 => {
+                                    6 => handle_net_commands(&mut ldap, &search_base, ldap_config),
+                                    7 => commands::getpasspol::get_password_policy(
+                                        &mut ldap,
+                                        &search_base,
+                                        ldap_config,
+                                    ),
+                                    8 => {
                                         run_nested_query_menu(&mut ldap, &search_base, ldap_config)
                                             .map_err(|e| e.into())
                                     }
-                                    8 => commands::customldap::custom_ldap_query(
+                                    9 => commands::customldap::custom_ldap_query(
                                         &mut ldap,
                                         &search_base,
                                         ldap_config,
                                     ),
-                                    9 => commands::actions::run_actions_menu(
+                                    10 => commands::actions::run_actions_menu(
                                         &mut ldap,
                                         &search_base,
                                         ldap_config,
@@ -253,7 +260,9 @@ fn handle_get_sid_guid(
     search_base: &str,
     ldap_config: &ldap::LdapConfig,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let target = read_input("Enter target object: ");
+    let Some(target) = read_input_with_history("Enter target object: ", "get-sid-guid") else {
+        return Ok(());
+    };
     if !target.is_empty() {
         track_history("get-sid-guid", &target);
         commands::get_sid_guid::query_sid_guid(ldap, search_base, ldap_config, &target)?;
@@ -269,7 +278,9 @@ fn handle_from_sid_guid(
     println!("SID Ex:  S-1-5-21-123456789-234567890-345678901-1001");
     println!("GUID Ex: 550e8400-e29b-41d4-a716-446655440000\n");
 
-    let target = read_input("Enter SID/GUID: ");
+    let Some(target) = read_input_with_history("Enter SID/GUID: ", "from-sid-guid") else {
+        return Ok(());
+    };
     if !target.is_empty() {
         track_history("from-sid-guid", &target);
         commands::from_sid_guid::resolve_sid_guid(ldap, search_base, &target)?;
@@ -282,7 +293,9 @@ fn handle_get_acedacl(
     search_base: &str,
     ldap_config: &ldap::LdapConfig,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let username = read_input("Enter username to analyze: ");
+    let Some(username) = read_input_with_history("Enter username to analyze: ", "ace-dacl") else {
+        return Ok(());
+    };
     if !username.is_empty() {
         track_history("ace-dacl", &username);
         commands::get_acedacl::get_ace_dacl(ldap, search_base, ldap_config, &username)?;
@@ -295,9 +308,12 @@ fn handle_net_commands(
     search_base: &str,
     ldap_config: &ldap::LdapConfig,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let input = read_input(
+    let Some(input) = read_input_with_history(
         "Enter net command (e.g., user administrator, group \"Domain Admins\", computer DC01$): ",
-    );
+        "net",
+    ) else {
+        return Ok(());
+    };
     track_history("net", &input);
     let args = parse_quoted_args(&input);
 

@@ -1,5 +1,6 @@
 pub mod computers;
 pub mod delegations;
+pub mod gpo;
 pub mod groups;
 pub mod ou;
 pub mod pki;
