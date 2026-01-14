@@ -34,7 +34,7 @@ Get you a tgt however or use Cerberos module:
 
 ![alt text](images/image-3.png)
 
-![alt text](image.png)
+![alt text](images/image.png)
 
 
 ## Connect - Sub Modules
@@ -52,11 +52,11 @@ Get you a tgt however or use Cerberos module:
 - **Actions** - Perform various actions via LDAP
 
 ### Deep Queries
-![alt text](image-1.png)
+![alt text](images/image-1.png)
 
 
 ### Custom LDAP Query
-![alt text](image-2.png)
+![alt text](images/image-2.png)
 
 ### Actions Module
 Direct Active Directory object modification for post-exploitation scenarios through LDAP.
@@ -72,7 +72,7 @@ Direct Active Directory object modification for post-exploitation scenarios thro
 - **DNS Management** - ADIDNS manipulation (detailed below)
 - **Reconnect with Secure Connection** - Upgrade to LDAPS
 
-![alt text](image-5.png)
+![alt text](images/image-5.png)
 
 **Example Usage:**
 ```bash
@@ -111,7 +111,7 @@ Comprehensive Active Directory-Integrated DNS manipulation for poisoning and tra
 - **Remove (Tombstone)** - Mark inactive without deletion
 - **Delete Record** - Permanent LDAP removal
 
-![alt text](image-4.png)
+![alt text](images/image-4.png)
 
 ---
 
@@ -119,7 +119,7 @@ Comprehensive Active Directory-Integrated DNS manipulation for poisoning and tra
 
 Almost all output files are in a BofHound ingestiable format, meaning you can be targeted and pull just the data you need to graph in BloodHound or pull everything and have a pretty good picture of the whole network. Obviously not near as comprehensive as an collector, but also should be far less noisey.
 
-![alt text](image-6.png)
+![alt text](images/image-6.png)
 
 
 ## Cerberos Module
