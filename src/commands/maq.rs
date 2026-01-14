@@ -62,6 +62,8 @@ pub fn get_machine_account_quota(
             _ => println!("- Unexpected quota configuration detected"),
         }
 
+        add_terminal_spacing(2);
+
         let perform_acl_lookup = Confirm::new()
             .with_prompt(
                 "Perform ACL analysis? (enumerates containers/OUs for delegation permissions)",
