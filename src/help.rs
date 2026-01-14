@@ -128,10 +128,7 @@ pub fn read_input_with_history(prompt: &str, module: &str) -> Option<String> {
         }
     };
 
-    print!("{}", prompt);
-    let _ = io::stdout().flush();
-
-    match editor.readline("") {
+    match editor.readline(prompt) {
         Ok(input) => Some(input.trim().to_string()),
         Err(_) => None,
     }
