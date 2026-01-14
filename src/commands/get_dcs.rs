@@ -1,6 +1,7 @@
 use crate::debug;
 use crate::help::add_terminal_spacing;
 use crate::ldap::LdapConfig;
+use chrono::NaiveDateTime;
 use ldap3::adapters::{Adapter, EntriesOnly, PagedResults};
 use ldap3::{LdapConn, Scope, SearchEntry};
 use std::error::Error;
@@ -94,8 +95,8 @@ pub fn get_domain_controllers(
             .attrs
             .get("whenCreated")
             .and_then(|v| v.first())
-            .map(|s| s.as_str())
-            .unwrap_or("N/A");
+            .map(|s| parse_ad_timestamp(s))
+            .unwrap_or_else(|| "N/A".to_string());
 
         println!(
             "{:<20} {:<40} {:<30} {}",
@@ -107,4 +108,15 @@ pub fn get_domain_controllers(
     add_terminal_spacing(2);
 
     Ok(())
+}
+
+fn parse_ad_timestamp(ts: &str) -> String {
+    // AD generalized time format: YYYYMMDDHHmmss.0Z
+    let ts = ts.trim_end_matches(".0Z").trim_end_matches('Z');
+    if ts.len() >= 14 {
+        if let Ok(dt) = NaiveDateTime::parse_from_str(ts, "%Y%m%d%H%M%S") {
+            return dt.format("%Y-%m-%d %H:%M:%S").to_string();
+        }
+    }
+    ts.to_string()
 }
