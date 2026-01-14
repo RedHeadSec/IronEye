@@ -128,7 +128,11 @@ pub fn read_input_with_history(prompt: &str, module: &str) -> Option<String> {
         }
     };
 
-    match editor.readline(prompt) {
+    let result = editor.readline(prompt);
+    // Drop editor before processing result to ensure terminal is restored
+    drop(editor);
+
+    match result {
         Ok(input) => Some(input.trim().to_string()),
         Err(_) => None,
     }
