@@ -20,11 +20,6 @@ pub fn get_machine_account_quota(
     debug::debug_log(1, "Querying machine account quota...");
     debug::debug_log(2, format!("Search base: {}", search_base));
 
-    let perform_acl_lookup = Confirm::new()
-        .with_prompt("Perform ACL analysis? (slower, enumerates delegations)")
-        .default(false)
-        .interact()?;
-
     let result = ldap.search(
         &search_base,
         Scope::Base,
@@ -66,6 +61,13 @@ pub fn get_machine_account_quota(
             }
             _ => println!("- Unexpected quota configuration detected"),
         }
+
+        let perform_acl_lookup = Confirm::new()
+            .with_prompt(
+                "Perform ACL analysis? (enumerates containers/OUs for delegation permissions)",
+            )
+            .default(false)
+            .interact()?;
 
         if perform_acl_lookup {
             if config.username.is_empty() {
