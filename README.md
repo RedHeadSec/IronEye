@@ -31,26 +31,16 @@ Get you a tgt however or use Cerberos module:
 [+] Exporting KRB5CCNAME to: ticket.ccache
 [+] KRB5CCNAME environment variable set to: ticket.ccache
 ```
-<img width="713" height="598" alt="image" src="https://github.com/user-attachments/assets/dbcf2216-9384-452f-93c7-e770a4003434" />
-
-
-```bash
--u robb.stark -d NORTH.SEVENKINGDOMS.LOCAL -i WINTERFELL.NORTH.SEVENKINGDOMS.LOCAL -k -s
-```
-Connection Arguments:
-```
--u <user> -p <password> -d <domain -i <FQDN/IP> [-s <ldaps>] [-t <timestamp>] [-k <Kerberos Auth>]
-```
-
 
 ![alt text](images/image-3.png)
 
+![alt text](image.png)
+
 
 ## Connect - Sub Modules
-<img width="660" height="464" alt="image" src="https://github.com/user-attachments/assets/b779126e-9355-4eb7-a412-b2febbd254c8" />
-
 - **Get SID/GUID** - Get the SID/GUID of a domain object
 - **From SID/GUID** - Find the CN/Name of a SID/GUID
+- **Get Domain Controllers** - Get Domain Controllers
 - **Get SPNs** - Pull and export all domain SPNs
 - **Get ACE/DACL** - Pull DACL for a given user
 - **Query Groups** - Pull groups for a user or all user groups
@@ -61,8 +51,12 @@ Connection Arguments:
 - **Custom Ldap** - Run a custom LDAP query
 - **Actions** - Perform various actions via LDAP
 
-<img width="1364" height="753" alt="image" src="https://github.com/user-attachments/assets/c5eae49e-546b-41d6-ab70-88f23a1b586c" /> <br>
+### Deep Queries
+![alt text](image-1.png)
 
+
+### Custom LDAP Query
+![alt text](image-2.png)
 
 ### Actions Module
 Direct Active Directory object modification for post-exploitation scenarios through LDAP.
@@ -77,6 +71,8 @@ Direct Active Directory object modification for post-exploitation scenarios thro
 - **Disable Account** - Disable user/computer accounts
 - **DNS Management** - ADIDNS manipulation (detailed below)
 - **Reconnect with Secure Connection** - Upgrade to LDAPS
+
+![alt text](image-5.png)
 
 **Example Usage:**
 ```bash
@@ -102,6 +98,8 @@ Direct Active Directory object modification for post-exploitation scenarios thro
 > Group: Domain Admins
 ```
 
+
+
 **DNS Management (ADIDNS)**
 Comprehensive Active Directory-Integrated DNS manipulation for poisoning and traffic redirection. Stripped down functionality of Dirk's dnstool.py. 
 
@@ -113,7 +111,7 @@ Comprehensive Active Directory-Integrated DNS manipulation for poisoning and tra
 - **Remove (Tombstone)** - Mark inactive without deletion
 - **Delete Record** - Permanent LDAP removal
 
-<img width="523" height="356" alt="image" src="https://github.com/user-attachments/assets/c7e35ca9-d5a6-4260-9d1a-10f93e3afb80" />
+![alt text](image-4.png)
 
 ---
 
@@ -121,7 +119,7 @@ Comprehensive Active Directory-Integrated DNS manipulation for poisoning and tra
 
 Almost all output files are in a BofHound ingestiable format, meaning you can be targeted and pull just the data you need to graph in BloodHound or pull everything and have a pretty good picture of the whole network. Obviously not near as comprehensive as an collector, but also should be far less noisey.
 
-<img width="695" height="855" alt="image" src="https://github.com/user-attachments/assets/beb0f125-6778-41ce-9eba-96a2aada34e2" />
+![alt text](image-6.png)
 
 
 ## Cerberos Module
