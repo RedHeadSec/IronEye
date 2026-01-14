@@ -32,8 +32,6 @@ Get you a tgt however or use Cerberos module:
 [+] KRB5CCNAME environment variable set to: ticket.ccache
 ```
 
-![alt text](images/image-3.png)
-
 ![alt text](images/image.png)
 
 
