@@ -334,10 +334,17 @@ pub fn ldap_connect(config: &mut LdapConfig) -> Result<(LdapConn, String), LdapE
         .set_conn_timeout(Duration::from_secs(CONNECTION_TIMEOUT_SECS))
         .set_no_tls_verify(true);
 
-    let ldap_url = if config.secure_ldaps {
-        format!("ldaps://{}", config.dc_ip.to_lowercase())
+    // Don't lowercase hostname for Kerberos - SPN matching is case-sensitive
+    let host = if config.kerberos {
+        config.dc_ip.clone()
     } else {
-        format!("ldap://{}", config.dc_ip.to_lowercase())
+        config.dc_ip.to_lowercase()
+    };
+
+    let ldap_url = if config.secure_ldaps {
+        format!("ldaps://{}", host)
+    } else {
+        format!("ldap://{}", host)
     };
 
     debug::debug_log(1, format!("Connecting to LDAP: {}", ldap_url));

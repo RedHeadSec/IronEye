@@ -295,9 +295,12 @@ fn handle_net_commands(
     search_base: &str,
     ldap_config: &ldap::LdapConfig,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let input = read_input(
+    let Some(input) = read_input_with_history(
         "Enter net command (e.g., user administrator, group \"Domain Admins\", computer DC01$): ",
-    );
+        "net",
+    ) else {
+        return Ok(());
+    };
     track_history("net", &input);
     let args = parse_quoted_args(&input);
 
