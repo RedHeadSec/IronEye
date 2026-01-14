@@ -1,9 +1,8 @@
-use crate::bofhound::export_bofhound;
+use crate::bofhound::{export_bofhound, query_with_security_descriptor};
 use crate::help::add_terminal_spacing;
 use crate::ldap::LdapConfig;
 use chrono::{Local, NaiveDateTime};
-use ldap3::adapters::{Adapter, EntriesOnly, PagedResults};
-use ldap3::{LdapConn, Scope, SearchEntry};
+use ldap3::{LdapConn, SearchEntry};
 use std::error::Error;
 
 pub fn get_gpos(
@@ -165,37 +164,7 @@ fn query_gpos(
     search_base: &str,
 ) -> Result<Vec<SearchEntry>, Box<dyn Error>> {
     let filter = "(objectClass=groupPolicyContainer)";
-
-    let adapters: Vec<Box<dyn Adapter<_, _>>> = vec![
-        Box::new(EntriesOnly::new()),
-        Box::new(PagedResults::new(500)),
-    ];
-
-    let mut search = ldap.streaming_search_with(
-        adapters,
-        search_base,
-        Scope::Subtree,
-        filter,
-        vec![
-            "displayName",
-            "cn",
-            "flags",
-            "versionNumber",
-            "gPCFileSysPath",
-            "gPCFunctionalityVersion",
-            "whenCreated",
-            "whenChanged",
-            "distinguishedName",
-        ],
-    )?;
-
-    let mut entries = Vec::new();
-    while let Some(entry) = search.next()? {
-        entries.push(SearchEntry::construct(entry));
-    }
-    let _ = search.result().success()?;
-
-    Ok(entries)
+    query_with_security_descriptor(ldap, search_base, filter, vec![])
 }
 
 fn query_gpo_links(
