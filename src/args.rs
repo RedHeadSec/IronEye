@@ -1,4 +1,4 @@
-use crate::deep_queries::{computers, delegations, groups, ou, pki, sccm, scom, subnets, trusts, users};
+use crate::deep_queries::{computers, delegations, gpo, groups, ou, pki, sccm, scom, subnets, trusts, users};
 use crate::help::add_terminal_spacing;
 use crate::history::HistoryEditor;
 use crate::kerberos::hash;
@@ -370,6 +370,7 @@ pub fn run_nested_query_menu(
         "Query All Computers",
         "Query All Groups",
         "Query All Subnets",
+        "Query All GPOs",
         "Query All PKI Information",
         "Query All SCCM Information",
         "Query All SCOM Information",
@@ -392,12 +393,13 @@ pub fn run_nested_query_menu(
             2 => run_query(|| computers::get_computers(ldap, search_base, ldap_config)),
             3 => run_query(|| groups::get_groups(ldap, search_base, ldap_config)),
             4 => run_query(|| subnets::get_subnets(ldap, search_base, ldap_config)),
-            5 => run_query(|| pki::get_pki_info(ldap, search_base, ldap_config)),
-            6 => run_query(|| sccm::get_sccm_info(ldap, search_base, ldap_config)),
-            7 => run_query(|| scom::get_scom_info(ldap, search_base, ldap_config)),
-            8 => run_query(|| ou::get_organizational_units(ldap, search_base, ldap_config)),
-            9 => run_query(|| delegations::get_delegations(ldap, search_base, ldap_config)),
-            10 => {
+            5 => run_query(|| gpo::get_gpos(ldap, search_base, ldap_config)),
+            6 => run_query(|| pki::get_pki_info(ldap, search_base, ldap_config)),
+            7 => run_query(|| sccm::get_sccm_info(ldap, search_base, ldap_config)),
+            8 => run_query(|| scom::get_scom_info(ldap, search_base, ldap_config)),
+            9 => run_query(|| ou::get_organizational_units(ldap, search_base, ldap_config)),
+            10 => run_query(|| delegations::get_delegations(ldap, search_base, ldap_config)),
+            11 => {
                 println!("Returning to the main menu...");
                 add_terminal_spacing(1);
                 break;
