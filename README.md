@@ -119,7 +119,8 @@ Comprehensive Active Directory-Integrated DNS manipulation for poisoning and tra
 
 Almost all output files are in a BofHound ingestiable format, meaning you can be targeted and pull just the data you need to graph in BloodHound or pull everything and have a pretty good picture of the whole network. Obviously not near as comprehensive as an collector, but also should be far less noisey.
 
-![alt text](images/image-6.png)
+<img width="1015" height="1264" alt="image" src="https://github.com/user-attachments/assets/40b59cd6-bfcc-4c55-8fca-c4426c05ea83" />
+
 
 
 ## Cerberos Module
