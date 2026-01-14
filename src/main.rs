@@ -43,6 +43,7 @@ const MAIN_OPTIONS: &[&str] = &[
 const CMD_OPTIONS: &[&str] = &[
     "Get SID/GUID",
     "From SID/GUID",
+    "Get Domain Controllers",
     "Get SPNs",
     "Get ACE/DACL",
     "Machine Quota",
@@ -147,21 +148,22 @@ fn run_command_menu(
         let result = match cmd_selection {
             0 => handle_get_sid_guid(&mut ldap, &search_base, ldap_config),
             1 => handle_from_sid_guid(&mut ldap, &search_base, ldap_config),
-            2 => {
+            2 => commands::get_dcs::get_domain_controllers(&mut ldap, &search_base, ldap_config),
+            3 => {
                 commands::getspns::get_service_principal_names(&mut ldap, &search_base, ldap_config)
             }
-            3 => handle_get_acedacl(&mut ldap, &search_base, ldap_config),
-            4 => commands::maq::get_machine_account_quota(&mut ldap, &search_base, ldap_config),
-            5 => handle_net_commands(&mut ldap, &search_base, ldap_config),
-            6 => commands::getpasspol::get_password_policy(&mut ldap, &search_base, ldap_config),
-            7 => run_nested_query_menu(&mut ldap, &search_base, ldap_config).map_err(|e| e.into()),
-            8 => commands::customldap::custom_ldap_query(&mut ldap, &search_base, ldap_config),
-            9 => commands::actions::run_actions_menu(&mut ldap, &search_base, ldap_config),
-            10 => {
+            4 => handle_get_acedacl(&mut ldap, &search_base, ldap_config),
+            5 => commands::maq::get_machine_account_quota(&mut ldap, &search_base, ldap_config),
+            6 => handle_net_commands(&mut ldap, &search_base, ldap_config),
+            7 => commands::getpasspol::get_password_policy(&mut ldap, &search_base, ldap_config),
+            8 => run_nested_query_menu(&mut ldap, &search_base, ldap_config).map_err(|e| e.into()),
+            9 => commands::customldap::custom_ldap_query(&mut ldap, &search_base, ldap_config),
+            10 => commands::actions::run_actions_menu(&mut ldap, &search_base, ldap_config),
+            11 => {
                 show_help_connect();
                 Ok(())
             }
-            11 => break,
+            12 => break,
             _ => unreachable!(),
         };
 
@@ -194,33 +196,38 @@ fn run_command_menu(
                                 let retry_result = match cmd_selection {
                                     0 => handle_get_sid_guid(&mut ldap, &search_base, ldap_config),
                                     1 => handle_from_sid_guid(&mut ldap, &search_base, ldap_config),
-                                    2 => commands::getspns::get_service_principal_names(
+                                    2 => commands::get_dcs::get_domain_controllers(
                                         &mut ldap,
                                         &search_base,
                                         ldap_config,
                                     ),
-                                    3 => handle_get_acedacl(&mut ldap, &search_base, ldap_config),
-                                    4 => commands::maq::get_machine_account_quota(
+                                    3 => commands::getspns::get_service_principal_names(
                                         &mut ldap,
                                         &search_base,
                                         ldap_config,
                                     ),
-                                    5 => handle_net_commands(&mut ldap, &search_base, ldap_config),
-                                    6 => commands::getpasspol::get_password_policy(
+                                    4 => handle_get_acedacl(&mut ldap, &search_base, ldap_config),
+                                    5 => commands::maq::get_machine_account_quota(
                                         &mut ldap,
                                         &search_base,
                                         ldap_config,
                                     ),
-                                    7 => {
+                                    6 => handle_net_commands(&mut ldap, &search_base, ldap_config),
+                                    7 => commands::getpasspol::get_password_policy(
+                                        &mut ldap,
+                                        &search_base,
+                                        ldap_config,
+                                    ),
+                                    8 => {
                                         run_nested_query_menu(&mut ldap, &search_base, ldap_config)
                                             .map_err(|e| e.into())
                                     }
-                                    8 => commands::customldap::custom_ldap_query(
+                                    9 => commands::customldap::custom_ldap_query(
                                         &mut ldap,
                                         &search_base,
                                         ldap_config,
                                     ),
-                                    9 => commands::actions::run_actions_menu(
+                                    10 => commands::actions::run_actions_menu(
                                         &mut ldap,
                                         &search_base,
                                         ldap_config,
