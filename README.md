@@ -50,7 +50,8 @@ Get you a tgt however or use Cerberos module:
 - **Actions** - Perform various actions via LDAP
 
 ### Deep Queries
-![alt text](images/image-1.png)
+<img width="558" height="559" alt="image" src="https://github.com/user-attachments/assets/caa76a8e-0180-4af3-89d5-b45c167e3850" />
+
 
 
 ### Custom LDAP Query
