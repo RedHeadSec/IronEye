@@ -40,6 +40,7 @@ pub enum LoginResult {
     AccountDisabled,
     ConnectionError(String),
     AuthenticationError(String),
+    LdapSigningRequired,
 }
 
 #[derive(Debug, Clone)]
@@ -653,6 +654,11 @@ fn try_ldap_login(
 fn parse_ldap_error(error: &dyn Error) -> LoginResult {
     let error_str = error.to_string();
 
+    // Check for LDAP signing requirement (DSID error 00002028)
+    if error_str.contains("00002028") || error_str.contains("integrity checking") {
+        return LoginResult::LdapSigningRequired;
+    }
+
     if let Some(sub_error_code) = extract_ldap_sub_error(&error_str) {
         match sub_error_code.as_str() {
             "775" => LoginResult::AccountLocked,
@@ -782,6 +788,27 @@ fn process_attempt_result_realtime(
                     attempt.username, attempt.domain, attempt.dc, msg
                 ),
             );
+        }
+        LoginResult::LdapSigningRequired => {
+            println!(
+                "{}[!] \x1b[31mLDAP signing/channel binding required by DC\x1b[0m",
+                timestamp_prefix
+            );
+            println!(
+                "{}[!] The Domain Controller requires LDAP signing which is not \
+                 supported for simple binds.",
+                timestamp_prefix
+            );
+            println!(
+                "{}[!] Use the Cerberos module for Kerberos pre-auth spraying instead:",
+                timestamp_prefix
+            );
+            println!(
+                "{}    ironeye cerberos --mode brute --users <userfile> \
+                 --passwords <passfile> --dc <dc_ip> --domain {}",
+                timestamp_prefix, attempt.domain
+            );
+            return Err("LDAP signing required - use Kerberos spraying".into());
         }
     }
 

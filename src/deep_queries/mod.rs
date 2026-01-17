@@ -6,6 +6,7 @@ pub mod ou;
 pub mod pki;
 pub mod sccm;
 pub mod scom;
+pub mod scp;
 pub mod subnets;
 pub mod trusts;
 pub mod users;

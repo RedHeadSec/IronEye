@@ -1,4 +1,4 @@
-use crate::deep_queries::{computers, delegations, gpo, groups, ou, pki, sccm, scom, subnets, trusts, users};
+use crate::deep_queries::{computers, delegations, gpo, groups, ou, pki, sccm, scom, scp, subnets, trusts, users};
 use crate::help::add_terminal_spacing;
 use crate::history::HistoryEditor;
 use crate::kerberos::hash;
@@ -376,6 +376,7 @@ pub fn run_nested_query_menu(
         "Query All SCOM Information",
         "Query All Organization Units",
         "Query All Delegations",
+        "Query All Service Connection Points",
         "Back to Main Menu",
     ];
 
@@ -399,7 +400,8 @@ pub fn run_nested_query_menu(
             8 => run_query(|| scom::get_scom_info(ldap, search_base, ldap_config)),
             9 => run_query(|| ou::get_organizational_units(ldap, search_base, ldap_config)),
             10 => run_query(|| delegations::get_delegations(ldap, search_base, ldap_config)),
-            11 => {
+            11 => run_query(|| scp::get_service_connection_points(ldap, search_base, ldap_config)),
+            12 => {
                 println!("Returning to the main menu...");
                 add_terminal_spacing(1);
                 break;
