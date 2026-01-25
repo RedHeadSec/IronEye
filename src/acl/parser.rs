@@ -61,11 +61,11 @@ impl AclParser {
                         }
 
                         self.parse_object_ace(
-                        obj_ace,
-                        &sid,
-                        object_type,
-                        is_inherited,
-                        &mut relations,
+                            obj_ace,
+                            &sid,
+                            object_type,
+                            is_inherited,
+                            &mut relations,
                         );
                     }
                     AceData::AccessAllowed(simple_ace) => {
@@ -254,6 +254,26 @@ impl AclParser {
                 relations.push(AclRelation {
                     sid: sid.to_string(),
                     right_name: "ForceChangePassword".to_string(),
+                    inherited: is_inherited,
+                });
+            }
+
+            if object_type == "pKICertificateTemplate"
+                && self.has_extended_right(ace, &self.guids.certificate_enrollment)
+            {
+                relations.push(AclRelation {
+                    sid: sid.to_string(),
+                    right_name: "Certificate-Enrollment".to_string(),
+                    inherited: is_inherited,
+                });
+            }
+
+            if object_type == "pKICertificateTemplate"
+                && self.has_extended_right(ace, &self.guids.certificate_autoenrollment)
+            {
+                relations.push(AclRelation {
+                    sid: sid.to_string(),
+                    right_name: "Certificate-AutoEnrollment".to_string(),
                     inherited: is_inherited,
                 });
             }

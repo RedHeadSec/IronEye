@@ -2,10 +2,11 @@ use crate::acl::{AclParser, AclRelation, LdapSid};
 use crate::debug::debug_log;
 use crate::help::add_terminal_spacing;
 use crate::ldap::LdapConfig;
+use crate::retry_with_reconnect;
 use base64::engine::general_purpose::STANDARD as BASE64;
 use base64::Engine;
 use chrono::Local;
-use dialoguer::{Confirm, Input};
+use dialoguer::{Confirm, Input, Select};
 use ldap3::adapters::{Adapter, EntriesOnly, PagedResults};
 use ldap3::controls::RawControl;
 use ldap3::{LdapConn, Scope, SearchEntry};
@@ -18,7 +19,7 @@ use std::path::PathBuf;
 pub fn get_ace_dacl(
     ldap: &mut LdapConn,
     search_base: &str,
-    ldap_config: &LdapConfig,
+    ldap_config: &mut LdapConfig,
     username: &str,
 ) -> Result<(), Box<dyn Error>> {
     debug_log(1, &format!("Starting ACE/DACL analysis for: {}", username));
@@ -29,7 +30,7 @@ pub fn get_ace_dacl(
         2,
         &format!("Searching for user with filter: {}", user_filter),
     );
-    let user_entries = search_objects(ldap, search_base, &user_filter)?;
+    let user_entries = search_objects(ldap, search_base, &user_filter, ldap_config)?;
 
     if user_entries.is_empty() {
         debug_log(1, &format!("User not found: {}", username));
@@ -77,14 +78,14 @@ pub fn get_ace_dacl(
         println!("\n[*] Resolving group memberships...");
         for group_dn in member_of {
             let group_filter = format!("(distinguishedName={})", group_dn);
-            if let Ok(groups) = search_objects(ldap, search_base, &group_filter) {
+            if let Ok(groups) = search_objects(ldap, search_base, &group_filter, ldap_config) {
                 if let Some(group) = groups.first() {
                     if let Some(sid_values) = group.bin_attrs.get("objectSid") {
                         if let Some(sid_bytes) = sid_values.first() {
                             if let Ok(sid) = LdapSid::from_bytes(sid_bytes) {
                                 let sid_str = sid.to_string();
                                 let resolved_name =
-                                    resolver.resolve(&sid_str, ldap, search_base)?;
+                                    resolver.resolve(&sid_str, ldap, search_base, ldap_config)?;
                                 println!("    [+] {} -> {}", group_dn, resolved_name);
                                 relevant_sids.insert(sid_str);
                             }
@@ -121,7 +122,7 @@ pub fn get_ace_dacl(
 
     for (filter, obj_type) in filters {
         debug_log(2, &format!("Searching objects with filter: {}", filter));
-        let entries = match search_objects(ldap, search_base, filter) {
+        let entries = match search_objects(ldap, search_base, filter, ldap_config) {
             Ok(e) => {
                 debug_log(3, &format!("Retrieved {} entries for filter", e.len()));
                 e
@@ -190,7 +191,7 @@ pub fn get_ace_dacl(
         1,
         &format!("Found {} total permissions", permissions.total_count()),
     );
-    resolver.resolve_batch(&permissions.get_all_sids(), ldap, search_base)?;
+    resolver.resolve_batch(&permissions.get_all_sids(), ldap, search_base, ldap_config)?;
 
     permissions.print(&resolver);
 
@@ -208,11 +209,21 @@ pub fn get_ace_dacl(
             .interact()?;
 
         debug_log(1, &format!("Exporting results to: {}", filename));
-        permissions.export_bofhound(&filename, ldap, search_base)?;
+        let username_clone = ldap_config.username.clone();
+        let domain_clone = ldap_config.domain.clone();
+        permissions.export_bofhound(
+            &filename,
+            ldap,
+            search_base,
+            &username_clone,
+            &domain_clone,
+            ldap_config,
+        )?;
         let date = Local::now().format("%Y%m%d").to_string();
+        let filename_without_ext = filename.trim_end_matches(".txt");
         println!(
-            "\nResults exported to: output_{}/ironeye_{}",
-            date, filename
+            "\nResults exported to: output_{}_{}_{}/ironeye_{}.log (bofhound) or .txt (raw)",
+            date, ldap_config.username, ldap_config.domain, filename_without_ext
         );
     }
 
@@ -492,31 +503,56 @@ impl PermissionCollector {
         filename: &str,
         ldap: &mut LdapConn,
         search_base: &str,
+        username: &str,
+        domain: &str,
+        config: &mut LdapConfig,
     ) -> Result<(), Box<dyn Error>> {
+        let options = vec!["Bofhound format", "Raw text format"];
+        let selection = Select::new()
+            .with_prompt("Select export format")
+            .items(&options)
+            .default(0)
+            .interact()?;
+
         let date = Local::now().format("%Y%m%d").to_string();
-        let output_dir = format!("output_{}", date);
+        let output_dir = format!("output_{}_{}_{}", date, username, domain);
         fs::create_dir_all(&output_dir)?;
 
-        let prefixed_filename = format!("ironeye_{}", filename);
+        let filename_without_ext = filename.trim_end_matches(".txt");
+        let final_filename = match selection {
+            0 => format!("ironeye_{}.log", filename_without_ext),
+            1 => format!("ironeye_{}.txt", filename_without_ext),
+            _ => unreachable!(),
+        };
+
         let mut path = PathBuf::from(&output_dir);
-        path.push(prefixed_filename);
+        path.push(final_filename);
 
         let mut file = File::create(&path)?;
-        let separator = "--------------------";
-
         let affected_objects = self.get_all_affected_objects();
 
-        for dn in affected_objects {
-            let filter = format!("(distinguishedName={})", dn);
-            match query_full_object(ldap, search_base, &filter) {
-                Ok(entries) => {
-                    if let Some(entry) = entries.first() {
-                        writeln!(file, "{}", separator)?;
-                        write_bofhound_entry(&mut file, entry)?;
+        match selection {
+            0 => {
+                let separator = "--------------------";
+                for dn in affected_objects {
+                    let filter = format!("(distinguishedName={})", dn);
+                    match query_full_object(ldap, search_base, &filter, config) {
+                        Ok(entries) => {
+                            if let Some(entry) = entries.first() {
+                                writeln!(file, "{}", separator)?;
+                                write_bofhound_entry(&mut file, entry)?;
+                            }
+                        }
+                        Err(_) => continue,
                     }
                 }
-                Err(_) => continue,
             }
+            1 => {
+                for dn in affected_objects {
+                    writeln!(file, "{}", dn)?;
+                }
+            }
+            _ => unreachable!(),
         }
 
         Ok(())
@@ -527,6 +563,7 @@ fn search_objects(
     ldap: &mut LdapConn,
     search_base: &str,
     filter: &str,
+    config: &mut LdapConfig,
 ) -> Result<Vec<SearchEntry>, Box<dyn Error>> {
     debug_log(
         3,
@@ -574,8 +611,8 @@ fn search_objects(
 
         ldap.with_controls(vec![sd_control.clone(), paging_control]);
 
-        let (results, res) = ldap
-            .search(
+        let (results, res) = retry_with_reconnect!(ldap, config, {
+            ldap.search(
                 search_base,
                 Scope::Subtree,
                 filter,
@@ -586,8 +623,9 @@ fn search_objects(
                     "objectSid",
                     "nTSecurityDescriptor",
                 ],
-            )?
-            .success()?;
+            )
+        })?
+        .success()?;
 
         for entry in results {
             all_entries.push(SearchEntry::construct(entry));
@@ -744,6 +782,7 @@ impl SidResolver {
         sid: &str,
         ldap: &mut LdapConn,
         search_base: &str,
+        config: &mut LdapConfig,
     ) -> Result<String, Box<dyn Error>> {
         if let Some(name) = self.cache.get(sid) {
             return Ok(name.clone());
@@ -756,7 +795,7 @@ impl SidResolver {
                 .collect::<String>();
 
             let filter = format!("(objectSid={})", hex_str);
-            match search_objects(ldap, search_base, &filter) {
+            match search_objects(ldap, search_base, &filter, config) {
                 Ok(entries) => {
                     if let Some(entry) = entries.first() {
                         if let Some(sam) = entry.attrs.get("sAMAccountName").and_then(|v| v.first())
@@ -780,10 +819,11 @@ impl SidResolver {
         sids: &[String],
         ldap: &mut LdapConn,
         search_base: &str,
+        config: &mut LdapConfig,
     ) -> Result<(), Box<dyn Error>> {
         for sid in sids {
             if !self.cache.contains_key(sid) {
-                let _ = self.resolve(sid, ldap, search_base);
+                let _ = self.resolve(sid, ldap, search_base, config);
             }
         }
         Ok(())
@@ -822,6 +862,7 @@ fn query_full_object(
     ldap: &mut LdapConn,
     search_base: &str,
     filter: &str,
+    config: &mut LdapConfig,
 ) -> Result<Vec<SearchEntry>, Box<dyn Error>> {
     ldap.with_controls(vec![RawControl {
         ctype: String::from("1.2.840.113556.1.4.801"),
@@ -829,18 +870,19 @@ fn query_full_object(
         val: Some(vec![0x30, 0x03, 0x02, 0x01, 0x07]),
     }]);
 
-    let adapters: Vec<Box<dyn Adapter<_, _>>> = vec![
-        Box::new(EntriesOnly::new()),
-        Box::new(PagedResults::new(500)),
-    ];
-
-    let mut search = ldap.streaming_search_with(
-        adapters,
-        search_base,
-        Scope::Subtree,
-        filter,
-        vec!["*", "nTSecurityDescriptor"],
-    )?;
+    let mut search = retry_with_reconnect!(ldap, config, {
+        let adapters: Vec<Box<dyn Adapter<_, _>>> = vec![
+            Box::new(EntriesOnly::new()),
+            Box::new(PagedResults::new(500)),
+        ];
+        ldap.streaming_search_with(
+            adapters,
+            search_base,
+            Scope::Subtree,
+            filter,
+            vec!["*", "nTSecurityDescriptor"],
+        )
+    })?;
 
     let mut entries = Vec::new();
     while let Some(entry) = search.next()? {

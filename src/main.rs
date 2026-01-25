@@ -291,7 +291,7 @@ fn handle_from_sid_guid(
 fn handle_get_acedacl(
     ldap: &mut ldap3::LdapConn,
     search_base: &str,
-    ldap_config: &ldap::LdapConfig,
+    ldap_config: &mut ldap::LdapConfig,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let Some(username) = read_input_with_history("Enter username to analyze: ", "ace-dacl") else {
         return Ok(());
@@ -306,7 +306,7 @@ fn handle_get_acedacl(
 fn handle_net_commands(
     ldap: &mut ldap3::LdapConn,
     search_base: &str,
-    ldap_config: &ldap::LdapConfig,
+    ldap_config: &mut ldap::LdapConfig,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let Some(input) = read_input_with_history(
         "Enter net command (e.g., user administrator, group \"Domain Admins\", computer DC01$): ",

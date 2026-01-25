@@ -1,4 +1,5 @@
 use crate::acl::{AclParser, LdapSid};
+use crate::bofhound::create_output_dir;
 use crate::debug;
 use crate::help::add_terminal_spacing;
 use crate::ldap::LdapConfig;
@@ -8,7 +9,7 @@ use ldap3::controls::RawControl;
 use ldap3::{LdapConn, Scope, SearchEntry};
 use std::collections::{HashMap, HashSet};
 use std::error::Error;
-use std::fs::{self, File};
+use std::fs::File;
 use std::io::Write;
 use std::path::PathBuf;
 
@@ -73,13 +74,23 @@ pub fn get_machine_account_quota(
 
         if perform_acl_lookup {
             if config.username.is_empty() {
-                println!("\n[!] Note: Authenticated as anonymous - cannot analyze current user rights");
+                println!(
+                    "\n[!] Note: Authenticated as anonymous - cannot analyze current user rights"
+                );
             } else {
                 println!("\n=== Current User Analysis ===");
-                match analyze_current_user_rights(ldap, search_base, &config.username, &config.domain) {
+                match analyze_current_user_rights(
+                    ldap,
+                    search_base,
+                    &config.username,
+                    &config.domain,
+                ) {
                     Ok((can_create, locations)) => {
                         if can_create {
-                            println!("✓ Current user ({}) has computer creation rights", config.username);
+                            println!(
+                                "✓ Current user ({}) has computer creation rights",
+                                config.username
+                            );
                             if !locations.is_empty() {
                                 println!("\n  Can create computers in:");
                                 for location in locations {
@@ -110,11 +121,13 @@ pub fn get_machine_account_quota(
                         let total_locations = delegations.len();
                         let total_principals: usize = delegations.values().map(|v| v.len()).sum();
 
-                        println!("Found {} custom delegation{} across {} location{}",
+                        println!(
+                            "Found {} custom delegation{} across {} location{}",
                             total_principals,
                             if total_principals == 1 { "" } else { "s" },
                             total_locations,
-                            if total_locations == 1 { "" } else { "s" });
+                            if total_locations == 1 { "" } else { "s" }
+                        );
 
                         add_terminal_spacing(1);
                         if Confirm::new()
@@ -122,10 +135,12 @@ pub fn get_machine_account_quota(
                             .default(true)
                             .interact()?
                         {
-                            export_delegations(&delegations)?;
+                            export_delegations(&delegations, config)?;
                         } else {
                             println!("\nSample delegations (first 3 locations):");
-                            for (i, (location, principals)) in delegations.iter().take(3).enumerate() {
+                            for (i, (location, principals)) in
+                                delegations.iter().take(3).enumerate()
+                            {
                                 if i > 0 {
                                     println!();
                                 }
@@ -135,16 +150,20 @@ pub fn get_machine_account_quota(
                                 }
                             }
                             if total_locations > 3 {
-                                println!("\n... and {} more location{}",
+                                println!(
+                                    "\n... and {} more location{}",
                                     total_locations - 3,
-                                    if total_locations - 3 == 1 { "" } else { "s" });
+                                    if total_locations - 3 == 1 { "" } else { "s" }
+                                );
                             }
                         }
                     }
                 }
                 Err(e) => {
                     debug::debug_log(1, format!("Failed to enumerate delegations: {}", e));
-                    println!("[!] Could not enumerate delegations (may require elevated privileges)");
+                    println!(
+                        "[!] Could not enumerate delegations (may require elevated privileges)"
+                    );
                 }
             }
         }
@@ -212,7 +231,10 @@ fn analyze_current_user_rights(
     let mut is_privileged = false;
 
     if let Some(member_of) = user_entry.attrs.get("memberOf") {
-        debug::debug_log(3, format!("Processing {} group memberships", member_of.len()));
+        debug::debug_log(
+            3,
+            format!("Processing {} group memberships", member_of.len()),
+        );
         for group_dn in member_of {
             let group_filter = format!("(distinguishedName={})", group_dn);
             if let Ok(groups) = search_with_sd(ldap, search_base, &group_filter) {
@@ -222,7 +244,7 @@ fn analyze_current_user_rights(
                             if let Ok(sid) = LdapSid::from_bytes(sid_bytes) {
                                 let sid_str = sid.to_string();
                                 relevant_sids.insert(sid_str.clone());
-                                
+
                                 if privileged_sids.contains(&sid_str) {
                                     is_privileged = true;
                                 }
@@ -240,7 +262,8 @@ fn analyze_current_user_rights(
 
     debug::debug_log(3, format!("Checking {} total SIDs", relevant_sids.len()));
 
-    let container_filter = "(&(|(objectClass=container)(objectClass=organizationalUnit))(|(cn=Computers)(ou=*)))";
+    let container_filter =
+        "(&(|(objectClass=container)(objectClass=organizationalUnit))(|(cn=Computers)(ou=*)))";
     let containers = search_with_sd(ldap, search_base, container_filter)?;
 
     let parser = AclParser::new();
@@ -265,7 +288,7 @@ fn analyze_current_user_rights(
                 if let Ok((_, relations)) = parser.parse_security_descriptor(sd_bytes, object_type)
                 {
                     for rel in relations {
-                        if (rel.right_name == "CreateComputerObject" 
+                        if (rel.right_name == "CreateComputerObject"
                             || rel.right_name == "GenericAll")
                             && relevant_sids.contains(&rel.sid)
                         {
@@ -286,7 +309,8 @@ fn find_custom_delegations(
     search_base: &str,
     domain: &str,
 ) -> Result<HashMap<String, Vec<String>>, Box<dyn Error>> {
-    let container_filter = "(&(|(objectClass=container)(objectClass=organizationalUnit))(|(cn=Computers)(ou=*)))";
+    let container_filter =
+        "(&(|(objectClass=container)(objectClass=organizationalUnit))(|(cn=Computers)(ou=*)))";
     let containers = search_with_sd(ldap, search_base, container_filter)?;
 
     let parser = AclParser::new();
@@ -317,8 +341,7 @@ fn find_custom_delegations(
                         if rel.right_name == "CreateComputerObject"
                             && !ignored_sids.contains(&rel.sid)
                         {
-                            let resolved_name =
-                                resolve_sid(ldap, search_base, &rel.sid, domain)?;
+                            let resolved_name = resolve_sid(ldap, search_base, &rel.sid, domain)?;
                             delegations
                                 .entry(dn.to_string())
                                 .or_insert_with(HashSet::new)
@@ -493,12 +516,7 @@ fn resolve_sid(
 
         let filter = format!("(objectSid={})", hex_str);
         if let Ok((results, _)) = ldap
-            .search(
-                search_base,
-                Scope::Subtree,
-                &filter,
-                vec!["sAMAccountName"],
-            )
+            .search(search_base, Scope::Subtree, &filter, vec!["sAMAccountName"])
             .and_then(|r| r.success())
         {
             if let Some(entry) = results.first() {
@@ -547,22 +565,28 @@ fn sid_to_bytes(sid: &str) -> Result<Vec<u8>, String> {
 
 fn export_delegations(
     delegations: &HashMap<String, Vec<String>>,
+    config: &LdapConfig,
 ) -> Result<(), Box<dyn Error>> {
-    let date = Local::now().format("%Y%m%d").to_string();
-    let output_dir = format!("output_{}", date);
-    fs::create_dir_all(&output_dir)?;
+    let output_dir = create_output_dir(&config.username, &config.domain)?;
 
     let filename = "ironeye_maq_delegations.txt";
     let mut path = PathBuf::from(&output_dir);
     path.push(filename);
 
     let mut file = File::create(&path)?;
-    
+
     writeln!(file, "=== Computer Creation Delegations Report ===")?;
-    writeln!(file, "Generated: {}\n", Local::now().format("%Y-%m-%d %H:%M:%S"))?;
+    writeln!(
+        file,
+        "Generated: {}\n",
+        Local::now().format("%Y-%m-%d %H:%M:%S")
+    )?;
     writeln!(file, "Total Locations: {}", delegations.len())?;
-    writeln!(file, "Total Delegations: {}\n", 
-        delegations.values().map(|v| v.len()).sum::<usize>())?;
+    writeln!(
+        file,
+        "Total Delegations: {}\n",
+        delegations.values().map(|v| v.len()).sum::<usize>()
+    )?;
     writeln!(file, "========================================\n")?;
 
     for (location, principals) in delegations {

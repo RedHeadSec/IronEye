@@ -117,8 +117,7 @@ fn handle_set_spn(
     ldap: &mut LdapConn,
     search_base: &str,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let Some(target) =
-        read_input_with_history("Enter target object (sAMAccountName): ", "actions")
+    let Some(target) = read_input_with_history("Enter target object (sAMAccountName): ", "actions")
     else {
         return Ok(());
     };
@@ -180,8 +179,7 @@ fn handle_set_dontreqpreauth(
     ldap: &mut LdapConn,
     search_base: &str,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let Some(target) =
-        read_input_with_history("Enter target user (sAMAccountName): ", "actions")
+    let Some(target) = read_input_with_history("Enter target user (sAMAccountName): ", "actions")
     else {
         return Ok(());
     };

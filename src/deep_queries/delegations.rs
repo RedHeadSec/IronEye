@@ -2,6 +2,7 @@ use crate::bofhound::export_bofhound;
 use crate::debug;
 use crate::help::add_terminal_spacing;
 use crate::ldap::LdapConfig;
+use crate::retry_with_reconnect;
 use chrono::Local;
 use ldap3::adapters::{Adapter, EntriesOnly, PagedResults};
 use ldap3::{Scope, SearchEntry};
@@ -10,24 +11,25 @@ use std::error::Error;
 pub fn get_delegations(
     ldap: &mut ldap3::LdapConn,
     search_base: &str,
-    _config: &LdapConfig,
+    config: &mut LdapConfig,
 ) -> Result<(), Box<dyn Error>> {
     debug::debug_log(1, "Querying delegation settings...");
     let delegation_filter = "(&(objectClass=User)(|(userAccountControl:1.2.840.113556.1.4.803:=524288)(msDS-AllowedToDelegateTo=*)(msDS-AllowedToActOnBehalfOfOtherIdentity=*)))";
     debug::debug_log(2, format!("Delegation filter: {}", delegation_filter));
 
-    let adapters: Vec<Box<dyn Adapter<_, _>>> = vec![
-        Box::new(EntriesOnly::new()),
-        Box::new(PagedResults::new(500)),
-    ];
-
-    let mut search = ldap.streaming_search_with(
-        adapters,
-        search_base,
-        Scope::Subtree,
-        delegation_filter,
-        vec!["*"],
-    )?;
+    let mut search = retry_with_reconnect!(ldap, config, {
+        let adapters: Vec<Box<dyn Adapter<_, _>>> = vec![
+            Box::new(EntriesOnly::new()),
+            Box::new(PagedResults::new(500)),
+        ];
+        ldap.streaming_search_with(
+            adapters,
+            search_base,
+            Scope::Subtree,
+            delegation_filter,
+            vec!["*"],
+        )
+    })?;
 
     let mut entries = Vec::new();
     while let Some(entry) = search.next()? {
@@ -64,10 +66,16 @@ pub fn get_delegations(
         );
     }
 
-    export_bofhound("delegations_export.txt", &entries)?;
+    export_bofhound(
+        "delegations_export.txt",
+        &entries,
+        &config.username,
+        &config.domain,
+    )?;
     let date = Local::now().format("%Y%m%d").to_string();
     println!(
-        "\nDelegations query completed successfully. Results saved to 'output_{}/ironeye_delegations_export.txt'.", date
+        "\nDelegations query completed successfully. Results saved to 'output_{}_{}_{}/ironeye_delegations_export.log (bofhound) or .txt (raw).",
+        date, config.username, config.domain
     );
     add_terminal_spacing(1);
     Ok(())

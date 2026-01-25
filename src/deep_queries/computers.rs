@@ -2,6 +2,7 @@ use crate::bofhound::export_bofhound;
 use crate::debug;
 use crate::help::add_terminal_spacing;
 use crate::ldap::LdapConfig;
+use crate::retry_with_reconnect;
 use chrono::Local;
 use ldap3::adapters::{Adapter, EntriesOnly, PagedResults};
 use ldap3::{LdapConn, Scope, SearchEntry};
@@ -10,10 +11,10 @@ use std::error::Error;
 pub fn get_computers(
     ldap: &mut LdapConn,
     search_base: &str,
-    _config: &LdapConfig,
+    config: &mut LdapConfig,
 ) -> Result<(), Box<dyn Error>> {
     debug::debug_log(1, "Querying all computers...");
-    let entries = query_computers(ldap, search_base)?;
+    let entries = query_computers(ldap, search_base, config)?;
     debug::debug_log(2, format!("Found {} computer entries", entries.len()));
 
     println!("\nComputers Query Results:");
@@ -43,9 +44,17 @@ pub fn get_computers(
         );
     }
 
-    export_bofhound("computers_export.txt", &entries)?;
+    export_bofhound(
+        "computers_export.txt",
+        &entries,
+        &config.username,
+        &config.domain,
+    )?;
     let date = Local::now().format("%Y%m%d").to_string();
-    println!("\nComputers query completed successfully. Results saved to 'output_{}/ironeye_computers_export.txt'.", date);
+    println!(
+        "\nComputers query completed successfully. Results saved to 'output_{}_{}_{}/ironeye_computers_export.log' (bofhound) or .txt (raw).",
+        date, config.username, config.domain
+    );
     add_terminal_spacing(1);
     Ok(())
 }
@@ -53,6 +62,7 @@ pub fn get_computers(
 fn query_computers(
     ldap: &mut LdapConn,
     search_base: &str,
+    config: &mut LdapConfig,
 ) -> Result<Vec<SearchEntry>, Box<dyn Error>> {
     let search_filter = "(objectClass=computer)";
     debug::debug_log(
@@ -63,18 +73,19 @@ fn query_computers(
         ),
     );
 
-    let adapters: Vec<Box<dyn Adapter<_, _>>> = vec![
-        Box::new(EntriesOnly::new()),
-        Box::new(PagedResults::new(500)),
-    ];
-
-    let mut search = ldap.streaming_search_with(
-        adapters,
-        search_base,
-        Scope::Subtree,
-        search_filter,
-        vec!["*"],
-    )?;
+    let mut search = retry_with_reconnect!(ldap, config, {
+        let adapters: Vec<Box<dyn Adapter<_, _>>> = vec![
+            Box::new(EntriesOnly::new()),
+            Box::new(PagedResults::new(500)),
+        ];
+        ldap.streaming_search_with(
+            adapters,
+            search_base,
+            Scope::Subtree,
+            search_filter,
+            vec!["*"],
+        )
+    })?;
 
     let mut entries = Vec::new();
     while let Some(entry) = search.next()? {

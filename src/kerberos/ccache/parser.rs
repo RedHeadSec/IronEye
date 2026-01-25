@@ -132,7 +132,10 @@ fn parse_credential(cursor: &mut Cursor<&[u8]>) -> Result<Credential, ParseError
     for _ in 0..num_addrs {
         let addr_type = cursor.read_u16::<BigEndian>()?;
         let addr_data = parse_counted_data(cursor)?;
-        addresses.push(Address { addr_type, addr_data });
+        addresses.push(Address {
+            addr_type,
+            addr_data,
+        });
     }
 
     let num_authdata = cursor.read_u32::<BigEndian>()?;

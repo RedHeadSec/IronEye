@@ -1,6 +1,9 @@
-use crate::deep_queries::{computers, delegations, gpo, groups, ou, pki, sccm, scom, scp, subnets, trusts, users};
+use crate::completion::CerberoCompleter;
+use crate::deep_queries::{
+    computers, delegations, gpo, groups, ou, pki, sccm, scom, scp, subnets, trusts, users,
+};
 use crate::help::add_terminal_spacing;
-use crate::history::HistoryEditor;
+use crate::history::{HistoryEditor, HistoryEditorWithCompleter};
 use crate::kerberos::hash;
 use crate::ldap::LdapConfig;
 use dialoguer::{theme::ColorfulTheme, Input, Select};
@@ -242,42 +245,77 @@ pub fn get_spray_arguments() -> Option<SprayArgs> {
 }
 
 pub fn get_cerbero_args() -> CerberoCommand {
-    println!("\nCerberos Commands:");
-    println!("Available Now:");
-    println!(
-        "  ask-tgt -u <user> -p <pass> -d <domain> -i <dc_ip> [-o output.ccache] [--hash <hash>]"
-    );
-    println!(
-        "  ask-tgs -u <user> -p <pass> -d <domain> -i <dc_ip> -s <service> [-o output.ccache]"
-    );
-    println!("  ask-s4u2self -u <user> -p <pass> -d <domain> -i <dc_ip> --impersonate <user> [-o output.ccache]");
-    println!("  ask-s4u2proxy -u <user> -p <pass> -d <domain> -i <dc_ip> --impersonate <user> -s <service> [-o output.ccache]");
-    println!("  asreproast -d <domain> -i <dc_ip> -t <user|file> [-o output.txt] [--format hashcat|john]");
-    println!("  kerberoast -u <user> -p <pass> -d <domain> -i <dc_ip> -t <user:spn|file> [-o output.txt] [--format hashcat|john]");
-    println!("  convert -i <input> -o <output> [--format krb|ccache|auto]");
-    println!("  craft -u <user> --sid <sid> [--user-rid <rid>] [--password|--rc4|--aes256 <key>] [--groups <rids>] [-s <service>] [-o output.ccache] [--format ccache|krb]");
-    println!("  export /path/to/ccache  - Set KRB5CCNAME environment variable");
-    println!("  list /path/to/ccache    - List tickets in ccache file");
-    println!("  hash                    - Calculate Kerberos hashes from password");
-    println!("\nExamples:");
-    println!("  ask-tgt -u administrator -p Password123! -d contoso.local -i 192.168.1.10");
-    println!(
-        "  ask-tgs -u administrator -p Password123! -d contoso.local -i 192.168.1.10 -s ldap/dc01"
-    );
-    println!("  ask-s4u2proxy -u controlled_comp$ -p password -d example.com -i 10.11.10.1 --impersonate domain_admin -o ticket.ccache -s 'ldap/dc01.example.com'");
-    println!("  asreproast -d contoso.local -i 192.168.1.10 -t users.txt -o hashes.txt");
-    println!("  kerberoast -u administrator -p Password123! -d contoso.local -i 192.168.1.10 -t services.txt -o hashes.txt");
-    println!("  convert -i ticket.ccache -o ticket.krb");
-    println!("  convert -i ticket.kirbi -o ticket.ccache --format ccache");
-    println!("  craft -u contoso.local/administrator --sid S-1-5-21-123456789-987654321-111111111 --aes256 <KRBTGT key> (Golden Ticket)");
-    println!("  craft -u under.world/kratos --sid S-1-5-21-658410550-3858838999-180593761 --ntlm 29f9ab984728cc7d18c8497c9ee76c77 -s cifs/styx,under.world (Silver Ticket)");
-    println!();
-    println!("IMPORTANT NOTES:");
-    println!("  - Username MUST match EXACT case of sAMAccountName in Active Directory");
-    println!("  - S4U2Proxy tickets require EXACT hostname case matching when connecting");
-    println!("  - Use the same hostname in 'connect -i' as specified in '-s ldap/<hostname>'");
+    // ANSI color codes
+    const CYAN: &str = "\x1b[36m";
+    const YELLOW: &str = "\x1b[33m";
+    const GREEN: &str = "\x1b[32m";
+    const WHITE: &str = "\x1b[37m";
+    const MAGENTA: &str = "\x1b[35m";
+    const BOLD: &str = "\x1b[1m";
+    const RESET: &str = "\x1b[0m";
 
-    let mut rl = match HistoryEditor::new("cerbero") {
+    println!("\n{BOLD}{CYAN}Cerbero Commands:{RESET}");
+    println!(
+        "  {GREEN}ask-tgt{RESET} {WHITE}-u{RESET} <user> {WHITE}-p{RESET} <pass> {WHITE}-d{RESET} <domain> {WHITE}-i{RESET} <dc_ip> [{WHITE}-o{RESET} output.ccache] [{WHITE}--hash{RESET} <hash>]"
+    );
+    println!(
+        "  {GREEN}ask-tgs{RESET} {WHITE}-u{RESET} <user> {WHITE}-p{RESET} <pass> {WHITE}-d{RESET} <domain> {WHITE}-i{RESET} <dc_ip> {WHITE}-s{RESET} <service> [{WHITE}-o{RESET} output.ccache]"
+    );
+    println!(
+        "  {GREEN}ask-s4u2self{RESET} {WHITE}-u{RESET} <user> {WHITE}-p{RESET} <pass> {WHITE}-d{RESET} <domain> {WHITE}-i{RESET} <dc_ip> {WHITE}--impersonate{RESET} <user> [{WHITE}-o{RESET} output.ccache]"
+    );
+    println!(
+        "  {GREEN}ask-s4u2proxy{RESET} {WHITE}-u{RESET} <user> {WHITE}-p{RESET} <pass> {WHITE}-d{RESET} <domain> {WHITE}-i{RESET} <dc_ip> {WHITE}--impersonate{RESET} <user> {WHITE}-s{RESET} <service> [{WHITE}-o{RESET} output.ccache]"
+    );
+    println!(
+        "  {GREEN}asreproast{RESET} {WHITE}-d{RESET} <domain> {WHITE}-i{RESET} <dc_ip> {WHITE}-t{RESET} <user|file> [{WHITE}-o{RESET} output.txt] [{WHITE}--format{RESET} hashcat|john]"
+    );
+    println!(
+        "  {GREEN}kerberoast{RESET} {WHITE}-u{RESET} <user> {WHITE}-p{RESET} <pass> {WHITE}-d{RESET} <domain> {WHITE}-i{RESET} <dc_ip> {WHITE}-t{RESET} <user:spn|file> [{WHITE}-o{RESET} output.txt] [{WHITE}--format{RESET} hashcat|john]"
+    );
+    println!(
+        "  {GREEN}convert{RESET} {WHITE}-i{RESET} <input> {WHITE}-o{RESET} <output> [{WHITE}--format{RESET} krb|ccache|auto]"
+    );
+    println!(
+        "  {GREEN}craft{RESET} {WHITE}-u{RESET} <user> {WHITE}--sid{RESET} <sid> [{WHITE}--user-rid{RESET} <rid>] [{WHITE}--password{RESET}|{WHITE}--rc4{RESET}|{WHITE}--aes256{RESET} <key>] [{WHITE}--groups{RESET} <rids>] [{WHITE}-s{RESET} <service>] [{WHITE}-o{RESET} output.ccache] [{WHITE}--format{RESET} ccache|krb]"
+    );
+    println!(
+        "  {GREEN}export{RESET} {YELLOW}/path/to/ccache{RESET}  {MAGENTA}- Set KRB5CCNAME environment variable{RESET}"
+    );
+    println!(
+        "  {GREEN}list{RESET} {YELLOW}/path/to/ccache{RESET}    {MAGENTA}- List tickets in ccache file{RESET}"
+    );
+    println!(
+        "  {GREEN}hash{RESET}                    {MAGENTA}- Calculate Kerberos hashes from password{RESET}"
+    );
+
+    println!("\n{BOLD}{CYAN}Examples:{RESET}");
+    println!(
+        "  {GREEN}ask-tgt{RESET} -u administrator -p Password123! -d contoso.local -i 192.168.1.10"
+    );
+    println!(
+        "  {GREEN}ask-tgs{RESET} -u administrator -p Password123! -d contoso.local -i 192.168.1.10 -s ldap/dc01"
+    );
+    println!(
+        "  {GREEN}ask-s4u2proxy{RESET} -u controlled_comp$ -p password -d example.com -i 10.11.10.1 --impersonate domain_admin -o ticket.ccache -s 'ldap/dc01.example.com'"
+    );
+    println!(
+        "  {GREEN}asreproast{RESET} -d contoso.local -i 192.168.1.10 -t users.txt -o hashes.txt"
+    );
+    println!(
+        "  {GREEN}kerberoast{RESET} -u administrator -p Password123! -d contoso.local -i 192.168.1.10 -t services.txt -o hashes.txt"
+    );
+    println!("  {GREEN}convert{RESET} -i ticket.ccache -o ticket.krb");
+    println!("  {GREEN}convert{RESET} -i ticket.kirbi -o ticket.ccache --format ccache");
+    println!(
+        "  {GREEN}craft{RESET} -u contoso.local/administrator --sid S-1-5-21-123456789-987654321-111111111 --aes256 <KRBTGT key> {MAGENTA}(Golden Ticket){RESET}"
+    );
+    println!(
+        "  {GREEN}craft{RESET} -u under.world/kratos --sid S-1-5-21-658410550-3858838999-180593761 --ntlm 29f9ab984728cc7d18c8497c9ee76c77 -s cifs/styx,under.world {MAGENTA}(Silver Ticket){RESET}"
+    );
+
+    let completer = CerberoCompleter::new();
+    let mut rl = match HistoryEditorWithCompleter::new("cerbero", completer) {
         Ok(editor) => editor,
         Err(e) => {
             eprintln!("Failed to initialize history: {}", e);
@@ -285,7 +323,7 @@ pub fn get_cerbero_args() -> CerberoCommand {
         }
     };
 
-    println!("\nEnter command:");
+    println!("\n{BOLD}Enter command{RESET} {WHITE}(Tab for file completion){RESET}:");
 
     match rl.readline("> ") {
         Ok(input) => {
@@ -362,7 +400,7 @@ pub fn get_userenum_arguments() -> Option<UserEnumArgs> {
 pub fn run_nested_query_menu(
     ldap: &mut ldap3::LdapConn,
     search_base: &str,
-    ldap_config: &LdapConfig,
+    ldap_config: &mut LdapConfig,
 ) -> Result<(), String> {
     const QUERY_OPTIONS: &[&str] = &[
         "Query Domain Trusts",

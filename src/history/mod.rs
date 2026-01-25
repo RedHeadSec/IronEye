@@ -1,4 +1,9 @@
 use rusqlite::{Connection, Result};
+use rustyline::completion::Completer;
+use rustyline::highlight::Highlighter;
+use rustyline::hint::Hinter;
+use rustyline::validate::Validator;
+use rustyline::{Editor, Helper};
 use std::path::PathBuf;
 
 pub struct HistoryManager {
@@ -186,6 +191,48 @@ impl HistoryEditor {
         let manager = HistoryManager::new()?;
         let mut editor = rustyline::DefaultEditor::new()
             .map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?;
+
+        for cmd in manager.get_recent(module, 100)?.into_iter().rev() {
+            editor.add_history_entry(&cmd).ok();
+        }
+
+        Ok(Self {
+            manager,
+            module: module.to_string(),
+            editor,
+        })
+    }
+
+    pub fn readline(&mut self, prompt: &str) -> Result<String> {
+        let line = self
+            .editor
+            .readline(prompt)
+            .map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?;
+
+        self.manager.add(&self.module, &line)?;
+        self.editor.add_history_entry(&line).ok();
+
+        Ok(line)
+    }
+}
+
+/// History editor with custom completion support
+pub struct HistoryEditorWithCompleter<H: Helper> {
+    manager: HistoryManager,
+    module: String,
+    editor: Editor<H, rustyline::history::DefaultHistory>,
+}
+
+impl<H> HistoryEditorWithCompleter<H>
+where
+    H: Helper + Completer + Hinter + Highlighter + Validator,
+{
+    pub fn new(module: &str, helper: H) -> Result<Self> {
+        let manager = HistoryManager::new()?;
+        let mut editor =
+            Editor::new().map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?;
+
+        editor.set_helper(Some(helper));
 
         for cmd in manager.get_recent(module, 100)?.into_iter().rev() {
             editor.add_history_entry(&cmd).ok();

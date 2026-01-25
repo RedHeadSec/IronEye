@@ -1,3 +1,4 @@
+use crate::bofhound::create_output_dir;
 use crate::debug;
 use crate::history::HistoryEditor;
 use crate::ldap::LdapConfig;
@@ -8,14 +9,14 @@ use ldap3::adapters::{Adapter, EntriesOnly, PagedResults};
 use ldap3::controls::RawControl;
 use ldap3::{LdapConn, Scope, SearchEntry};
 use std::error::Error;
-use std::fs::{self, File};
+use std::fs::File;
 use std::io::{self, Write};
 use std::path::PathBuf;
 
 pub fn custom_ldap_query(
     ldap: &mut LdapConn,
     search_base: &str,
-    _config: &LdapConfig,
+    config: &LdapConfig,
 ) -> Result<(), Box<dyn Error>> {
     let mut rl = HistoryEditor::new("ldapquery").map_err(|e| Box::new(e) as Box<dyn Error>)?;
 
@@ -89,8 +90,11 @@ pub fn custom_ldap_query(
                 if non_empty_entries.is_empty() {
                     println!("No results found.");
                 } else {
-                    let output_path = generate_output_path(&filter)?;
-                    println!("Saving results to: {}", output_path.display());
+                    let output_path = generate_output_path(&filter, config)?;
+                    println!(
+                        "\x1b[32m[+]\x1b[0m Saving results to: \x1b[33m{}\x1b[0m",
+                        output_path.display()
+                    );
                     let mut file = File::create(&output_path)?;
                     print_ldap_results_bofhound(non_empty_entries, &mut io::stdout(), &mut file)?;
                     println!("\nQuery complete.\n");
@@ -186,10 +190,8 @@ fn print_ldap_results_bofhound<W1: Write, W2: Write>(
     Ok(())
 }
 
-fn generate_output_path(filter: &str) -> Result<PathBuf, Box<dyn Error>> {
-    let date = Local::now().format("%Y%m%d").to_string();
-    let output_dir = format!("output_{}", date);
-    fs::create_dir_all(&output_dir)?;
+fn generate_output_path(filter: &str, config: &LdapConfig) -> Result<PathBuf, Box<dyn Error>> {
+    let output_dir = create_output_dir(&config.username, &config.domain)?;
 
     let timestamp = Local::now().format("%Y%m%d_%H%M%S");
     let mut safe_part = filter
@@ -201,7 +203,7 @@ fn generate_output_path(filter: &str) -> Result<PathBuf, Box<dyn Error>> {
         safe_part = safe_part[..20].to_string();
     }
 
-    let filename = format!("ironeye_ldap_query_{}_{}.txt", safe_part, timestamp);
+    let filename = format!("ironeye_ldap_query_{}_{}.log", safe_part, timestamp);
     let mut path = PathBuf::from(&output_dir);
     path.push(filename);
 

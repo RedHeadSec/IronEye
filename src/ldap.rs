@@ -54,7 +54,13 @@ fn validate_kerberos_hostname(dc_ip: &str, domain: &str) -> Result<(), LdapError
     }
 
     if !dc_ip.contains('.') {
-        debug::debug_log(2, format!("Warning: Kerberos works best with FQDNs, not short hostnames. Current value: {}", dc_ip));
+        debug::debug_log(
+            2,
+            format!(
+                "Warning: Kerberos works best with FQDNs, not short hostnames. Current value: {}",
+                dc_ip
+            ),
+        );
         debug::debug_log(2, format!("If connection fails, use the full domain name instead. Example: -i {}.{} instead of -i {}", dc_ip, domain, dc_ip));
     }
 
@@ -136,73 +142,69 @@ fn validate_and_prepare_ccache(
 
     // For impersonated tickets, create a temp ccache with correct default principal
     // GSSAPI authenticates as the ccache's default principal
-    let (effective_ccache, temp_ccache_path) =
-        if ccache_info.impersonated_user.is_some() {
-            // Find the impersonated service ticket - prefer LDAP tickets for the
-            // target host, then any LDAP ticket, then any impersonated ticket
-            let impersonated_creds: Vec<_> = ccache
-                .credentials
-                .iter()
-                .filter(|c| {
-                    !c.is_expired()
-                        && !c.is_tgt()
-                        && c.client.to_string() != ccache.default_principal.to_string()
-                })
-                .collect();
+    let (effective_ccache, temp_ccache_path) = if ccache_info.impersonated_user.is_some() {
+        // Find the impersonated service ticket - prefer LDAP tickets for the
+        // target host, then any LDAP ticket, then any impersonated ticket
+        let impersonated_creds: Vec<_> = ccache
+            .credentials
+            .iter()
+            .filter(|c| {
+                !c.is_expired()
+                    && !c.is_tgt()
+                    && c.client.to_string() != ccache.default_principal.to_string()
+            })
+            .collect();
 
-            // Priority: LDAP ticket for this host > any LDAP ticket > any ticket
-            let impersonated_cred = impersonated_creds
-                .iter()
-                .find(|c| c.is_ldap_service() && c.matches_service_host(normalized_dc))
-                .or_else(|| impersonated_creds.iter().find(|c| c.is_ldap_service()))
-                .or_else(|| impersonated_creds.first())
-                .copied();
+        // Priority: LDAP ticket for this host > any LDAP ticket > any ticket
+        let impersonated_cred = impersonated_creds
+            .iter()
+            .find(|c| c.is_ldap_service() && c.matches_service_host(normalized_dc))
+            .or_else(|| impersonated_creds.iter().find(|c| c.is_ldap_service()))
+            .or_else(|| impersonated_creds.first())
+            .copied();
 
-            if let Some(cred) = impersonated_cred {
-                debug::debug_log(
-                    2,
-                    format!(
-                        "Selected impersonated ticket: {} -> {} (LDAP: {})",
-                        cred.client, cred.server, cred.is_ldap_service()
-                    ),
-                );
+        if let Some(cred) = impersonated_cred {
+            debug::debug_log(
+                2,
+                format!(
+                    "Selected impersonated ticket: {} -> {} (LDAP: {})",
+                    cred.client,
+                    cred.server,
+                    cred.is_ldap_service()
+                ),
+            );
 
-                let temp_path = format!(
-                    "/tmp/ironeye_impersonated_{}.ccache",
-                    std::process::id()
-                );
-                let impersonated_ccache = create_impersonated_ccache(&ccache, cred);
+            let temp_path = format!("/tmp/ironeye_impersonated_{}.ccache", std::process::id());
+            let impersonated_ccache = create_impersonated_ccache(&ccache, cred);
 
-                write_ccache_file(&impersonated_ccache, &temp_path).map_err(|e| {
-                    LdapError::Io {
-                        source: std::io::Error::new(
-                            std::io::ErrorKind::Other,
-                            format!("Failed to write impersonated ccache: {}", e),
-                        ),
-                    }
-                })?;
+            write_ccache_file(&impersonated_ccache, &temp_path).map_err(|e| LdapError::Io {
+                source: std::io::Error::new(
+                    std::io::ErrorKind::Other,
+                    format!("Failed to write impersonated ccache: {}", e),
+                ),
+            })?;
 
-                debug::debug_log(
-                    1,
-                    format!(
-                        "Created temp ccache with impersonated principal: {}",
-                        temp_path
-                    ),
-                );
-                (temp_path.clone(), Some(temp_path))
-            } else {
-                debug::debug_log(
-                    1,
-                    format!(
-                        "Warning: No impersonated service ticket found in {} credentials",
-                        impersonated_creds.len()
-                    ),
-                );
-                (ccache_to_use.clone(), None)
-            }
+            debug::debug_log(
+                1,
+                format!(
+                    "Created temp ccache with impersonated principal: {}",
+                    temp_path
+                ),
+            );
+            (temp_path.clone(), Some(temp_path))
         } else {
+            debug::debug_log(
+                1,
+                format!(
+                    "Warning: No impersonated service ticket found in {} credentials",
+                    impersonated_creds.len()
+                ),
+            );
             (ccache_to_use.clone(), None)
-        };
+        }
+    } else {
+        (ccache_to_use.clone(), None)
+    };
 
     let krb5_conf =
         generate_krb5_conf_from_ccache(&ccache, normalized_dc).map_err(|e| LdapError::Io {

@@ -207,10 +207,10 @@ fn test_domain_controllers(
     use_ldaps: bool,
 ) -> Result<Vec<String>, Box<dyn Error>> {
     println!("[*] Testing connectivity to Domain Controllers...");
-    
+
     let mut invalid_dcs = Vec::new();
     let mut valid_dcs = Vec::new();
-    
+
     for dc in dc_list {
         if !is_valid_ip(dc) {
             invalid_dcs.push(dc.clone());
@@ -218,7 +218,7 @@ fn test_domain_controllers(
             valid_dcs.push(dc.clone());
         }
     }
-    
+
     if !invalid_dcs.is_empty() {
         println!("[!] Invalid/malformed DC IP addresses detected:");
         for dc in &invalid_dcs {
@@ -226,7 +226,7 @@ fn test_domain_controllers(
         }
         return Err("Malformed DC IP addresses in configuration".into());
     }
-    
+
     let mut reachable_dcs = Vec::new();
 
     let ports_to_test = if use_ldaps {

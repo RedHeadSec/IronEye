@@ -8,7 +8,7 @@ use std::error::Error;
 pub fn get_service_connection_points(
     ldap: &mut LdapConn,
     search_base: &str,
-    _config: &LdapConfig,
+    config: &mut LdapConfig,
 ) -> Result<(), Box<dyn Error>> {
     let entries = query_scps(ldap, search_base)?;
 
@@ -18,10 +18,7 @@ pub fn get_service_connection_points(
     }
 
     println!("\n=== Service Connection Points ===\n");
-    println!(
-        "{:<40} {:<50} {}",
-        "CN", "Keywords", "Distinguished Name"
-    );
+    println!("{:<40} {:<50} {}", "CN", "Keywords", "Distinguished Name");
     println!("{}", "-".repeat(130));
 
     for entry in &entries {
@@ -141,20 +138,17 @@ pub fn get_service_connection_points(
         println!();
     }
 
-    export_bofhound("scp_export.txt", &entries)?;
+    export_bofhound("scp_export.txt", &entries, &config.username, &config.domain)?;
     let date = Local::now().format("%Y%m%d").to_string();
     println!(
-        "\nSCP query completed. Results saved to 'output_{}/ironeye_scp_export.txt'.",
-        date
+        "\nSCP query completed. Results saved to 'output_{}_{}_{}/ironeye_scp_export.log (bofhound) or .txt (raw).",
+        date, config.username, config.domain
     );
     add_terminal_spacing(1);
     Ok(())
 }
 
-fn query_scps(
-    ldap: &mut LdapConn,
-    search_base: &str,
-) -> Result<Vec<SearchEntry>, Box<dyn Error>> {
+fn query_scps(ldap: &mut LdapConn, search_base: &str) -> Result<Vec<SearchEntry>, Box<dyn Error>> {
     let filter = "(objectclass=serviceConnectionPoint)";
     query_with_security_descriptor(ldap, search_base, filter, vec![])
 }

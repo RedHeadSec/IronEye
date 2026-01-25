@@ -1,6 +1,7 @@
 use crate::bofhound::{export_bofhound, query_with_security_descriptor};
 use crate::help::add_terminal_spacing;
 use crate::ldap::LdapConfig;
+use crate::retry_with_reconnect;
 use chrono::{Local, NaiveDateTime};
 use ldap3::adapters::{Adapter, EntriesOnly, PagedResults};
 use ldap3::{LdapConn, Scope, SearchEntry};
@@ -9,9 +10,9 @@ use std::error::Error;
 pub fn get_gpos(
     ldap: &mut LdapConn,
     search_base: &str,
-    _config: &LdapConfig,
+    config: &mut LdapConfig,
 ) -> Result<(), Box<dyn Error>> {
-    let entries = query_gpos(ldap, search_base)?;
+    let entries = query_gpos(ldap, search_base, config)?;
 
     if entries.is_empty() {
         println!("[*] No Group Policy Objects found.");
@@ -135,7 +136,7 @@ pub fn get_gpos(
 
     // Query GPO links
     println!("=== GPO Links ===\n");
-    let links = query_gpo_links(ldap, search_base)?;
+    let links = query_gpo_links(ldap, search_base, config)?;
 
     if links.is_empty() {
         println!("[*] No GPO links found.");
@@ -150,11 +151,16 @@ pub fn get_gpos(
         println!("[+] Total: {} container(s) with linked GPOs", links.len());
     }
 
-    export_bofhound("gpos_export.txt", &entries)?;
+    export_bofhound(
+        "gpos_export.txt",
+        &entries,
+        &config.username,
+        &config.domain,
+    )?;
     let date = Local::now().format("%Y%m%d").to_string();
     println!(
-        "\nGPO query completed. Results saved to 'output_{}/ironeye_gpos_export.txt'.",
-        date
+        "\nGPO query completed. Results saved to 'output_{}_{}_{}/ironeye_gpos_export.log (bofhound) or .txt (raw).",
+        date, config.username, config.domain
     );
     add_terminal_spacing(1);
     Ok(())
@@ -163,6 +169,7 @@ pub fn get_gpos(
 fn query_gpos(
     ldap: &mut LdapConn,
     search_base: &str,
+    _config: &mut LdapConfig,
 ) -> Result<Vec<SearchEntry>, Box<dyn Error>> {
     let filter = "(objectClass=groupPolicyContainer)";
     query_with_security_descriptor(ldap, search_base, filter, vec![])
@@ -171,22 +178,24 @@ fn query_gpos(
 fn query_gpo_links(
     ldap: &mut LdapConn,
     search_base: &str,
+    config: &mut LdapConfig,
 ) -> Result<Vec<(String, Vec<String>)>, Box<dyn Error>> {
     // Query OUs, sites, and domain for gPLink attribute
     let filter = "(gPLink=*)";
 
-    let adapters: Vec<Box<dyn Adapter<_, _>>> = vec![
-        Box::new(EntriesOnly::new()),
-        Box::new(PagedResults::new(500)),
-    ];
-
-    let mut search = ldap.streaming_search_with(
-        adapters,
-        search_base,
-        Scope::Subtree,
-        filter,
-        vec!["distinguishedName", "gPLink"],
-    )?;
+    let mut search = retry_with_reconnect!(ldap, config, {
+        let adapters: Vec<Box<dyn Adapter<_, _>>> = vec![
+            Box::new(EntriesOnly::new()),
+            Box::new(PagedResults::new(500)),
+        ];
+        ldap.streaming_search_with(
+            adapters,
+            search_base,
+            Scope::Subtree,
+            filter,
+            vec!["distinguishedName", "gPLink"],
+        )
+    })?;
 
     let mut links = Vec::new();
     while let Some(entry) = search.next()? {

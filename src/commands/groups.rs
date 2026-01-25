@@ -1,6 +1,7 @@
 use crate::bofhound;
 use crate::help::add_terminal_spacing;
 use crate::ldap::LdapConfig;
+use crate::retry_with_reconnect;
 use chrono::Local;
 use ldap3::adapters::{Adapter, EntriesOnly, PagedResults};
 use ldap3::{Scope, SearchEntry};
@@ -10,7 +11,7 @@ use std::error::Error;
 pub fn query_groups(
     ldap: &mut ldap3::LdapConn,
     search_base: &str,
-    _config: &LdapConfig,
+    config: &mut LdapConfig,
     username: Option<&str>,
     export: bool,
 ) -> Result<(), Box<dyn Error>> {
@@ -20,18 +21,20 @@ pub fn query_groups(
             Box::new(PagedResults::new(500)),
         ];
 
-        let mut search = ldap.streaming_search_with(
-            adapters,
-            &search_base,
-            Scope::Subtree,
-            &format!("(&(objectClass=user)(sAMAccountName={}))", user),
-            vec![
-                "memberOf",
-                "primaryGroupID",
-                "objectSid",
-                "distinguishedName",
-            ],
-        )?;
+        let mut search = retry_with_reconnect!(ldap, config, {
+            ldap.streaming_search_with(
+                adapters,
+                &search_base,
+                Scope::Subtree,
+                &format!("(&(objectClass=user)(sAMAccountName={}))", user),
+                vec![
+                    "memberOf",
+                    "primaryGroupID",
+                    "objectSid",
+                    "distinguishedName",
+                ],
+            )
+        })?;
 
         let mut user_entry = None;
         while let Some(entry) = search.next()? {
@@ -74,13 +77,15 @@ pub fn query_groups(
                             Box::new(PagedResults::new(500)),
                         ];
 
-                        let mut search = ldap.streaming_search_with(
-                            adapters,
-                            &search_base,
-                            Scope::Subtree,
-                            &primary_filter,
-                            vec!["distinguishedName"],
-                        )?;
+                        let mut search = retry_with_reconnect!(ldap, config, {
+                            ldap.streaming_search_with(
+                                adapters,
+                                &search_base,
+                                Scope::Subtree,
+                                &primary_filter,
+                                vec!["distinguishedName"],
+                            )
+                        })?;
 
                         while let Some(entry) = search.next()? {
                             let primary = SearchEntry::construct(entry);
@@ -123,8 +128,18 @@ pub fn query_groups(
             if export {
                 let timestamp = Local::now().format("%Y%m%d_%H%M%S");
                 let filename = format!("user_groups_{}_{}.txt", user, timestamp);
-                bofhound::export_bofhound(&filename, &group_entries)?;
-                println!("\nExported group information to: {}", filename);
+                bofhound::export_bofhound(
+                    &filename,
+                    &group_entries,
+                    &config.username,
+                    &config.domain,
+                )?;
+                let date = Local::now().format("%Y%m%d").to_string();
+                let filename_without_ext = filename.trim_end_matches(".txt");
+                println!(
+                    "\nExported group information to: output_{}_{}_{}/ironeye_{}.log (bofhound) or .txt (raw)",
+                    date, config.username, config.domain, filename_without_ext
+                );
             }
         } else {
             println!("User not found");
@@ -154,8 +169,18 @@ pub fn query_groups(
         if export {
             let timestamp = Local::now().format("%Y%m%d_%H%M%S");
             let filename = format!("domain_groups_{}.txt", timestamp);
-            bofhound::export_bofhound(&filename, &entries)?;
-            println!("\nExported group information to: {}", filename);
+            bofhound::export_bofhound(
+                &filename,
+                &entries,
+                &config.username,
+                &config.domain,
+            )?;
+            let date = Local::now().format("%Y%m%d").to_string();
+            let filename_without_ext = filename.trim_end_matches(".txt");
+            println!(
+                "\nExported group information to: output_{}_{}_{}/ironeye_{}.log (bofhound) or .txt (raw)",
+                date, config.username, config.domain, filename_without_ext
+            );
         }
     }
 
