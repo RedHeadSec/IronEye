@@ -1,9 +1,8 @@
-use crate::bofhound::export_bofhound;
+use crate::bofhound::export_both_formats;
 use crate::debug;
 use crate::help::add_terminal_spacing;
 use crate::ldap::LdapConfig;
 use crate::retry_with_reconnect;
-use chrono::Local;
 use ldap3::adapters::{Adapter, EntriesOnly, PagedResults};
 use ldap3::{Scope, SearchEntry};
 use std::error::Error;
@@ -47,6 +46,11 @@ pub fn get_delegations(
     println!("-------------------");
     println!("Found {} delegation entries", entries.len());
 
+    let mut raw_output = String::new();
+    raw_output.push_str("Delegations\n");
+    raw_output.push_str(&"=".repeat(80));
+    raw_output.push_str("\n\n");
+
     for entry in &entries {
         let account_name = entry
             .attrs
@@ -60,22 +64,26 @@ pub fn get_delegations(
             .map(|v| v.join(", "))
             .unwrap_or_else(|| "None".to_string());
 
-        println!(
+        let line = format!(
             "{}:{}:{}",
             account_name, delegation_type, delegated_services
         );
+        println!("{}", line);
+        raw_output.push_str(&line);
+        raw_output.push('\n');
     }
 
-    export_bofhound(
+    let output_dir = export_both_formats(
         "delegations_export.txt",
         &entries,
+        &raw_output,
         &config.username,
         &config.domain,
     )?;
-    let date = Local::now().format("%Y%m%d").to_string();
     println!(
-        "\nDelegations query completed successfully. Results saved to 'output_{}_{}_{}/ironeye_delegations_export.log (bofhound) or .txt (raw).",
-        date, config.username, config.domain
+        "\nDelegations query completed. Results saved to \
+        '{}/ironeye_delegations_export.log (bofhound) or .txt (raw).",
+        output_dir
     );
     add_terminal_spacing(1);
     Ok(())

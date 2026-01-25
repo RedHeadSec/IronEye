@@ -1,8 +1,8 @@
-use crate::bofhound::{export_bofhound, query_with_security_descriptor};
+use crate::bofhound::{export_both_formats, query_with_security_descriptor};
 use crate::help::add_terminal_spacing;
 use crate::ldap::LdapConfig;
 use crate::retry_with_reconnect;
-use chrono::{Local, NaiveDateTime};
+use chrono::NaiveDateTime;
 use ldap3::adapters::{Adapter, EntriesOnly, PagedResults};
 use ldap3::{LdapConn, Scope, SearchEntry};
 use std::error::Error;
@@ -68,9 +68,14 @@ pub fn get_gpos(
 
     println!("\n[+] Total: {} GPO(s)", entries.len());
 
-    // Show detailed info
+    // Show detailed info and build raw output
     add_terminal_spacing(1);
     println!("=== GPO Details ===\n");
+
+    let mut raw_output = String::new();
+    raw_output.push_str("Group Policy Objects\n");
+    raw_output.push_str(&"=".repeat(80));
+    raw_output.push_str("\n\n");
 
     for (i, entry) in entries.iter().enumerate() {
         let display_name = entry
@@ -132,35 +137,52 @@ pub fn get_gpos(
         println!("    Created: {}", created);
         println!("    Modified: {}", modified);
         println!();
+
+        raw_output.push_str(&format!("[{}] {}\n", i + 1, display_name));
+        raw_output.push_str(&format!("    GUID: {}\n", cn));
+        raw_output.push_str(&format!("    Status: {}\n", gpo_status));
+        raw_output.push_str(&format!("    Version: {}\n", version));
+        raw_output.push_str(&format!("    SYSVOL Path: {}\n", gpc_path));
+        raw_output.push_str(&format!("    Created: {}\n", created));
+        raw_output.push_str(&format!("    Modified: {}\n\n", modified));
     }
 
     // Query GPO links
     println!("=== GPO Links ===\n");
+    raw_output.push_str("\nGPO Links\n");
+    raw_output.push_str(&"=".repeat(80));
+    raw_output.push_str("\n\n");
+
     let links = query_gpo_links(ldap, search_base, config)?;
 
     if links.is_empty() {
         println!("[*] No GPO links found.");
+        raw_output.push_str("[*] No GPO links found.\n");
     } else {
         for (container, gpo_list) in &links {
             println!("Container: {}", container);
+            raw_output.push_str(&format!("Container: {}\n", container));
             for gpo in gpo_list {
                 println!("  -> {}", gpo);
+                raw_output.push_str(&format!("  -> {}\n", gpo));
             }
             println!();
+            raw_output.push('\n');
         }
         println!("[+] Total: {} container(s) with linked GPOs", links.len());
     }
 
-    export_bofhound(
+    let output_dir = export_both_formats(
         "gpos_export.txt",
         &entries,
+        &raw_output,
         &config.username,
         &config.domain,
     )?;
-    let date = Local::now().format("%Y%m%d").to_string();
     println!(
-        "\nGPO query completed. Results saved to 'output_{}_{}_{}/ironeye_gpos_export.log (bofhound) or .txt (raw).",
-        date, config.username, config.domain
+        "\nGPO query completed. Results saved to '{}/ironeye_gpos_export.log \
+        (bofhound) or .txt (raw).",
+        output_dir
     );
     add_terminal_spacing(1);
     Ok(())

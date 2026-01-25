@@ -1,7 +1,6 @@
-use crate::bofhound::{export_bofhound, query_with_security_descriptor};
+use crate::bofhound::{export_both_formats, query_with_security_descriptor};
 use crate::help::add_terminal_spacing;
 use crate::ldap::LdapConfig;
-use chrono::Local;
 use ldap3::{LdapConn, SearchEntry};
 use std::error::Error;
 
@@ -52,9 +51,14 @@ pub fn get_service_connection_points(
 
     println!("\n[+] Total: {} SCP(s)", entries.len());
 
-    // Show detailed info
+    // Show detailed info and build raw output
     add_terminal_spacing(1);
     println!("=== SCP Details ===\n");
+
+    let mut raw_output = String::new();
+    raw_output.push_str("Service Connection Points\n");
+    raw_output.push_str(&"=".repeat(80));
+    raw_output.push_str("\n\n");
 
     for (i, entry) in entries.iter().enumerate() {
         let cn = entry
@@ -136,13 +140,38 @@ pub fn get_service_connection_points(
         println!("    Created: {}", when_created);
         println!("    Modified: {}", when_changed);
         println!();
+
+        // Build raw output
+        raw_output.push_str(&format!("[{}] {}\n", i + 1, cn));
+        raw_output.push_str(&format!("    Distinguished Name: {}\n", dn));
+        raw_output.push_str(&format!("    Description: {}\n", description));
+        raw_output.push_str(&format!("    Keywords: {}\n", keywords));
+        raw_output.push_str(&format!(
+            "    Service Binding Info: {}\n",
+            service_binding_info
+        ));
+        raw_output.push_str(&format!("    Service DNS Name: {}\n", service_dns_name));
+        raw_output.push_str(&format!(
+            "    Service DNS Name Type: {}\n",
+            service_dns_name_type
+        ));
+        raw_output.push_str(&format!("    Service Class Name: {}\n", service_class_name));
+        raw_output.push_str(&format!("    Created: {}\n", when_created));
+        raw_output.push_str(&format!("    Modified: {}\n", when_changed));
+        raw_output.push('\n');
     }
 
-    export_bofhound("scp_export.txt", &entries, &config.username, &config.domain)?;
-    let date = Local::now().format("%Y%m%d").to_string();
+    let output_dir = export_both_formats(
+        "scp_export.txt",
+        &entries,
+        &raw_output,
+        &config.username,
+        &config.domain,
+    )?;
     println!(
-        "\nSCP query completed. Results saved to 'output_{}_{}_{}/ironeye_scp_export.log (bofhound) or .txt (raw).",
-        date, config.username, config.domain
+        "\nSCP query completed. Results saved to '{}/ironeye_scp_export.log \
+        (bofhound) or .txt (raw).",
+        output_dir
     );
     add_terminal_spacing(1);
     Ok(())

@@ -128,17 +128,28 @@ pub fn query_groups(
             if export {
                 let timestamp = Local::now().format("%Y%m%d_%H%M%S");
                 let filename = format!("user_groups_{}_{}.txt", user, timestamp);
-                bofhound::export_bofhound(
+
+                // Build raw output
+                let mut raw_output = String::new();
+                raw_output.push_str(&format!("Group Memberships for user: {}\n", user));
+                raw_output.push_str(&"=".repeat(80));
+                raw_output.push_str("\n\n");
+                for entry in &group_entries {
+                    raw_output.push_str(&get_group_details_string(entry));
+                }
+
+                let output_dir = bofhound::export_both_formats(
                     &filename,
                     &group_entries,
+                    &raw_output,
                     &config.username,
                     &config.domain,
                 )?;
-                let date = Local::now().format("%Y%m%d").to_string();
                 let filename_without_ext = filename.trim_end_matches(".txt");
                 println!(
-                    "\nExported group information to: output_{}_{}_{}/ironeye_{}.log (bofhound) or .txt (raw)",
-                    date, config.username, config.domain, filename_without_ext
+                    "\nExported group information to: {}/ironeye_{}.log \
+                    (bofhound) or .txt (raw)",
+                    output_dir, filename_without_ext
                 );
             }
         } else {
@@ -169,17 +180,28 @@ pub fn query_groups(
         if export {
             let timestamp = Local::now().format("%Y%m%d_%H%M%S");
             let filename = format!("domain_groups_{}.txt", timestamp);
-            bofhound::export_bofhound(
+
+            // Build raw output
+            let mut raw_output = String::new();
+            raw_output.push_str("All Domain Groups\n");
+            raw_output.push_str(&"=".repeat(80));
+            raw_output.push_str("\n\n");
+            for entry in &entries {
+                raw_output.push_str(&get_group_details_string(entry));
+            }
+
+            let output_dir = bofhound::export_both_formats(
                 &filename,
                 &entries,
+                &raw_output,
                 &config.username,
                 &config.domain,
             )?;
-            let date = Local::now().format("%Y%m%d").to_string();
             let filename_without_ext = filename.trim_end_matches(".txt");
             println!(
-                "\nExported group information to: output_{}_{}_{}/ironeye_{}.log (bofhound) or .txt (raw)",
-                date, config.username, config.domain, filename_without_ext
+                "\nExported group information to: {}/ironeye_{}.log \
+                (bofhound) or .txt (raw)",
+                output_dir, filename_without_ext
             );
         }
     }

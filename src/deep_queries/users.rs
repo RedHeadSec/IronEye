@@ -1,9 +1,8 @@
-use crate::bofhound::{create_output_dir, export_bofhound, export_raw_text, prompt_export_format};
+use crate::bofhound::export_both_formats;
 use crate::debug;
 use crate::help::add_terminal_spacing;
 use crate::ldap::LdapConfig;
 use crate::retry_with_reconnect;
-use chrono::Local;
 use ldap3::adapters::{Adapter, EntriesOnly, PagedResults};
 use ldap3::{LdapConn, Scope, SearchEntry};
 use std::error::Error;
@@ -42,25 +41,18 @@ pub fn get_users(
         raw_output.push_str(&line);
     }
 
-    let is_bofhound = prompt_export_format()?;
-    let output_dir = create_output_dir(&config.username, &config.domain)?;
+    let output_dir = export_both_formats(
+        "users_export.txt",
+        &entries,
+        &raw_output,
+        &config.username,
+        &config.domain,
+    )?;
 
-    if is_bofhound {
-        export_bofhound(
-            "users_export.txt",
-            &entries,
-            &config.username,
-            &config.domain,
-        )?;
-    } else {
-        export_raw_text("users_export.txt", &raw_output, &output_dir)?;
-    }
-
-    let date = Local::now().format("%Y%m%d").to_string();
-    let ext = if is_bofhound { "log" } else { "txt" };
     println!(
-        "\nUsers query completed successfully. Results saved to 'output_{}_{}_{}/ironeye_users_export.{}",
-        date, config.username, config.domain, ext
+        "\nUsers query completed. Results saved to '{}/ironeye_users_export.log \
+        (bofhound) or .txt (raw).",
+        output_dir
     );
     add_terminal_spacing(1);
     Ok(())
