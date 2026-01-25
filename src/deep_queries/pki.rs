@@ -1,13 +1,9 @@
 use crate::acl::parser::AclParser;
-use crate::bofhound::{
-    create_output_dir, export_bofhound, export_raw_text, prompt_export_format,
-    query_with_security_descriptor,
-};
+use crate::bofhound::{export_both_formats, query_with_security_descriptor};
 use crate::debug::debug_log;
 use crate::help::add_terminal_spacing;
 use crate::ldap::LdapConfig;
 use crate::retry_with_reconnect;
-use chrono::Local;
 use ldap3::{LdapConn, Scope, SearchEntry};
 use std::collections::HashMap;
 use std::error::Error;
@@ -132,31 +128,24 @@ pub fn get_pki_info(
         &format!("Retrieved {} PKI container entries", pki_containers.len()),
     );
 
-    let is_bofhound = prompt_export_format()?;
-    let output_dir = create_output_dir(&config.username, &config.domain)?;
+    let mut all_entries = Vec::new();
+    all_entries.extend(ca_entries);
+    all_entries.extend(enrollment_entries);
+    all_entries.extend(template_entries);
+    all_entries.extend(pki_containers);
 
-    if is_bofhound {
-        let mut all_entries = Vec::new();
-        all_entries.extend(ca_entries);
-        all_entries.extend(enrollment_entries);
-        all_entries.extend(template_entries);
-        all_entries.extend(pki_containers);
+    let output_dir = export_both_formats(
+        "pki_export.txt",
+        &all_entries,
+        &raw_output,
+        &config.username,
+        &config.domain,
+    )?;
 
-        export_bofhound(
-            "pki_export.txt",
-            &all_entries,
-            &config.username,
-            &config.domain,
-        )?;
-    } else {
-        export_raw_text("pki_export.txt", &raw_output, &output_dir)?;
-    }
-
-    let date = Local::now().format("%Y%m%d").to_string();
-    let ext = if is_bofhound { "log" } else { "txt" };
     println!(
-        "\nPKI analysis completed. Results saved to 'output_{}_{}_{}/ironeye_pki_export.{}'",
-        date, config.username, config.domain, ext
+        "\nPKI analysis completed. Results saved to '{}/ironeye_pki_export.log \
+        (bofhound) or .txt (raw).",
+        output_dir
     );
 
     add_terminal_spacing(1);

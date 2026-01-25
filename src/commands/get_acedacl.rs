@@ -6,7 +6,7 @@ use crate::retry_with_reconnect;
 use base64::engine::general_purpose::STANDARD as BASE64;
 use base64::Engine;
 use chrono::Local;
-use dialoguer::{Confirm, Input, Select};
+use dialoguer::{Confirm, Input};
 use ldap3::adapters::{Adapter, EntriesOnly, PagedResults};
 use ldap3::controls::RawControl;
 use ldap3::{LdapConn, Scope, SearchEntry};
@@ -211,7 +211,7 @@ pub fn get_ace_dacl(
         debug_log(1, &format!("Exporting results to: {}", filename));
         let username_clone = ldap_config.username.clone();
         let domain_clone = ldap_config.domain.clone();
-        permissions.export_bofhound(
+        let output_dir = permissions.export_both_formats(
             &filename,
             ldap,
             search_base,
@@ -219,11 +219,10 @@ pub fn get_ace_dacl(
             &domain_clone,
             ldap_config,
         )?;
-        let date = Local::now().format("%Y%m%d").to_string();
         let filename_without_ext = filename.trim_end_matches(".txt");
         println!(
-            "\nResults exported to: output_{}_{}_{}/ironeye_{}.log (bofhound) or .txt (raw)",
-            date, ldap_config.username, ldap_config.domain, filename_without_ext
+            "\nResults exported to: {}/ironeye_{}.log (bofhound) or .txt (raw)",
+            output_dir, filename_without_ext
         );
     }
 
@@ -498,7 +497,7 @@ impl PermissionCollector {
         objects
     }
 
-    fn export_bofhound(
+    fn export_both_formats(
         &self,
         filename: &str,
         ldap: &mut LdapConn,
@@ -506,56 +505,45 @@ impl PermissionCollector {
         username: &str,
         domain: &str,
         config: &mut LdapConfig,
-    ) -> Result<(), Box<dyn Error>> {
-        let options = vec!["Bofhound format", "Raw text format"];
-        let selection = Select::new()
-            .with_prompt("Select export format")
-            .items(&options)
-            .default(0)
-            .interact()?;
-
+    ) -> Result<String, Box<dyn Error>> {
         let date = Local::now().format("%Y%m%d").to_string();
         let output_dir = format!("output_{}_{}_{}", date, username, domain);
         fs::create_dir_all(&output_dir)?;
 
         let filename_without_ext = filename.trim_end_matches(".txt");
-        let final_filename = match selection {
-            0 => format!("ironeye_{}.log", filename_without_ext),
-            1 => format!("ironeye_{}.txt", filename_without_ext),
-            _ => unreachable!(),
-        };
-
-        let mut path = PathBuf::from(&output_dir);
-        path.push(final_filename);
-
-        let mut file = File::create(&path)?;
         let affected_objects = self.get_all_affected_objects();
 
-        match selection {
-            0 => {
-                let separator = "--------------------";
-                for dn in affected_objects {
-                    let filter = format!("(distinguishedName={})", dn);
-                    match query_full_object(ldap, search_base, &filter, config) {
-                        Ok(entries) => {
-                            if let Some(entry) = entries.first() {
-                                writeln!(file, "{}", separator)?;
-                                write_bofhound_entry(&mut file, entry)?;
-                            }
-                        }
-                        Err(_) => continue,
+        // Export bofhound format (.log)
+        let log_filename = format!("ironeye_{}.log", filename_without_ext);
+        let mut log_path = PathBuf::from(&output_dir);
+        log_path.push(&log_filename);
+
+        let mut log_file = File::create(&log_path)?;
+        let separator = "--------------------";
+        for dn in &affected_objects {
+            let filter = format!("(distinguishedName={})", dn);
+            match query_full_object(ldap, search_base, &filter, config) {
+                Ok(entries) => {
+                    if let Some(entry) = entries.first() {
+                        writeln!(log_file, "{}", separator)?;
+                        write_bofhound_entry(&mut log_file, entry)?;
                     }
                 }
+                Err(_) => continue,
             }
-            1 => {
-                for dn in affected_objects {
-                    writeln!(file, "{}", dn)?;
-                }
-            }
-            _ => unreachable!(),
         }
 
-        Ok(())
+        // Export raw text format (.txt)
+        let txt_filename = format!("ironeye_{}.txt", filename_without_ext);
+        let mut txt_path = PathBuf::from(&output_dir);
+        txt_path.push(&txt_filename);
+
+        let mut txt_file = File::create(&txt_path)?;
+        for dn in &affected_objects {
+            writeln!(txt_file, "{}", dn)?;
+        }
+
+        Ok(output_dir)
     }
 }
 

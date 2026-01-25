@@ -1,13 +1,9 @@
 use crate::acl::parser::AclParser;
-use crate::bofhound::{
-    create_output_dir, export_bofhound, export_raw_text, prompt_export_format,
-    query_with_security_descriptor,
-};
+use crate::bofhound::{export_both_formats, query_with_security_descriptor};
 use crate::debug::debug_log;
 use crate::help::add_terminal_spacing;
 use crate::ldap::LdapConfig;
 use crate::retry_with_reconnect;
-use chrono::Local;
 use ldap3::{LdapConn, Scope, SearchEntry};
 use std::collections::HashSet;
 use std::error::Error;
@@ -108,25 +104,18 @@ pub fn get_sccm_info(
 
     let raw_entries = query_all_sccm_objects(ldap, &system_management_base, search_base)?;
 
-    let is_bofhound = prompt_export_format()?;
-    let output_dir = create_output_dir(&config.username, &config.domain)?;
+    let output_dir = export_both_formats(
+        "sccm_export.txt",
+        &raw_entries,
+        &raw_output,
+        &config.username,
+        &config.domain,
+    )?;
 
-    if is_bofhound {
-        export_bofhound(
-            "sccm_export.log",
-            &raw_entries,
-            &config.username,
-            &config.domain,
-        )?;
-    } else {
-        export_raw_text("sccm_export.txt", &raw_output, &output_dir)?;
-    }
-
-    let date = Local::now().format("%Y%m%d").to_string();
-    let ext = if is_bofhound { "log" } else { "txt" };
     println!(
-        "\nSCCM enumeration completed. Results saved to 'output_{}_{}_{}/ironeye_sccm_export.{}'",
-        date, config.username, config.domain, ext
+        "\nSCCM enumeration completed. Results saved to '{}/ironeye_sccm_export.log \
+        (bofhound) or .txt (raw).",
+        output_dir
     );
 
     add_terminal_spacing(1);

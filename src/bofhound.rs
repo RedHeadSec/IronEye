@@ -1,7 +1,6 @@
 use base64::engine::general_purpose::STANDARD as BASE64;
 use base64::Engine;
 use chrono::Local;
-use dialoguer::Select;
 use ldap3::adapters::{Adapter, EntriesOnly, PagedResults};
 use ldap3::controls::RawControl;
 use ldap3::{LdapConn, Scope, SearchEntry};
@@ -58,17 +57,6 @@ pub fn export_bofhound(
     export_bofhound_format(filename, entries, &output_dir)
 }
 
-pub fn prompt_export_format() -> Result<bool, Box<dyn Error>> {
-    let options = vec!["Bofhound format", "Raw text format"];
-    let selection = Select::new()
-        .with_prompt("Select export format")
-        .items(&options)
-        .default(0)
-        .interact()?;
-
-    Ok(selection == 0)
-}
-
 pub fn create_output_dir(username: &str, domain: &str) -> Result<String, Box<dyn Error>> {
     let date = Local::now().format("%Y%m%d").to_string();
     let output_dir = format!("output_{}_{}_{}", date, username, domain);
@@ -89,6 +77,33 @@ pub fn export_raw_text(
     write!(file, "{}", content)?;
 
     Ok(())
+}
+
+/// Export both bofhound (.log) and raw text (.txt) formats automatically
+pub fn export_both_formats(
+    base_filename: &str,
+    entries: &[SearchEntry],
+    raw_content: &str,
+    username: &str,
+    domain: &str,
+) -> Result<String, Box<dyn Error>> {
+    let date = Local::now().format("%Y%m%d").to_string();
+    let output_dir = format!("output_{}_{}_{}", date, username, domain);
+    fs::create_dir_all(&output_dir)?;
+
+    // Export bofhound format (.log)
+    export_bofhound_format(base_filename, entries, &output_dir)?;
+
+    // Export raw text format (.txt)
+    let filename_without_ext = base_filename.trim_end_matches(".txt");
+    let txt_filename = format!("ironeye_{}.txt", filename_without_ext);
+    let mut txt_path = PathBuf::from(&output_dir);
+    txt_path.push(txt_filename);
+
+    let mut file = File::create(&txt_path)?;
+    write!(file, "{}", raw_content)?;
+
+    Ok(output_dir)
 }
 
 fn export_bofhound_format(

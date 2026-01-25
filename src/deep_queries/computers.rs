@@ -1,9 +1,8 @@
-use crate::bofhound::export_bofhound;
+use crate::bofhound::export_both_formats;
 use crate::debug;
 use crate::help::add_terminal_spacing;
 use crate::ldap::LdapConfig;
 use crate::retry_with_reconnect;
-use chrono::Local;
 use ldap3::adapters::{Adapter, EntriesOnly, PagedResults};
 use ldap3::{LdapConn, Scope, SearchEntry};
 use std::error::Error;
@@ -20,6 +19,11 @@ pub fn get_computers(
     println!("\nComputers Query Results:");
     println!("------------------------");
     println!("Found {} computers", entries.len());
+
+    let mut raw_output = String::new();
+    raw_output.push_str("Computers\n");
+    raw_output.push_str(&"=".repeat(80));
+    raw_output.push_str("\n\n");
 
     for entry in &entries {
         let sam_account_name = entry
@@ -38,22 +42,26 @@ pub fn get_computers(
             .and_then(|v| v.get(0))
             .map_or("", String::as_str);
 
-        println!(
+        let line = format!(
             "sAMAccountName: {}, dNSHostName: {}, operatingSystem: {}",
             sam_account_name, dns_host_name, operating_system
         );
+        println!("{}", line);
+        raw_output.push_str(&line);
+        raw_output.push('\n');
     }
 
-    export_bofhound(
+    let output_dir = export_both_formats(
         "computers_export.txt",
         &entries,
+        &raw_output,
         &config.username,
         &config.domain,
     )?;
-    let date = Local::now().format("%Y%m%d").to_string();
     println!(
-        "\nComputers query completed successfully. Results saved to 'output_{}_{}_{}/ironeye_computers_export.log' (bofhound) or .txt (raw).",
-        date, config.username, config.domain
+        "\nComputers query completed. Results saved to \
+        '{}/ironeye_computers_export.log (bofhound) or .txt (raw).",
+        output_dir
     );
     add_terminal_spacing(1);
     Ok(())

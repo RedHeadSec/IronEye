@@ -1,9 +1,8 @@
-use crate::bofhound::{create_output_dir, export_bofhound, export_raw_text, prompt_export_format};
+use crate::bofhound::export_both_formats;
 use crate::debug;
 use crate::help::add_terminal_spacing;
 use crate::ldap::LdapConfig;
 use crate::retry_with_reconnect;
-use chrono::Local;
 use ldap3::adapters::{Adapter, EntriesOnly, PagedResults};
 use ldap3::{Scope, SearchEntry};
 use std::error::Error;
@@ -31,29 +30,23 @@ pub fn get_groups(
         print_group_info(&entry);
     }
 
-    let is_bofhound = prompt_export_format()?;
-    let output_dir = create_output_dir(&config.username, &config.domain)?;
-
-    if is_bofhound {
-        export_bofhound(
-            "domain_groups_export.txt",
-            &entries,
-            &config.username,
-            &config.domain,
-        )?;
-    } else {
-        let mut raw_output = String::new();
-        for entry in &entries {
-            raw_output.push_str(&format_group_info(&entry));
-        }
-        export_raw_text("domain_groups_export.txt", &raw_output, &output_dir)?;
+    let mut raw_output = String::new();
+    for entry in &entries {
+        raw_output.push_str(&format_group_info(&entry));
     }
 
-    let date = Local::now().format("%Y%m%d").to_string();
-    let ext = if is_bofhound { "log" } else { "txt" };
+    let output_dir = export_both_formats(
+        "domain_groups_export.txt",
+        &entries,
+        &raw_output,
+        &config.username,
+        &config.domain,
+    )?;
+
     println!(
-        "\nExported group information to: output_{}_{}_{}/ironeye_domain_groups_export.{}",
-        date, config.username, config.domain, ext
+        "\nGroups query completed. Results saved to \
+        '{}/ironeye_domain_groups_export.log (bofhound) or .txt (raw).",
+        output_dir
     );
     add_terminal_spacing(2);
     Ok(())
