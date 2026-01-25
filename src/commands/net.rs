@@ -1,6 +1,7 @@
 use crate::debug::debug_log;
 use crate::help::add_terminal_spacing;
 use crate::ldap::{escape_filter, LdapConfig};
+use crate::retry_with_reconnect;
 use chrono::DateTime;
 use ldap3::adapters::{Adapter, EntriesOnly, PagedResults};
 use ldap3::{Scope, SearchEntry};
@@ -26,7 +27,7 @@ const UF_SERVER_TRUST_ACCOUNT: i64 = 0x2000;
 pub fn net_command(
     ldap: &mut ldap3::LdapConn,
     search_base: &str,
-    config: &LdapConfig,
+    config: &mut LdapConfig,
     command_type: &str,
     name: &str,
 ) -> Result<(), Box<dyn Error>> {
@@ -45,7 +46,7 @@ pub fn net_command(
 fn net_user(
     ldap: &mut ldap3::LdapConn,
     search_base: &str,
-    _config: &LdapConfig,
+    config: &mut LdapConfig,
     username: &str,
 ) -> Result<(), Box<dyn Error>> {
     let filter = format!(
@@ -54,49 +55,51 @@ fn net_user(
     );
     debug_log(2, &format!("Searching for user with filter: {}", filter));
 
-    let result = ldap.search(
-        &search_base,
-        Scope::Subtree,
-        &filter,
-        vec![
-            "sAMAccountName",
-            "cn",
-            "description",
-            "userAccountControl",
-            "accountExpires",
-            "pwdLastSet",
-            "homeDirectory",
-            "lastLogon",
-            "logonCount",
-            "mail",
-            "servicePrincipalName",
-            "lastLogonTimestamp",
-            "lockoutTime",
-            "displayName",
-            "userPrincipalName",
-            "objectClass",
-            "badPwdCount",
-            "badPasswordTime",
-            "adminCount",
-            "whenCreated",
-            "whenChanged",
-            "memberOf",
-            "scriptPath",
-            "profilePath",
-            "homeDrive",
-            "telephoneNumber",
-            "title",
-            "department",
-            "company",
-            "manager",
-            "employeeID",
-            "info",
-            "comment",
-            "userWorkstations",
-            "logonHours",
-            "logonWorkstation",
-        ],
-    )?;
+    let result = retry_with_reconnect!(ldap, config, {
+        ldap.search(
+            &search_base,
+            Scope::Subtree,
+            &filter,
+            vec![
+                "sAMAccountName",
+                "cn",
+                "description",
+                "userAccountControl",
+                "accountExpires",
+                "pwdLastSet",
+                "homeDirectory",
+                "lastLogon",
+                "logonCount",
+                "mail",
+                "servicePrincipalName",
+                "lastLogonTimestamp",
+                "lockoutTime",
+                "displayName",
+                "userPrincipalName",
+                "objectClass",
+                "badPwdCount",
+                "badPasswordTime",
+                "adminCount",
+                "whenCreated",
+                "whenChanged",
+                "memberOf",
+                "scriptPath",
+                "profilePath",
+                "homeDrive",
+                "telephoneNumber",
+                "title",
+                "department",
+                "company",
+                "manager",
+                "employeeID",
+                "info",
+                "comment",
+                "userWorkstations",
+                "logonHours",
+                "logonWorkstation",
+            ],
+        )
+    })?;
 
     let (entries, _) = result.success()?;
     debug_log(1, &format!("Found {} user entries", entries.len()));
@@ -343,7 +346,7 @@ fn net_user(
 fn net_computer(
     ldap: &mut ldap3::LdapConn,
     search_base: &str,
-    _config: &LdapConfig,
+    config: &mut LdapConfig,
     computername: &str,
 ) -> Result<(), Box<dyn Error>> {
     let filter = format!(
@@ -355,37 +358,39 @@ fn net_computer(
         &format!("Searching for computer with filter: {}", filter),
     );
 
-    let result = ldap.search(
-        &search_base,
-        Scope::Subtree,
-        &filter,
-        vec![
-            "sAMAccountName",
-            "cn",
-            "description",
-            "userAccountControl",
-            "operatingSystem",
-            "operatingSystemVersion",
-            "operatingSystemServicePack",
-            "dNSHostName",
-            "servicePrincipalName",
-            "lastLogon",
-            "lastLogonTimestamp",
-            "logonCount",
-            "pwdLastSet",
-            "whenCreated",
-            "whenChanged",
-            "objectClass",
-            "distinguishedName",
-            "memberOf",
-            "managedBy",
-            "location",
-            "msDS-AllowedToDelegateTo",
-            "msDS-AllowedToActOnBehalfOfOtherIdentity",
-            "adminCount",
-            "primaryGroupID",
-        ],
-    )?;
+    let result = retry_with_reconnect!(ldap, config, {
+        ldap.search(
+            &search_base,
+            Scope::Subtree,
+            &filter,
+            vec![
+                "sAMAccountName",
+                "cn",
+                "description",
+                "userAccountControl",
+                "operatingSystem",
+                "operatingSystemVersion",
+                "operatingSystemServicePack",
+                "dNSHostName",
+                "servicePrincipalName",
+                "lastLogon",
+                "lastLogonTimestamp",
+                "logonCount",
+                "pwdLastSet",
+                "whenCreated",
+                "whenChanged",
+                "objectClass",
+                "distinguishedName",
+                "memberOf",
+                "managedBy",
+                "location",
+                "msDS-AllowedToDelegateTo",
+                "msDS-AllowedToActOnBehalfOfOtherIdentity",
+                "adminCount",
+                "primaryGroupID",
+            ],
+        )
+    })?;
 
     let (entries, _) = result.success()?;
     debug_log(1, &format!("Found {} computer entries", entries.len()));
@@ -403,9 +408,7 @@ fn net_computer(
         }
 
         println!("\nComputer Information - {}:", computername);
-        println!(
-            "-------------------------------------------------------------------------------"
-        );
+        println!("-------------------------------------------------------------------------------");
 
         if let Some(cn) = comp_entry.attrs.get("cn").and_then(|v| v.first()) {
             println!("Computer Name: \t\t{}", cn);
@@ -535,9 +538,7 @@ fn net_computer(
             .get("msDS-AllowedToActOnBehalfOfOtherIdentity")
             .is_some()
         {
-            println!(
-                "RBCD: \t\t\tResource-Based Constrained Delegation configured"
-            );
+            println!("RBCD: \t\t\tResource-Based Constrained Delegation configured");
         }
 
         if let Some(spns) = comp_entry.attrs.get("servicePrincipalName") {
@@ -566,7 +567,7 @@ fn net_computer(
 fn net_group(
     ldap: &mut ldap3::LdapConn,
     search_base: &str,
-    _config: &LdapConfig,
+    config: &mut LdapConfig,
     groupname: &str,
 ) -> Result<(), Box<dyn Error>> {
     let filter = format!(
@@ -575,34 +576,35 @@ fn net_group(
     );
     debug_log(2, &format!("Searching for group with filter: {}", filter));
 
-    let adapters: Vec<Box<dyn Adapter<_, _>>> = vec![
-        Box::new(EntriesOnly::new()),
-        Box::new(PagedResults::new(500)),
-    ];
-
-    let mut search = ldap.streaming_search_with(
-        adapters,
-        &search_base,
-        Scope::Subtree,
-        &filter,
-        vec![
-            "member",
-            "description",
-            "memberOf",
-            "objectClass",
-            "displayName",
-            "distinguishedName",
-            "groupType",
-            "whenCreated",
-            "whenChanged",
-            "info",
-            "managedBy",
-            "mail",
-            "adminCount",
-            "groupCategory",
-            "notes",
-        ],
-    )?;
+    let mut search = retry_with_reconnect!(ldap, config, {
+        let adapters: Vec<Box<dyn Adapter<_, _>>> = vec![
+            Box::new(EntriesOnly::new()),
+            Box::new(PagedResults::new(500)),
+        ];
+        ldap.streaming_search_with(
+            adapters,
+            &search_base,
+            Scope::Subtree,
+            &filter,
+            vec![
+                "member",
+                "description",
+                "memberOf",
+                "objectClass",
+                "displayName",
+                "distinguishedName",
+                "groupType",
+                "whenCreated",
+                "whenChanged",
+                "info",
+                "managedBy",
+                "mail",
+                "adminCount",
+                "groupCategory",
+                "notes",
+            ],
+        )
+    })?;
 
     let mut group_entry = None;
     while let Some(entry) = search.next()? {
@@ -715,18 +717,19 @@ fn net_group(
             let mut group_count = 0;
 
             for member_dn in members {
-                let adapters: Vec<Box<dyn Adapter<_, _>>> = vec![
-                    Box::new(EntriesOnly::new()),
-                    Box::new(PagedResults::new(500)),
-                ];
-
-                let mut search = ldap.streaming_search_with(
-                    adapters,
-                    &search_base,
-                    Scope::Subtree,
-                    &format!("(distinguishedName={})", escape_filter(member_dn)),
-                    vec!["sAMAccountName", "objectClass", "userAccountControl"],
-                )?;
+                let mut search = retry_with_reconnect!(ldap, config, {
+                    let adapters: Vec<Box<dyn Adapter<_, _>>> = vec![
+                        Box::new(EntriesOnly::new()),
+                        Box::new(PagedResults::new(500)),
+                    ];
+                    ldap.streaming_search_with(
+                        adapters,
+                        &search_base,
+                        Scope::Subtree,
+                        &format!("(distinguishedName={})", escape_filter(member_dn)),
+                        vec!["sAMAccountName", "objectClass", "userAccountControl"],
+                    )
+                })?;
 
                 while let Some(entry) = search.next()? {
                     let member = SearchEntry::construct(entry);

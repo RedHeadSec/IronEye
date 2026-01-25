@@ -1,3 +1,4 @@
+use crate::bofhound::create_output_dir;
 use crate::debug;
 use crate::help::add_terminal_spacing;
 use crate::ldap::LdapConfig;
@@ -8,11 +9,12 @@ use ldap3::{LdapConn, Scope, SearchEntry};
 use std::error::Error;
 use std::fs::File;
 use std::io::Write;
+use std::path::PathBuf;
 
 pub fn get_service_principal_names(
     ldap: &mut LdapConn,
     search_base: &str,
-    _config: &LdapConfig,
+    config: &LdapConfig,
 ) -> Result<(), Box<dyn Error>> {
     const SPN_OPTIONS: &[&str] = &["Get All SPNs", "Targeted Search"];
 
@@ -107,14 +109,16 @@ pub fn get_service_principal_names(
         .default(false)
         .interact()?
     {
-        let filename: String = Input::new()
-            .with_prompt("Enter filename")
-            .default("spns.txt".into())
-            .interact()?;
+        let output_dir = create_output_dir(&config.username, &config.domain)?;
+        let mut path = PathBuf::from(&output_dir);
+        path.push("ironeye_spns.txt");
 
-        let mut file = File::create(&filename)?;
+        let mut file = File::create(&path)?;
         file.write_all(output.as_bytes())?;
-        println!("\nResults exported to: {}", filename);
+        println!(
+            "\n\x1b[32m[+]\x1b[0m Results exported to: \x1b[33m{}\x1b[0m",
+            path.display()
+        );
     }
 
     add_terminal_spacing(2);

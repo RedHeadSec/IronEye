@@ -133,7 +133,9 @@ fn handle_query_record(
         return Ok(());
     }
 
-    let Some(zone) = read_input_with_history("Enter zone (leave empty for domain default): ", "adidns") else {
+    let Some(zone) =
+        read_input_with_history("Enter zone (leave empty for domain default): ", "adidns")
+    else {
         return Ok(());
     };
     crate::track_history(
@@ -639,8 +641,7 @@ fn handle_modify_record(
     search_base: &str,
     ldap_config: &mut LdapConfig,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let Some(record_name) =
-        read_input_with_history("Enter record name to modify: ", "adidns")
+    let Some(record_name) = read_input_with_history("Enter record name to modify: ", "adidns")
     else {
         return Ok(());
     };
@@ -879,8 +880,7 @@ fn handle_remove_record(
     search_base: &str,
     ldap_config: &mut LdapConfig,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let Some(record_name) =
-        read_input_with_history("Enter record name to tombstone: ", "adidns")
+    let Some(record_name) = read_input_with_history("Enter record name to tombstone: ", "adidns")
     else {
         return Ok(());
     };
@@ -1133,8 +1133,7 @@ fn handle_delete_record(
     search_base: &str,
     ldap_config: &mut LdapConfig,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let Some(record_name) =
-        read_input_with_history("Enter record name to delete: ", "adidns")
+    let Some(record_name) = read_input_with_history("Enter record name to delete: ", "adidns")
     else {
         return Ok(());
     };

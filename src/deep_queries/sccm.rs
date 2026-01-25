@@ -1,145 +1,503 @@
+use crate::acl::parser::AclParser;
+use crate::bofhound::{
+    create_output_dir, export_bofhound, export_raw_text, prompt_export_format,
+    query_with_security_descriptor,
+};
+use crate::debug::debug_log;
+use crate::help::add_terminal_spacing;
 use crate::ldap::LdapConfig;
+use crate::retry_with_reconnect;
+use chrono::Local;
 use ldap3::{LdapConn, Scope, SearchEntry};
+use std::collections::HashSet;
 use std::error::Error;
+
+#[derive(Debug, Clone)]
+struct SiteInfo {
+    site_code: String,
+    #[allow(dead_code)]
+    is_cas: bool,
+}
+
+#[derive(Debug, Clone)]
+struct SiteServer {
+    hostname: String,
+    #[allow(dead_code)]
+    site_code: String,
+}
+
+#[derive(Debug, Clone)]
+struct ManagementPoint {
+    hostname: String,
+    site_code: String,
+}
+
+#[derive(Debug, Clone)]
+struct DistributionPoint {
+    hostname: String,
+    is_pxe: bool,
+}
 
 pub fn get_sccm_info(
     ldap: &mut LdapConn,
     search_base: &str,
-    _config: &LdapConfig,
-) -> Result<(), Box<dyn std::error::Error>> {
+    config: &mut LdapConfig,
+) -> Result<(), Box<dyn Error>> {
+    debug_log(1, "Starting SCCM enumeration");
+
     let system_base = format!("CN=System,{}", search_base);
     let system_management_base = format!("CN=System Management,{}", system_base);
 
-    if !dn_exists(ldap, &system_base)? {
-        crate::help::add_terminal_spacing(1);
-        println!("Skipping SCCM enumeration: 'CN=System' container not found.");
-        crate::help::add_terminal_spacing(1);
+    if !dn_exists(ldap, &system_base, config)? {
+        add_terminal_spacing(1);
+        println!("[-] SCCM enumeration skipped: 'CN=System' container not found.");
+        add_terminal_spacing(1);
         return Ok(());
     }
 
-    if !dn_exists(ldap, &system_management_base)? {
-        crate::help::add_terminal_spacing(1);
-        println!("Skipping SCCM enumeration: 'CN=System Management' container not found.");
-        crate::help::add_terminal_spacing(1);
+    if !dn_exists(ldap, &system_management_base, config)? {
+        add_terminal_spacing(1);
+        println!("[-] SCCM enumeration skipped: 'CN=System Management' container not found.");
+        add_terminal_spacing(1);
         return Ok(());
     }
 
-    let primary_sites = query_sccm_primary_sites(ldap, &system_management_base)?;
-    let management_points = query_sccm_management_points(ldap, &system_management_base)?;
-    let distribution_points = query_sccm_distribution_points(ldap, &system_management_base)?;
+    println!("\n=== SCCM/MECM Enumeration ===\n");
 
-    println!("\nSCCM Server Roles\n");
+    let mut raw_output = String::new();
+    raw_output.push_str("SCCM/MECM Enumeration\n");
+    raw_output.push_str(&"=".repeat(80));
+    raw_output.push_str("\n\n");
 
-    if !primary_sites.is_empty() {
-        println!("Primary/Secondary Sites:");
-        for site in &primary_sites {
-            println!("  Site: {}", site);
-        }
+    let site_servers =
+        query_site_servers_from_acl(ldap, &system_management_base, search_base, config)?;
+    debug_log(
+        1,
+        &format!("Found {} site servers from ACL", site_servers.len()),
+    );
+
+    let sites = query_sites(ldap, &system_management_base, config)?;
+    debug_log(1, &format!("Found {} sites", sites.len()));
+
+    let management_points = query_management_points(ldap, &system_management_base, config)?;
+    debug_log(
+        1,
+        &format!("Found {} management points", management_points.len()),
+    );
+
+    let distribution_points = query_distribution_points(ldap, search_base, config)?;
+    debug_log(
+        1,
+        &format!("Found {} distribution points", distribution_points.len()),
+    );
+
+    let mp_site_codes: HashSet<String> = management_points
+        .iter()
+        .map(|mp| mp.site_code.clone())
+        .collect();
+
+    let cas_sites: Vec<&SiteInfo> = sites
+        .iter()
+        .filter(|site| !mp_site_codes.contains(&site.site_code))
+        .collect();
+
+    display_sites(&cas_sites, &mut raw_output);
+    display_site_servers(&site_servers, &mut raw_output);
+    display_management_points(&management_points, &mut raw_output);
+    display_distribution_points(&distribution_points, &mut raw_output);
+
+    let raw_entries = query_all_sccm_objects(ldap, &system_management_base, search_base)?;
+
+    let is_bofhound = prompt_export_format()?;
+    let output_dir = create_output_dir(&config.username, &config.domain)?;
+
+    if is_bofhound {
+        export_bofhound(
+            "sccm_export.log",
+            &raw_entries,
+            &config.username,
+            &config.domain,
+        )?;
+    } else {
+        export_raw_text("sccm_export.txt", &raw_output, &output_dir)?;
     }
 
-    if !management_points.is_empty() {
-        println!("\nManagement Points:");
-        for mp in &management_points {
-            println!("  Management Point: {}", mp);
-        }
-    }
+    let date = Local::now().format("%Y%m%d").to_string();
+    let ext = if is_bofhound { "log" } else { "txt" };
+    println!(
+        "\nSCCM enumeration completed. Results saved to 'output_{}_{}_{}/ironeye_sccm_export.{}'",
+        date, config.username, config.domain, ext
+    );
 
-    if !distribution_points.is_empty() {
-        println!("\nDistribution Points:");
-        for dp in &distribution_points {
-            println!("  Distribution Point: {}\n", dp);
-        }
-    }
-
-    if primary_sites.is_empty() && management_points.is_empty() && distribution_points.is_empty() {
-        println!("No SCCM servers found.");
-    }
-
-    crate::help::add_terminal_spacing(1);
+    add_terminal_spacing(1);
     Ok(())
 }
 
-fn query_sccm_primary_sites(
+fn query_site_servers_from_acl(
+    ldap: &mut LdapConn,
+    system_management_base: &str,
+    search_base: &str,
+    config: &mut LdapConfig,
+) -> Result<Vec<SiteServer>, Box<dyn Error>> {
+    debug_log(
+        2,
+        "Querying System Management container ACL for site servers",
+    );
+
+    let entries = query_with_security_descriptor(
+        ldap,
+        search_base,
+        &format!("(distinguishedName={})", system_management_base),
+        vec!["distinguishedName"],
+    )?;
+
+    let mut site_servers = Vec::new();
+
+    for entry in entries {
+        if let Some(sd_bytes) = entry
+            .bin_attrs
+            .get("nTSecurityDescriptor")
+            .and_then(|v| v.first())
+        {
+            let parser = AclParser::new();
+            if let Ok((_is_protected, relations)) =
+                parser.parse_security_descriptor(sd_bytes, "container")
+            {
+                for relation in relations {
+                    if relation.right_name == "GenericAll" {
+                        if let Ok(hostname) =
+                            resolve_sid_to_hostname(ldap, &relation.sid, search_base, config)
+                        {
+                            site_servers.push(SiteServer {
+                                hostname,
+                                site_code: String::new(),
+                            });
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    Ok(site_servers)
+}
+
+fn query_sites(
     ldap: &mut LdapConn,
     base: &str,
-) -> Result<Vec<String>, Box<dyn Error>> {
-    let search_filter = "(objectclass=mssmssite)";
-    let result = ldap.search(base, Scope::Subtree, search_filter, vec!["cn"])?;
+    config: &mut LdapConfig,
+) -> Result<Vec<SiteInfo>, Box<dyn Error>> {
+    debug_log(2, "Querying for SCCM sites");
 
-    let (entries, _) = result.success()?;
-    let sites: Vec<String> = entries
+    let (entries, _) = retry_with_reconnect!(ldap, config, {
+        ldap.search(
+            base,
+            Scope::Subtree,
+            "(objectclass=mssmssite)",
+            vec!["msSMSSiteCode"],
+        )
+    })?
+    .success()?;
+
+    let sites: Vec<SiteInfo> = entries
         .into_iter()
         .filter_map(|entry| {
             let entry = SearchEntry::construct(entry);
-            entry.attrs.get("cn").and_then(|v| v.get(0)).cloned()
+            entry
+                .attrs
+                .get("msSMSSiteCode")
+                .and_then(|v| v.first())
+                .map(|code| SiteInfo {
+                    site_code: code.clone(),
+                    is_cas: false,
+                })
         })
         .collect();
 
     Ok(sites)
 }
 
-fn query_sccm_management_points(
+fn query_management_points(
     ldap: &mut LdapConn,
     base: &str,
-) -> Result<Vec<String>, Box<dyn Error>> {
-    let search_filter = "(objectclass=mssmsmanagementpoint)";
-    let result = ldap.search(base, Scope::Subtree, search_filter, vec!["dNSHostName"])?;
+    config: &mut LdapConfig,
+) -> Result<Vec<ManagementPoint>, Box<dyn Error>> {
+    debug_log(2, "Querying for management points");
 
-    let (entries, _) = result.success()?;
-    let management_points: Vec<String> = entries
+    let (entries, _) = retry_with_reconnect!(ldap, config, {
+        ldap.search(
+            base,
+            Scope::Subtree,
+            "(objectclass=mssmsmanagementpoint)",
+            vec!["*"],
+        )
+    })?
+    .success()?;
+
+    let management_points: Vec<ManagementPoint> = entries
         .into_iter()
         .filter_map(|entry| {
             let entry = SearchEntry::construct(entry);
-            entry
+
+            let hostname = entry
                 .attrs
                 .get("dNSHostName")
-                .and_then(|v| v.get(0))
+                .and_then(|v| v.first())
+                .cloned()?;
+
+            let site_code = entry
+                .attrs
+                .get("mSSMSSiteCode")
+                .and_then(|v| v.first())
                 .cloned()
+                .unwrap_or_else(|| String::from("Unknown"));
+
+            Some(ManagementPoint {
+                hostname,
+                site_code,
+            })
         })
         .collect();
 
     Ok(management_points)
 }
 
-fn query_sccm_distribution_points(
+fn query_distribution_points(
     ldap: &mut LdapConn,
-    base: &str,
-) -> Result<Vec<String>, Box<dyn Error>> {
-    let search_filter = "(&(objectclass=connectionPoint)(netbootserver=*))";
-    let result = ldap.search(
-        base,
-        Scope::Subtree,
-        search_filter,
-        vec!["dNSHostName", "cn", "distinguishedName"],
-    )?;
+    search_base: &str,
+    config: &mut LdapConfig,
+) -> Result<Vec<DistributionPoint>, Box<dyn Error>> {
+    debug_log(2, "Querying for PXE-enabled distribution points");
 
-    let (entries, _) = result.success()?;
-    let distribution_points: Vec<String> = entries
-        .into_iter()
-        .filter_map(|entry| {
-            let entry = SearchEntry::construct(entry);
+    let (entries, _) = retry_with_reconnect!(ldap, config, {
+        ldap.search(
+            search_base,
+            Scope::Subtree,
+            "(&(objectclass=connectionPoint)(netbootserver=*))",
+            vec!["distinguishedName"],
+        )
+    })?
+    .success()?;
 
-            let dns_name = entry
-                .attrs
-                .get("dNSHostName")
-                .and_then(|v| v.get(0))
-                .cloned();
-            let cn_name = entry.attrs.get("cn").and_then(|v| v.get(0)).cloned();
+    let mut distribution_points = Vec::new();
 
-            dns_name.or(cn_name)
-        })
-        .collect();
+    for entry in entries {
+        let entry = SearchEntry::construct(entry);
+        if let Some(dn) = entry.attrs.get("distinguishedName").and_then(|v| v.first()) {
+            if let Some(trim_pos) = dn.find(",") {
+                let parent_dn = &dn[trim_pos + 1..];
+
+                let (parent_entries, _) = retry_with_reconnect!(ldap, config, {
+                    ldap.search(
+                        search_base,
+                        Scope::Subtree,
+                        &format!("(distinguishedName={})", parent_dn),
+                        vec!["dNSHostName"],
+                    )
+                })?
+                .success()?;
+
+                for parent_entry in parent_entries {
+                    let parent_entry = SearchEntry::construct(parent_entry);
+                    if let Some(hostname) = parent_entry
+                        .attrs
+                        .get("dNSHostName")
+                        .and_then(|v| v.first())
+                    {
+                        distribution_points.push(DistributionPoint {
+                            hostname: hostname.clone(),
+                            is_pxe: true,
+                        });
+                    }
+                }
+            }
+        }
+    }
 
     Ok(distribution_points)
 }
 
-fn dn_exists(ldap: &mut LdapConn, dn: &str) -> Result<bool, Box<dyn std::error::Error>> {
-    let result = ldap.search(
-        dn,
-        Scope::Base,
-        "(objectClass=*)",
-        vec!["distinguishedName"],
-    );
+fn resolve_sid_to_hostname(
+    ldap: &mut LdapConn,
+    sid: &str,
+    search_base: &str,
+    config: &mut LdapConfig,
+) -> Result<String, Box<dyn Error>> {
+    let sid_bytes = sid_to_bytes(sid)?;
+    let hex_str = sid_bytes
+        .iter()
+        .map(|b| format!("\\{:02x}", b))
+        .collect::<String>();
+
+    let filter = format!("(objectSid={})", hex_str);
+    let (entries, _) = retry_with_reconnect!(ldap, config, {
+        ldap.search(search_base, Scope::Subtree, &filter, vec!["dNSHostName"])
+    })?
+    .success()?;
+
+    for entry in entries {
+        let entry = SearchEntry::construct(entry);
+        if let Some(hostname) = entry.attrs.get("dNSHostName").and_then(|v| v.first()) {
+            return Ok(hostname.to_lowercase());
+        }
+    }
+
+    Err("Hostname not found".into())
+}
+
+fn sid_to_bytes(sid: &str) -> Result<Vec<u8>, Box<dyn Error>> {
+    let parts: Vec<&str> = sid.split('-').collect();
+    if parts.len() < 3 || parts[0] != "S" {
+        return Err("Invalid SID format".into());
+    }
+
+    let mut bytes = Vec::new();
+    bytes.push(1);
+
+    let authority: u64 = parts[2].parse()?;
+    let sub_authority_count = (parts.len() - 3) as u8;
+    bytes.push(sub_authority_count);
+
+    bytes.extend_from_slice(&authority.to_be_bytes()[2..8]);
+
+    for i in 3..parts.len() {
+        let sub_auth: u32 = parts[i].parse()?;
+        bytes.extend_from_slice(&sub_auth.to_le_bytes());
+    }
+
+    Ok(bytes)
+}
+
+fn query_all_sccm_objects(
+    ldap: &mut LdapConn,
+    system_management_base: &str,
+    search_base: &str,
+) -> Result<Vec<SearchEntry>, Box<dyn Error>> {
+    let mut all_entries = Vec::new();
+
+    let site_entries = query_with_security_descriptor(
+        ldap,
+        system_management_base,
+        "(objectclass=mssmssite)",
+        vec!["*"],
+    )?;
+    all_entries.extend(site_entries);
+
+    let mp_entries = query_with_security_descriptor(
+        ldap,
+        system_management_base,
+        "(objectclass=mssmsmanagementpoint)",
+        vec!["*"],
+    )?;
+    all_entries.extend(mp_entries);
+
+    let dp_entries = query_with_security_descriptor(
+        ldap,
+        search_base,
+        "(&(objectclass=connectionPoint)(netbootserver=*))",
+        vec!["*"],
+    )?;
+    all_entries.extend(dp_entries);
+
+    Ok(all_entries)
+}
+
+fn display_sites(sites: &[&SiteInfo], raw_output: &mut String) {
+    if sites.is_empty() {
+        return;
+    }
+
+    println!("Central Administration Sites (CAS):");
+    println!("{}", "=".repeat(80));
+    raw_output.push_str("Central Administration Sites (CAS):\n");
+    raw_output.push_str(&"=".repeat(80));
+    raw_output.push_str("\n");
+
+    for site in sites {
+        println!("  Site Code: {}", site.site_code);
+        raw_output.push_str(&format!("  Site Code: {}\n", site.site_code));
+    }
+    println!();
+    raw_output.push_str("\n");
+}
+
+fn display_site_servers(servers: &[SiteServer], raw_output: &mut String) {
+    if servers.is_empty() {
+        return;
+    }
+
+    println!("Site Servers (Full Control on System Management Container):");
+    println!("{}", "=".repeat(80));
+    raw_output.push_str("Site Servers (Full Control on System Management Container):\n");
+    raw_output.push_str(&"=".repeat(80));
+    raw_output.push_str("\n");
+
+    for server in servers {
+        println!("  Hostname: {}", server.hostname);
+        raw_output.push_str(&format!("  Hostname: {}\n", server.hostname));
+    }
+    println!();
+    raw_output.push_str("\n");
+}
+
+fn display_management_points(mps: &[ManagementPoint], raw_output: &mut String) {
+    if mps.is_empty() {
+        return;
+    }
+
+    println!("Management Points:");
+    println!("{}", "=".repeat(80));
+    raw_output.push_str("Management Points:\n");
+    raw_output.push_str(&"=".repeat(80));
+    raw_output.push_str("\n");
+
+    for mp in mps {
+        println!("  Hostname: {}", mp.hostname);
+        println!("  Site Code: {}", mp.site_code);
+        println!();
+        raw_output.push_str(&format!("  Hostname: {}\n", mp.hostname));
+        raw_output.push_str(&format!("  Site Code: {}\n", mp.site_code));
+        raw_output.push_str("\n");
+    }
+}
+
+fn display_distribution_points(dps: &[DistributionPoint], raw_output: &mut String) {
+    if dps.is_empty() {
+        return;
+    }
+
+    println!("PXE-Enabled Distribution Points:");
+    println!("{}", "=".repeat(80));
+    raw_output.push_str("PXE-Enabled Distribution Points:\n");
+    raw_output.push_str(&"=".repeat(80));
+    raw_output.push_str("\n");
+
+    for dp in dps {
+        println!("  Hostname: {}", dp.hostname);
+        println!("  PXE Enabled: {}", if dp.is_pxe { "Yes" } else { "No" });
+        println!();
+        raw_output.push_str(&format!("  Hostname: {}\n", dp.hostname));
+        raw_output.push_str(&format!(
+            "  PXE Enabled: {}\n",
+            if dp.is_pxe { "Yes" } else { "No" }
+        ));
+        raw_output.push_str("\n");
+    }
+}
+
+fn dn_exists(
+    ldap: &mut LdapConn,
+    dn: &str,
+    config: &mut LdapConfig,
+) -> Result<bool, Box<dyn Error>> {
+    let result = retry_with_reconnect!(ldap, config, {
+        ldap.search(
+            dn,
+            Scope::Base,
+            "(objectClass=*)",
+            vec!["distinguishedName"],
+        )
+    });
 
     match result {
         Ok(response) => match response.success() {

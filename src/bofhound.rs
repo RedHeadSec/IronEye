@@ -1,6 +1,7 @@
 use base64::engine::general_purpose::STANDARD as BASE64;
 use base64::Engine;
 use chrono::Local;
+use dialoguer::Select;
 use ldap3::adapters::{Adapter, EntriesOnly, PagedResults};
 use ldap3::controls::RawControl;
 use ldap3::{LdapConn, Scope, SearchEntry};
@@ -18,7 +19,7 @@ pub fn query_with_security_descriptor(
     ldap.with_controls(vec![RawControl {
         ctype: String::from("1.2.840.113556.1.4.801"),
         crit: false,
-        val: Some(vec![7, 0, 0, 0]),
+        val: Some(vec![0x30, 0x03, 0x02, 0x01, 0x07]),
     }]);
 
     let mut full_attrs = attributes;
@@ -44,13 +45,60 @@ pub fn query_with_security_descriptor(
     Ok(entries)
 }
 
-pub fn export_bofhound(filename: &str, entries: &[SearchEntry]) -> Result<(), Box<dyn Error>> {
+pub fn export_bofhound(
+    filename: &str,
+    entries: &[SearchEntry],
+    username: &str,
+    domain: &str,
+) -> Result<(), Box<dyn Error>> {
     let date = Local::now().format("%Y%m%d").to_string();
-    let output_dir = format!("output_{}", date);
+    let output_dir = format!("output_{}_{}_{}", date, username, domain);
     fs::create_dir_all(&output_dir)?;
 
+    export_bofhound_format(filename, entries, &output_dir)
+}
+
+pub fn prompt_export_format() -> Result<bool, Box<dyn Error>> {
+    let options = vec!["Bofhound format", "Raw text format"];
+    let selection = Select::new()
+        .with_prompt("Select export format")
+        .items(&options)
+        .default(0)
+        .interact()?;
+
+    Ok(selection == 0)
+}
+
+pub fn create_output_dir(username: &str, domain: &str) -> Result<String, Box<dyn Error>> {
+    let date = Local::now().format("%Y%m%d").to_string();
+    let output_dir = format!("output_{}_{}_{}", date, username, domain);
+    fs::create_dir_all(&output_dir)?;
+    Ok(output_dir)
+}
+
+pub fn export_raw_text(
+    filename: &str,
+    content: &str,
+    output_dir: &str,
+) -> Result<(), Box<dyn Error>> {
     let prefixed_filename = format!("ironeye_{}", filename);
-    let mut path = PathBuf::from(&output_dir);
+    let mut path = PathBuf::from(output_dir);
+    path.push(prefixed_filename);
+
+    let mut file = File::create(&path)?;
+    write!(file, "{}", content)?;
+
+    Ok(())
+}
+
+fn export_bofhound_format(
+    filename: &str,
+    entries: &[SearchEntry],
+    output_dir: &str,
+) -> Result<(), Box<dyn Error>> {
+    let filename_without_ext = filename.trim_end_matches(".txt");
+    let prefixed_filename = format!("ironeye_{}.log", filename_without_ext);
+    let mut path = PathBuf::from(output_dir);
     path.push(prefixed_filename);
 
     let mut file = File::create(&path)?;

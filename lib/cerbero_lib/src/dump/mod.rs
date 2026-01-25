@@ -66,20 +66,14 @@ pub fn out_tickets(
     out_file_join: Option<String>,
     silent: bool,
 ) -> Result<()> {
-    //if no out param is specified, we store a file per ticket
-    let out_files = match out_files {
-        Some(s) => Some(s),
-        None => {
-            if !out_print & out_file_join.is_none() {
-                Some("".to_string())
-            } else {
-                None
-            }
-        }
-    };
+    // Only save files if explicitly requested via out_files or out_file_join
+    let out_files = out_files;
 
     if !silent {
-        println!("Extract {} tickets from {}", in_format, source);
+        println!(
+            "\x1b[32m[+]\x1b[0m Extract \x1b[36m{}\x1b[0m tickets from \x1b[33m{}\x1b[0m",
+            in_format, source
+        );
     }
 
     let several_sessions = tickets_sessions.len() > 1;
@@ -131,7 +125,10 @@ pub fn out_tickets(
                         format!("{}{}.{}", prefix, filepath, out_format);
 
                     if !silent {
-                        println!("Saved ticket in {}", filepath);
+                        println!(
+                            "\x1b[32m[+]\x1b[0m Saved ticket in \x1b[33m{}\x1b[0m",
+                            filepath
+                        );
                     }
                     save_file_krb_cred(&filepath, krb_cred, out_format)?;
                 }
@@ -162,7 +159,10 @@ pub fn out_tickets(
             };
 
             if !silent {
-                println!("Saved all tickets in {}", filepath);
+                println!(
+                    "\x1b[32m[+]\x1b[0m Saved all tickets in \x1b[33m{}\x1b[0m",
+                    filepath
+                );
             }
             save_file_krb_cred(&filepath, krb_cred, out_format)?;
         }
@@ -171,9 +171,19 @@ pub fn out_tickets(
     return Ok(());
 }
 
+// ANSI color codes
+const GREEN: &str = "\x1b[32m";
+const YELLOW: &str = "\x1b[33m";
+const CYAN: &str = "\x1b[36m";
+const MAGENTA: &str = "\x1b[35m";
+const WHITE: &str = "\x1b[37m";
+const BOLD: &str = "\x1b[1m";
+const RESET: &str = "\x1b[0m";
+
 pub fn print_ticket_meta(ticket_info: &DumpTicketMeta) {
+    // Principal => Service (bold cyan for principal, green for service)
     println!(
-        "{}@{} => {}@{}",
+        "{BOLD}{CYAN}{}@{}{RESET} => {GREEN}{}@{}{RESET}",
         ticket_info.client_name,
         ticket_info.client_realm,
         ticket_info.service_name,
@@ -181,24 +191,33 @@ pub fn print_ticket_meta(ticket_info: &DumpTicketMeta) {
     );
 
     if let Some(start_time) = &ticket_info.start_time {
-        println!("Valid starting: {}", format_utc_datetime(start_time));
+        println!(
+            "{WHITE}Valid starting:{RESET} {YELLOW}{}{RESET}",
+            format_utc_datetime(start_time)
+        );
     }
 
     if let Some(end_time) = &ticket_info.end_time {
-        println!("Expires: {}", format_utc_datetime(end_time));
+        println!(
+            "{WHITE}Expires:{RESET}        {YELLOW}{}{RESET}",
+            format_utc_datetime(end_time)
+        );
     }
 
     if let Some(renew_time) = &ticket_info.renew_time {
-        println!("Renew until: {}", format_utc_datetime(renew_time));
+        println!(
+            "{WHITE}Renew until:{RESET}    {YELLOW}{}{RESET}",
+            format_utc_datetime(renew_time)
+        );
     }
 
     println!(
-        "Flags: {}",
+        "{WHITE}Flags:{RESET}          {MAGENTA}{}{RESET}",
         kerberos_flags_to_string(ticket_info.ticket_flags)
     );
 
     println!(
-        "Etype (skey, tkt): {}, {}",
+        "{WHITE}Etype (skey, tkt):{RESET} {CYAN}{}{RESET}, {CYAN}{}{RESET}",
         etype_to_string(ticket_info.session_key_type),
         etype_to_string(ticket_info.encryption_type)
     )

@@ -10,6 +10,8 @@ pub struct ExtendedRightsGuids {
     pub user_account_restrictions_set: Uuid,
     pub write_gp_link: Uuid,
     pub computer_object: Uuid,
+    pub certificate_enrollment: Uuid,
+    pub certificate_autoenrollment: Uuid,
 }
 
 impl ExtendedRightsGuids {
@@ -27,6 +29,10 @@ impl ExtendedRightsGuids {
                 .unwrap(),
             write_gp_link: Uuid::parse_str("f30e3bbf-9ff0-11d1-b603-0000f80367c1").unwrap(),
             computer_object: Uuid::parse_str("bf967a86-0de6-11d0-a285-00aa003049e2").unwrap(),
+            certificate_enrollment: Uuid::parse_str("0e10c968-78fb-11d2-90d4-00c04f79dc55")
+                .unwrap(),
+            certificate_autoenrollment: Uuid::parse_str("a05b8cc2-17bc-4802-a710-e7c15ab866a2")
+                .unwrap(),
         }
     }
 }

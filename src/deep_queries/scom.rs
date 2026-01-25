@@ -1,19 +1,20 @@
 use crate::ldap::LdapConfig;
+use crate::retry_with_reconnect;
 use ldap3::{LdapConn, Scope, SearchEntry};
 use std::error::Error;
 
 pub fn get_scom_info(
     ldap: &mut LdapConn,
     search_base: &str,
-    _config: &LdapConfig,
+    config: &mut LdapConfig,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let mgmt_servers = query_scom_management_servers(ldap, search_base)?;
-    let sdk_accounts = query_scom_sdk_accounts(ldap, search_base)?;
-    let acs_servers = query_scom_acs_servers(ldap, search_base)?;
-    let om_container = query_operations_manager_container(ldap, search_base)?;
-    let mgmt_groups = query_management_groups(ldap, search_base)?;
-    let scp_objects = query_scp_objects(ldap, search_base)?;
-    let security_groups = query_scom_security_groups(ldap, search_base)?;
+    let mgmt_servers = query_scom_management_servers(ldap, search_base, config)?;
+    let sdk_accounts = query_scom_sdk_accounts(ldap, search_base, config)?;
+    let acs_servers = query_scom_acs_servers(ldap, search_base, config)?;
+    let om_container = query_operations_manager_container(ldap, search_base, config)?;
+    let mgmt_groups = query_management_groups(ldap, search_base, config)?;
+    let scp_objects = query_scp_objects(ldap, search_base, config)?;
+    let security_groups = query_scom_security_groups(ldap, search_base, config)?;
 
     println!("\nSCOM Infrastructure\n");
 
@@ -84,14 +85,17 @@ pub fn get_scom_info(
 fn query_scom_management_servers(
     ldap: &mut LdapConn,
     base: &str,
+    config: &mut LdapConfig,
 ) -> Result<Vec<String>, Box<dyn Error>> {
     let filter = "(&(objectCategory=computer)(servicePrincipalName=MSOMHSvc/*))";
-    let result = ldap.search(
-        base,
-        Scope::Subtree,
-        filter,
-        vec!["dNSHostName", "cn", "servicePrincipalName"],
-    )?;
+    let result = retry_with_reconnect!(ldap, config, {
+        ldap.search(
+            base,
+            Scope::Subtree,
+            filter,
+            vec!["dNSHostName", "cn", "servicePrincipalName"],
+        )
+    })?;
 
     let (entries, _) = result.success()?;
     let servers: Vec<String> = entries
@@ -125,14 +129,21 @@ fn query_scom_management_servers(
 fn query_scom_sdk_accounts(
     ldap: &mut LdapConn,
     base: &str,
+    config: &mut LdapConfig,
 ) -> Result<Vec<String>, Box<dyn Error>> {
     let filter = "(&(objectClass=user)(servicePrincipalName=MSOMSdkSvc/*))";
-    let result = ldap.search(
-        base,
-        Scope::Subtree,
-        filter,
-        vec!["sAMAccountName", "distinguishedName", "servicePrincipalName"],
-    )?;
+    let result = retry_with_reconnect!(ldap, config, {
+        ldap.search(
+            base,
+            Scope::Subtree,
+            filter,
+            vec![
+                "sAMAccountName",
+                "distinguishedName",
+                "servicePrincipalName",
+            ],
+        )
+    })?;
 
     let (entries, _) = result.success()?;
     let accounts: Vec<String> = entries
@@ -163,14 +174,17 @@ fn query_scom_sdk_accounts(
 fn query_scom_acs_servers(
     ldap: &mut LdapConn,
     base: &str,
+    config: &mut LdapConfig,
 ) -> Result<Vec<String>, Box<dyn Error>> {
     let filter = "(&(objectCategory=computer)(servicePrincipalName=AdtServer/*))";
-    let result = ldap.search(
-        base,
-        Scope::Subtree,
-        filter,
-        vec!["dNSHostName", "cn", "servicePrincipalName"],
-    )?;
+    let result = retry_with_reconnect!(ldap, config, {
+        ldap.search(
+            base,
+            Scope::Subtree,
+            filter,
+            vec!["dNSHostName", "cn", "servicePrincipalName"],
+        )
+    })?;
 
     let (entries, _) = result.success()?;
     let servers: Vec<String> = entries
@@ -194,14 +208,12 @@ fn query_scom_acs_servers(
 fn query_operations_manager_container(
     ldap: &mut LdapConn,
     base: &str,
+    config: &mut LdapConfig,
 ) -> Result<Option<String>, Box<dyn Error>> {
     let filter = "(&(objectClass=container)(cn=OperationsManager))";
-    let result = ldap.search(
-        base,
-        Scope::Subtree,
-        filter,
-        vec!["distinguishedName"],
-    )?;
+    let result = retry_with_reconnect!(ldap, config, {
+        ldap.search(base, Scope::Subtree, filter, vec!["distinguishedName"])
+    })?;
 
     let (entries, _) = result.success()?;
     Ok(entries.into_iter().next().and_then(|entry| {
@@ -217,14 +229,17 @@ fn query_operations_manager_container(
 fn query_management_groups(
     ldap: &mut LdapConn,
     base: &str,
+    config: &mut LdapConfig,
 ) -> Result<Vec<String>, Box<dyn Error>> {
     let filter = "(&(objectClass=container)(distinguishedName=CN=*,CN=OperationsManager,*))";
-    let result = ldap.search(
-        base,
-        Scope::Subtree,
-        filter,
-        vec!["cn", "distinguishedName"],
-    )?;
+    let result = retry_with_reconnect!(ldap, config, {
+        ldap.search(
+            base,
+            Scope::Subtree,
+            filter,
+            vec!["cn", "distinguishedName"],
+        )
+    })?;
 
     let (entries, _) = result.success()?;
     let groups: Vec<String> = entries
@@ -239,7 +254,8 @@ fn query_management_groups(
 
             if let Some(dn_val) = &dn {
                 if dn_val.contains("CN=OperationsManager,")
-                    && !dn_val.starts_with("CN=OperationsManager,") {
+                    && !dn_val.starts_with("CN=OperationsManager,")
+                {
                     return entry.attrs.get("cn").and_then(|v| v.get(0)).cloned();
                 }
             }
@@ -253,14 +269,17 @@ fn query_management_groups(
 fn query_scp_objects(
     ldap: &mut LdapConn,
     base: &str,
+    config: &mut LdapConfig,
 ) -> Result<Vec<String>, Box<dyn Error>> {
     let filter = "(&(objectClass=serviceConnectionPoint)(|(cn=HealthServiceSCP)(distinguishedName=*OperationsManager*)))";
-    let result = ldap.search(
-        base,
-        Scope::Subtree,
-        filter,
-        vec!["cn", "distinguishedName"],
-    )?;
+    let result = retry_with_reconnect!(ldap, config, {
+        ldap.search(
+            base,
+            Scope::Subtree,
+            filter,
+            vec!["cn", "distinguishedName"],
+        )
+    })?;
 
     let (entries, _) = result.success()?;
     let scps: Vec<String> = entries
@@ -281,14 +300,17 @@ fn query_scp_objects(
 fn query_scom_security_groups(
     ldap: &mut LdapConn,
     base: &str,
+    config: &mut LdapConfig,
 ) -> Result<Vec<String>, Box<dyn Error>> {
     let filter = "(&(objectClass=group)(distinguishedName=CN=*,CN=*,CN=OperationsManager,*))";
-    let result = ldap.search(
-        base,
-        Scope::Subtree,
-        filter,
-        vec!["cn", "distinguishedName"],
-    )?;
+    let result = retry_with_reconnect!(ldap, config, {
+        ldap.search(
+            base,
+            Scope::Subtree,
+            filter,
+            vec!["cn", "distinguishedName"],
+        )
+    })?;
 
     let (entries, _) = result.success()?;
     let groups: Vec<String> = entries

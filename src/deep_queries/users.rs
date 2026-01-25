@@ -1,7 +1,8 @@
-use crate::bofhound::export_bofhound;
+use crate::bofhound::{create_output_dir, export_bofhound, export_raw_text, prompt_export_format};
 use crate::debug;
 use crate::help::add_terminal_spacing;
 use crate::ldap::LdapConfig;
+use crate::retry_with_reconnect;
 use chrono::Local;
 use ldap3::adapters::{Adapter, EntriesOnly, PagedResults};
 use ldap3::{LdapConn, Scope, SearchEntry};
@@ -10,16 +11,17 @@ use std::error::Error;
 pub fn get_users(
     ldap: &mut LdapConn,
     search_base: &str,
-    _config: &LdapConfig,
+    config: &mut LdapConfig,
 ) -> Result<(), Box<dyn Error>> {
     debug::debug_log(1, "Querying all users...");
-    let entries = query_users(ldap, search_base)?;
+    let entries = query_users(ldap, search_base, config)?;
     debug::debug_log(2, format!("Found {} user entries", entries.len()));
 
     println!("\nUsers Query Results:");
     println!("--------------------");
     println!("Found {} users", entries.len());
 
+    let mut raw_output = String::new();
     for entry in &entries {
         let sam_account_name = entry
             .attrs
@@ -32,20 +34,43 @@ pub fn get_users(
             .and_then(|v| v.get(0))
             .map_or("", String::as_str);
 
-        println!(
-            "sAMAccountName: {}, displayName: {}",
+        let line = format!(
+            "sAMAccountName: {}, displayName: {}\n",
             sam_account_name, display_name
         );
+        println!("{}", line.trim_end());
+        raw_output.push_str(&line);
     }
 
-    export_bofhound("users_export.txt", &entries)?;
+    let is_bofhound = prompt_export_format()?;
+    let output_dir = create_output_dir(&config.username, &config.domain)?;
+
+    if is_bofhound {
+        export_bofhound(
+            "users_export.txt",
+            &entries,
+            &config.username,
+            &config.domain,
+        )?;
+    } else {
+        export_raw_text("users_export.txt", &raw_output, &output_dir)?;
+    }
+
     let date = Local::now().format("%Y%m%d").to_string();
-    println!("\nUsers query completed successfully. Results saved to 'output_{}/ironeye_users_export.txt'.", date);
+    let ext = if is_bofhound { "log" } else { "txt" };
+    println!(
+        "\nUsers query completed successfully. Results saved to 'output_{}_{}_{}/ironeye_users_export.{}",
+        date, config.username, config.domain, ext
+    );
     add_terminal_spacing(1);
     Ok(())
 }
 
-fn query_users(ldap: &mut LdapConn, search_base: &str) -> Result<Vec<SearchEntry>, Box<dyn Error>> {
+fn query_users(
+    ldap: &mut LdapConn,
+    search_base: &str,
+    config: &mut LdapConfig,
+) -> Result<Vec<SearchEntry>, Box<dyn Error>> {
     let search_filter = "(objectClass=user)";
     debug::debug_log(
         2,
@@ -56,18 +81,19 @@ fn query_users(ldap: &mut LdapConn, search_base: &str) -> Result<Vec<SearchEntry
     );
     debug::debug_log(3, "Retrieving all attributes (*)");
 
-    let adapters: Vec<Box<dyn Adapter<_, _>>> = vec![
-        Box::new(EntriesOnly::new()),
-        Box::new(PagedResults::new(500)),
-    ];
-
-    let mut search = ldap.streaming_search_with(
-        adapters,
-        search_base,
-        Scope::Subtree,
-        search_filter,
-        vec!["*"],
-    )?;
+    let mut search = retry_with_reconnect!(ldap, config, {
+        let adapters: Vec<Box<dyn Adapter<_, _>>> = vec![
+            Box::new(EntriesOnly::new()),
+            Box::new(PagedResults::new(500)),
+        ];
+        ldap.streaming_search_with(
+            adapters,
+            search_base,
+            Scope::Subtree,
+            search_filter,
+            vec!["*"],
+        )
+    })?;
 
     let mut entries = Vec::new();
     while let Some(entry) = search.next()? {
