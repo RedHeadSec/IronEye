@@ -103,7 +103,6 @@ fn validate_and_prepare_ccache(
                 info.end_time, info.time_remaining
             );
 
-            // Check expiration warning on actual credential being used
             let valid_cred = ccache
                 .credentials
                 .iter()
@@ -128,7 +127,6 @@ fn validate_and_prepare_ccache(
         }
     };
 
-    // Use impersonated user if present, otherwise default principal
     if config.username.is_empty() {
         if let Some(ref impersonated) = ccache_info.impersonated_user {
             // Extract username from impersonated principal (user@REALM -> user)
@@ -140,8 +138,8 @@ fn validate_and_prepare_ccache(
         }
     }
 
-    // For impersonated tickets, create a temp ccache with correct default principal
-    // GSSAPI authenticates as the ccache's default principal
+    // For impersonated tickets, GSSAPI authenticates as the ccache's default principal,
+    // so we must create a temp ccache with the impersonated principal as default
     let (effective_ccache, temp_ccache_path) = if ccache_info.impersonated_user.is_some() {
         // Find the impersonated service ticket - prefer LDAP tickets for the
         // target host, then any LDAP ticket, then any impersonated ticket
@@ -248,7 +246,6 @@ fn perform_kerberos_bind(
 
     let _ = std::fs::remove_file(krb5_conf_path);
 
-    // Clean up temp impersonated ccache if created
     if let Some(temp_path) = temp_ccache {
         let _ = std::fs::remove_file(&temp_path);
         debug::debug_log(1, format!("Cleaned up temp ccache: {}", temp_path));
@@ -313,7 +310,6 @@ pub fn ldap_connect(config: &mut LdapConfig) -> Result<(LdapConn, String), LdapE
     debug::debug_log(1, "LDAP connection established");
 
     if config.kerberos {
-        // Don't lowercase for Kerberos - SPN matching is case-sensitive
         let dc_ip = config.dc_ip.clone();
         perform_kerberos_bind(&mut ldap, config, &dc_ip)?;
     } else {
@@ -336,7 +332,6 @@ pub fn ldap_connect(config: &mut LdapConfig) -> Result<(LdapConn, String), LdapE
         .set_conn_timeout(Duration::from_secs(CONNECTION_TIMEOUT_SECS))
         .set_no_tls_verify(true);
 
-    // Don't lowercase hostname for Kerberos - SPN matching is case-sensitive
     let host = if config.kerberos {
         config.dc_ip.clone()
     } else {
@@ -430,7 +425,6 @@ pub fn extract_sid(search_entry: &SearchEntry) -> Option<String> {
     if let Some(sid_values) = search_entry.bin_attrs.get("objectSid") {
         Some(format_sid(&sid_values[0]))
     } else {
-        println!("[DEBUG] `objectSid` attribute missing.");
         None
     }
 }

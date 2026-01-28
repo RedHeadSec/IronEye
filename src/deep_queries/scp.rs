@@ -51,7 +51,6 @@ pub fn get_service_connection_points(
 
     println!("\n[+] Total: {} SCP(s)", entries.len());
 
-    // Show detailed info and build raw output
     add_terminal_spacing(1);
     println!("=== SCP Details ===\n");
 
@@ -141,7 +140,6 @@ pub fn get_service_connection_points(
         println!("    Modified: {}", when_changed);
         println!();
 
-        // Build raw output
         raw_output.push_str(&format!("[{}] {}\n", i + 1, cn));
         raw_output.push_str(&format!("    Distinguished Name: {}\n", dn));
         raw_output.push_str(&format!("    Description: {}\n", description));

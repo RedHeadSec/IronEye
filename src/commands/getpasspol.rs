@@ -22,14 +22,12 @@ pub fn get_password_policy(
         ),
     );
 
-    // Display Default Domain Password Policy
     for entry in domain_policy_entries {
         println!("\nDefault Domain Password Policy for {}:", config.domain);
         println!("--------------------------------------------------");
         display_password_policy(&entry);
     }
 
-    // Display Fine-Grained Password Policies (FGPPs)
     if !fgpp_entries.is_empty() {
         println!("\nFine-Grained Password Policies:");
         println!("--------------------------------------------------");

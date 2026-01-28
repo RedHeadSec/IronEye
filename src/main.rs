@@ -336,11 +336,9 @@ fn handle_net_commands(
 }
 
 fn handle_cerbero() {
-    // Set cerbero_lib verbosity based on current debug level
     let debug_level = debug::get_debug_level();
     kerberos::set_cerbero_verbosity(debug_level);
 
-    // Show note about debug verbosity on first entry
     if debug_level == 0 {
         println!("\n[*] Note: For verbose Kerberos output, set Debug level in main menu before entering Cerberos.");
         println!("    Debug Settings → Level 1 (Info) or Level 2 (Debug) for detailed logging.");
@@ -933,7 +931,6 @@ fn handle_history_management() {
 
         match selection {
             0 => {
-                // View Recent Commands
                 let limit_str = read_input("Number of commands to show (default: 20): ");
                 let limit: usize = limit_str.parse().unwrap_or(20);
 
@@ -959,7 +956,6 @@ fn handle_history_management() {
                 }
             }
             1 => {
-                // Search History
                 let pattern = read_input("Enter search term: ");
                 if !pattern.is_empty() {
                     match manager.search(&pattern) {
@@ -984,27 +980,23 @@ fn handle_history_management() {
                     }
                 }
             }
-            2 => {
-                // View Statistics
-                match manager.get_stats() {
-                    Ok(stats) => {
-                        if stats.is_empty() {
-                            println!("\n[*] No history entries found.");
-                        } else {
-                            println!("\n=== History Statistics ===");
-                            let total: usize = stats.iter().map(|(_, count)| count).sum();
-                            println!("Total commands: {}\n", total);
-                            for (module, count) in stats {
-                                let percentage = (count as f64 / total as f64) * 100.0;
-                                println!("{:12} : {:4} ({:.1}%)", module, count, percentage);
-                            }
+            2 => match manager.get_stats() {
+                Ok(stats) => {
+                    if stats.is_empty() {
+                        println!("\n[*] No history entries found.");
+                    } else {
+                        println!("\n=== History Statistics ===");
+                        let total: usize = stats.iter().map(|(_, count)| count).sum();
+                        println!("Total commands: {}\n", total);
+                        for (module, count) in stats {
+                            let percentage = (count as f64 / total as f64) * 100.0;
+                            println!("{:12} : {:4} ({:.1}%)", module, count, percentage);
                         }
                     }
-                    Err(e) => eprintln!("[!] Error retrieving statistics: {}", e),
                 }
-            }
+                Err(e) => eprintln!("[!] Error retrieving statistics: {}", e),
+            },
             3 => {
-                // Clear Module History
                 println!("\nAvailable modules: connect, cerbero, spray, userenum, ldapquery");
                 let module = read_input("Enter module name to clear: ");
                 if !module.is_empty() {
@@ -1025,7 +1017,6 @@ fn handle_history_management() {
                 }
             }
             4 => {
-                // Cleanup Old Entries
                 match Confirm::with_theme(&ColorfulTheme::default())
                     .with_prompt("Delete all entries older than 30 days?")
                     .default(false)
@@ -1040,7 +1031,6 @@ fn handle_history_management() {
                 }
             }
             5 => {
-                // Export History
                 let filename = read_input("Enter output filename (default: history_export.txt): ");
                 let filename = if filename.is_empty() {
                     "history_export.txt".to_string()
@@ -1054,7 +1044,6 @@ fn handle_history_management() {
                 }
             }
             6 => {
-                // Clear All History
                 match Confirm::with_theme(&ColorfulTheme::default())
                     .with_prompt("⚠️  Delete ALL history? This cannot be undone!")
                     .default(false)

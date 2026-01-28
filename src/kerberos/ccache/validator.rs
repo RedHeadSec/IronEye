@@ -6,7 +6,6 @@ pub fn validate_ccache(ccache: &CcacheFile) -> Result<CcacheInfo, String> {
         return Err("No credentials found in ccache".to_string());
     }
 
-    // Find valid (non-expired) credential - prefer service tickets, fallback to TGT
     let valid_cred = ccache
         .credentials
         .iter()
@@ -14,7 +13,6 @@ pub fn validate_ccache(ccache: &CcacheFile) -> Result<CcacheInfo, String> {
         .max_by_key(|c| if c.is_tgt() { 0 } else { 1 })
         .ok_or("No valid credentials found in ccache")?;
 
-    // Detect impersonation: client differs from default principal
     let default_principal_str = ccache.default_principal.to_string();
     let client_str = valid_cred.client.to_string();
     let impersonated_user = if client_str != default_principal_str {

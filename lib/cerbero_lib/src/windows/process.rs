@@ -30,7 +30,6 @@ pub fn list_processes() -> windows::core::Result<Vec<ProcessInfo>> {
     let mut process_entry: PROCESSENTRY32 = PROCESSENTRY32::default();
     process_entry.dwSize = std::mem::size_of::<PROCESSENTRY32>() as u32;
 
-    // Get the first process in the snapshot
     if unsafe { Process32First(snapshot, &mut process_entry).is_ok() } {
         loop {
             let pid = process_entry.th32ProcessID;
@@ -50,14 +49,12 @@ pub fn list_processes() -> windows::core::Result<Vec<ProcessInfo>> {
 
             processes.push(ProcessInfo {pid, name});
 
-            // Get the next process in the snapshot
             if !unsafe { Process32Next(snapshot, &mut process_entry).is_ok() } {
                 break;
             }
         }
     }
 
-    // Close the snapshot handle
     unsafe {
         let _ = CloseHandle(snapshot);
     };

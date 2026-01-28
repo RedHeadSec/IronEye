@@ -1,19 +1,15 @@
-// Core library exports for cerbero_lib
-
 pub mod core;
 pub mod commands;
 pub mod communication;
 pub mod error;
 pub mod utils;
-pub mod dump; // Public but not used in this context
+pub mod dump;
 
 #[cfg(windows)]
 pub mod windows;
 
-// Re-export commonly used types for convenience
 pub use error::{Error, Result};
 
-// Core types
 pub use core::{
     Cipher,
     CredFormat,
@@ -27,7 +23,6 @@ pub use core::{
     Vault,
 };
 
-// Core functions
 pub use core::{
     as_rep_to_crack_string,
     craft_ticket_info,
@@ -47,7 +42,6 @@ pub use core::{
     tgs_to_crack_string,
 };
 
-// Communication types
 pub use communication::{
     Kdcs,
     KdcComm,

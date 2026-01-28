@@ -68,7 +68,6 @@ pub fn get_gpos(
 
     println!("\n[+] Total: {} GPO(s)", entries.len());
 
-    // Show detailed info and build raw output
     add_terminal_spacing(1);
     println!("=== GPO Details ===\n");
 
@@ -147,7 +146,6 @@ pub fn get_gpos(
         raw_output.push_str(&format!("    Modified: {}\n\n", modified));
     }
 
-    // Query GPO links
     println!("=== GPO Links ===\n");
     raw_output.push_str("\nGPO Links\n");
     raw_output.push_str(&"=".repeat(80));
@@ -202,7 +200,6 @@ fn query_gpo_links(
     search_base: &str,
     config: &mut LdapConfig,
 ) -> Result<Vec<(String, Vec<String>)>, Box<dyn Error>> {
-    // Query OUs, sites, and domain for gPLink attribute
     let filter = "(gPLink=*)";
 
     let mut search = retry_with_reconnect!(ldap, config, {
@@ -243,7 +240,6 @@ fn query_gpo_links(
 }
 
 fn parse_gplink(gplink: &str) -> Vec<String> {
-    // gPLink format: [LDAP://cn={GUID},cn=policies,...;0][LDAP://...;1]
     let mut gpos = Vec::new();
 
     for part in gplink.split("][") {
@@ -278,7 +274,6 @@ fn interpret_gpo_flags(flags: i32) -> String {
 }
 
 fn format_version(version: u32) -> String {
-    // Version is split: high 16 bits = user version, low 16 bits = computer version
     let user_ver = (version >> 16) & 0xFFFF;
     let comp_ver = version & 0xFFFF;
     format!("U:{} C:{}", user_ver, comp_ver)

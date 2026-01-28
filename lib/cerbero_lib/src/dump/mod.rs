@@ -66,7 +66,6 @@ pub fn out_tickets(
     out_file_join: Option<String>,
     silent: bool,
 ) -> Result<()> {
-    // Only save files if explicitly requested via out_files or out_file_join
     let out_files = out_files;
 
     if !silent {
@@ -99,7 +98,6 @@ pub fn out_tickets(
             }
 
             if let Some(ticket) = &ticket.ticket {
-                // Print in screen
                 let krb_cred: KrbCred = ticket.clone().into();
 
                 if out_print {
@@ -107,7 +105,6 @@ pub fn out_tickets(
                 }
 
                 if let Some(ref prefix) = out_files {
-                    // Save to file
                     let filepath = format!(
                         "{}_{}_{}_{}_{}",
                         meta.client_name,
@@ -171,7 +168,6 @@ pub fn out_tickets(
     return Ok(());
 }
 
-// ANSI color codes
 const GREEN: &str = "\x1b[32m";
 const YELLOW: &str = "\x1b[33m";
 const CYAN: &str = "\x1b[36m";

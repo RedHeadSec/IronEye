@@ -148,7 +148,7 @@ impl RateLimiter {
                         jitter.as_millis()
                     ),
                 );
-                drop(last); // Release the lock before sleeping
+                drop(last);
                 thread::sleep(sleep_time);
                 let mut last = self.last_attempt.lock().unwrap();
                 *last = Some(Instant::now());
@@ -178,7 +178,6 @@ pub fn start_password_spray(config: SprayConfig) -> Result<(), Box<dyn Error>> {
 
     execute_spray(&config, users, passwords, reachable_dcs, state.clone())?;
 
-    // Create output file only if we have credentials to save
     let output_file = {
         let state_guard = state.lock().unwrap();
         if !state_guard.valid_credentials.is_empty() {
@@ -344,7 +343,6 @@ fn execute_spray(
     dcs: Vec<String>,
     state: Arc<Mutex<SprayState>>,
 ) -> Result<(), Box<dyn Error>> {
-    // Create rate limiter for global delay/jitter control
     let rate_limiter = Arc::new(RateLimiter::new(config.delay * 1000, config.jitter));
     let total_combinations = users.len() * passwords.len();
     let mut completed_attempts = 0;
@@ -715,7 +713,6 @@ fn process_attempt_result_realtime(
                 ),
             );
 
-            // Track failed attempts for lockout protection
             let should_warn = {
                 let entry = state_guard
                     .invalid_attempts
@@ -728,7 +725,6 @@ fn process_attempt_result_realtime(
                 let within_window =
                     entry.1.elapsed().as_secs() <= config.lockout_window_seconds as u64;
 
-                // Reset counter if outside the lockout window
                 if !within_window {
                     entry.0 = 1;
                     entry.1 = Instant::now();
@@ -737,7 +733,6 @@ fn process_attempt_result_realtime(
                 exceeds_threshold && within_window
             };
 
-            // Check if we should warn about lockout (separate from the entry borrow)
             if should_warn && !state_guard.warned_users.contains(&attempt.username) {
                 let current_attempts = state_guard
                     .invalid_attempts

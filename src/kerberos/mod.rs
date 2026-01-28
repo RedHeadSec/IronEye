@@ -11,8 +11,7 @@ pub use env::{determine_ccache_path, get_krb5ccname_env, set_krb5ccname_temp};
 pub use hash::{hash_password, KerberosHash};
 pub use operations::KerberosOps;
 
-/// Set cerbero_lib verbosity based on debug level
-/// Debug 1 = -v, Debug 2 = -vv, Debug 3 = -vvv
+/// Maps IronEye debug levels (0-3) to cerbero_lib log levels (warn/info/debug/trace)
 pub fn set_cerbero_verbosity(debug_level: u8) {
     let log_level = match debug_level {
         0 => "warn",
