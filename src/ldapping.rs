@@ -151,7 +151,10 @@ fn process_usernames_threaded(
         }
     }
 
-    let results = results.lock().unwrap().clone();
+    let results = results
+        .lock()
+        .expect("User enumeration results mutex poisoned")
+        .clone();
     Ok(results)
 }
 

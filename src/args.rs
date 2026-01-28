@@ -611,7 +611,7 @@ pub fn parse_shell_args(input: &str) -> Vec<String> {
                 }
             }
             '\\' if chars.peek().is_some() => {
-                current.push(chars.next().unwrap());
+                current.push(chars.next().expect("Peeked char should be available"));
             }
             _ => {
                 current.push(c);

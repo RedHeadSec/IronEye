@@ -106,7 +106,8 @@ pub fn get_current_privileges() -> Vec<ProcessPrivilege> {
 
 fn get_current_process_privileges() -> Vec<ProcessPrivilege> {
     let token_handle = HANDLE(CURRENT_PROCESS_TOKEN as *mut c_void);
-    return get_token_privileges(token_handle).unwrap();
+    return get_token_privileges(token_handle)
+        .expect("Failed to get current process privileges");
 }
 
 fn open_current_process_token(access: TOKEN_ACCESS_MASK) -> HANDLE {
@@ -114,7 +115,7 @@ fn open_current_process_token(access: TOKEN_ACCESS_MASK) -> HANDLE {
         let process_handle = HANDLE(CURRENT_PROCESS as *mut c_void);
         let mut token_handle = HANDLE(std::ptr::null_mut());
         OpenProcessToken(process_handle, access, &raw mut token_handle)
-            .unwrap();
+            .expect("Failed to open current process token");
 
         return token_handle;
     };
@@ -122,7 +123,10 @@ fn open_current_process_token(access: TOKEN_ACCESS_MASK) -> HANDLE {
 
 fn get_current_thread_privileges() -> Option<Vec<ProcessPrivilege>> {
     let token_handle = open_current_thread_token(TOKEN_QUERY)?;
-    return Some(get_token_privileges(token_handle).unwrap());
+    return Some(
+        get_token_privileges(token_handle)
+            .expect("Failed to get current thread privileges"),
+    );
 }
 
 fn open_current_thread_token(access: TOKEN_ACCESS_MASK) -> Option<HANDLE> {
@@ -159,7 +163,9 @@ fn get_token_privileges(
             token_handle,
             TokenPrivileges,
             Some(privs_ptr as *mut c_void),
-            raw_size.try_into().unwrap(),
+            raw_size
+                .try_into()
+                .expect("Token privileges buffer size overflow"),
             &raw mut out_size,
         ) {
             return Err(WinApiError {
@@ -176,9 +182,11 @@ fn get_token_privileges(
 
         let mut privs = Vec::new();
         for i in 0..token_privs.PrivilegeCount {
-            let luid_atts = *privs_luid_att_ptr.offset(i.try_into().unwrap());
+            let luid_atts = *privs_luid_att_ptr
+                .offset(i.try_into().expect("Privilege count overflow"));
 
-            let priv_name = privilege_luid_to_name(luid_atts.Luid).unwrap();
+            let priv_name = privilege_luid_to_name(luid_atts.Luid)
+                .expect("Failed to lookup privilege name");
 
             privs.push(ProcessPrivilege {
                 name: priv_name,
@@ -216,7 +224,7 @@ fn privilege_luid_to_name(priv_luid: LUID) -> Result<String, WinApiError> {
             priv_name_bytes.as_ptr(),
             name_len as usize,
         ))
-        .unwrap();
+        .expect("Privilege name contains invalid UTF-8");
         return Ok(priv_name.to_string());
     }
 }
@@ -309,7 +317,9 @@ pub fn get_current_luid() -> LUID {
             token_handle,
             TokenStatistics,
             Some(statistics_ptr),
-            size_of::<TOKEN_STATISTICS>().try_into().unwrap(),
+            size_of::<TOKEN_STATISTICS>()
+                .try_into()
+                .expect("TOKEN_STATISTICS size overflow"),
             &raw mut out_size,
         )
     };

@@ -115,7 +115,9 @@ pub fn read_input(prompt: &str) -> String {
     print!("{}", prompt);
     let _ = io::stdout().flush();
     let mut input = String::new();
-    io::stdin().read_line(&mut input).unwrap();
+    io::stdin()
+        .read_line(&mut input)
+        .expect("Failed to read input from stdin");
     input.trim().to_string()
 }
 

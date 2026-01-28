@@ -124,7 +124,10 @@ impl RateLimiter {
     }
 
     fn wait_if_needed(&self) {
-        let mut last = self.last_attempt.lock().unwrap();
+        let mut last = self
+            .last_attempt
+            .lock()
+            .expect("Rate limiter mutex poisoned");
 
         if let Some(last_time) = *last {
             let elapsed = last_time.elapsed();
@@ -150,7 +153,10 @@ impl RateLimiter {
                 );
                 drop(last);
                 thread::sleep(sleep_time);
-                let mut last = self.last_attempt.lock().unwrap();
+                let mut last = self
+                    .last_attempt
+                    .lock()
+                    .expect("Rate limiter mutex poisoned");
                 *last = Some(Instant::now());
             } else {
                 *last = Some(Instant::now());
@@ -179,7 +185,7 @@ pub fn start_password_spray(config: SprayConfig) -> Result<(), Box<dyn Error>> {
     execute_spray(&config, users, passwords, reachable_dcs, state.clone())?;
 
     let output_file = {
-        let state_guard = state.lock().unwrap();
+        let state_guard = state.lock().expect("Spray state mutex poisoned");
         if !state_guard.valid_credentials.is_empty() {
             Some(create_output_file()?)
         } else {
@@ -463,7 +469,7 @@ fn process_password_batch_realtime(
             debug::debug_log(2, format!("Worker thread {} started", thread_id));
 
             while let Ok(work_item) = {
-                let rx = work_rx_clone.lock().unwrap();
+                let rx = work_rx_clone.lock().expect("Work receiver mutex poisoned");
                 rx.recv()
             } {
                 // Apply global rate limiting before each attempt
@@ -681,7 +687,7 @@ fn process_attempt_result_realtime(
     attempt: &AttemptResult,
     state: Arc<Mutex<SprayState>>,
 ) -> Result<(), Box<dyn Error>> {
-    let mut state_guard = state.lock().unwrap();
+    let mut state_guard = state.lock().expect("Spray state mutex poisoned");
     state_guard.total_attempts += 1;
 
     let timestamp_prefix = if config.timestamp_format {
@@ -814,7 +820,7 @@ fn should_stop_spray(
     _config: &SprayConfig,
     state: Arc<Mutex<SprayState>>,
 ) -> Result<bool, Box<dyn Error>> {
-    let state_guard = state.lock().unwrap();
+    let state_guard = state.lock().expect("Spray state mutex poisoned");
 
     if state_guard.successful_attempts > 0 {
         debug::debug_log(
@@ -839,7 +845,7 @@ fn finalize_spray(
     state: Arc<Mutex<SprayState>>,
     mut output_file: Option<File>,
 ) -> Result<(), Box<dyn Error>> {
-    let state_guard = state.lock().unwrap();
+    let state_guard = state.lock().expect("Spray state mutex poisoned");
 
     println!("\n[*] Password spray complete at {}", get_timestamp());
     println!("[*] Total attempts: {}", state_guard.total_attempts);

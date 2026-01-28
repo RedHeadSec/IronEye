@@ -44,13 +44,12 @@ pub fn custom_ldap_query(
                 break;
             }
             "run" => {
-                if query_line.is_none() {
+                let Some(ref query) = query_line else {
                     println!("Filter cannot be empty. Please provide a valid LDAP filter.");
                     continue;
-                }
+                };
 
-                let input_parts: Vec<&str> =
-                    query_line.as_ref().unwrap().split_whitespace().collect();
+                let input_parts: Vec<&str> = query.split_whitespace().collect();
                 if input_parts.is_empty() {
                     println!("Invalid input. Please provide a valid LDAP filter.");
                     continue;
