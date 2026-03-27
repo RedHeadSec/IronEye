@@ -32,7 +32,8 @@ Get you a tgt however or use Cerberos module:
 [+] KRB5CCNAME environment variable set to: ticket.ccache
 ```
 
-![alt text](images/image.png)
+<img width="929" height="901" alt="image" src="https://github.com/user-attachments/assets/b0e2cf4d-2280-46ac-82c6-f0465cadd04c" />
+
 
 
 ## Connect - Sub Modules
@@ -50,7 +51,8 @@ Get you a tgt however or use Cerberos module:
 - **Actions** - Perform various actions via LDAP
 
 ### Deep Queries
-<img width="558" height="559" alt="image" src="https://github.com/user-attachments/assets/caa76a8e-0180-4af3-89d5-b45c167e3850" />
+
+<img width="436" height="379" alt="image" src="https://github.com/user-attachments/assets/39e8236c-9a47-4e20-b9fb-d65598038b3a" />
 
 
 
