@@ -42,7 +42,16 @@ pub fn get_service_principal_names(
         _ => unreachable!(),
     };
 
-    let entries = query_spns(ldap, search_base, keyword.as_deref())?;
+    let users_only = Confirm::new()
+        .with_prompt("Filter to user accounts only? (excludes machine accounts)")
+        .default(false)
+        .interact()?;
+
+    if users_only {
+        debug::debug_log(1, "Filtering to user accounts only (excluding machine accounts)");
+    }
+
+    let entries = query_spns(ldap, search_base, keyword.as_deref(), users_only)?;
     debug::debug_log(2, format!("Found {} entries with SPNs", entries.len()));
 
     let header = format!(
@@ -129,11 +138,25 @@ fn query_spns(
     ldap: &mut LdapConn,
     search_base: &str,
     keyword: Option<&str>,
+    users_only: bool,
 ) -> Result<Vec<SearchEntry>, Box<dyn Error>> {
-    let search_filter = if let Some(kw) = keyword {
-        format!("(servicePrincipalName=*{}*)", kw)
+    let user_filter = if users_only {
+        "(objectCategory=person)(objectClass=user)(!(sAMAccountName=*$))"
     } else {
-        "(servicePrincipalName=*)".to_string()
+        ""
+    };
+
+    let search_filter = match (keyword, users_only) {
+        (Some(kw), true) => format!(
+            "(&(servicePrincipalName=*{}*){})",
+            kw, user_filter
+        ),
+        (Some(kw), false) => format!("(servicePrincipalName=*{}*)", kw),
+        (None, true) => format!(
+            "(&(servicePrincipalName=*){})",
+            user_filter
+        ),
+        (None, false) => "(servicePrincipalName=*)".to_string(),
     };
 
     debug::debug_log(

@@ -2,7 +2,8 @@ use crate::debug;
 use crate::help::get_timestamp;
 #[cfg(any(target_os = "linux", target_os = "windows"))]
 use crate::kerberos::ccache::{
-    create_impersonated_ccache, parse_ccache_file, validate_ccache, write_ccache_file,
+    create_impersonated_ccache, format_timestamp, parse_ccache_file, validate_ccache,
+    write_ccache_file,
 };
 #[cfg(any(target_os = "linux", target_os = "windows"))]
 use crate::kerberos::env::{determine_ccache_path, restore_krb5ccname, set_krb5ccname_temp};
@@ -16,7 +17,7 @@ use ldap3::{LdapConn, LdapConnSettings, LdapError, Scope, SearchEntry};
 use std::io::{Cursor, Read};
 use std::time::Duration;
 
-const CONNECTION_TIMEOUT_SECS: u64 = 30;
+const CONNECTION_TIMEOUT_SECS: u64 = 120;
 const GUID_LENGTH: usize = 16;
 const SID_AUTHORITY_BYTES: usize = 6;
 
@@ -92,16 +93,63 @@ fn validate_and_prepare_ccache(
 
     let ccache_info = match validate_ccache(&ccache) {
         Ok(info) => {
+            // ANSI color codes matching Cerberos style
+            const GREEN: &str = "\x1b[32m";
+            const YELLOW: &str = "\x1b[33m";
+            const CYAN: &str = "\x1b[36m";
+            const MAGENTA: &str = "\x1b[35m";
+            const RED: &str = "\x1b[31m";
+            const WHITE: &str = "\x1b[37m";
+            const BOLD: &str = "\x1b[1m";
+            const RESET: &str = "\x1b[0m";
+
             if let Some(ref impersonated) = info.impersonated_user {
-                println!("[+] Impersonated ticket for {}", impersonated);
-                println!("[+] Requested by: {}", info.principal);
+                println!(
+                    "{GREEN}[+]{RESET} Impersonated ticket for {BOLD}{CYAN}{}{RESET}",
+                    impersonated
+                );
+                println!(
+                    "{GREEN}[+]{RESET} Requested by: {BOLD}{CYAN}{}{RESET}",
+                    info.principal
+                );
             } else {
-                println!("[+] Valid TGT found for {}", info.principal);
+                println!(
+                    "{GREEN}[+]{RESET} Valid TGT found for {BOLD}{CYAN}{}{RESET}",
+                    info.principal
+                );
             }
-            println!(
-                "[+] Ticket expires: {} ({} remaining)",
-                info.end_time, info.time_remaining
-            );
+
+            // Display detailed ticket information for each valid credential
+            for cred in ccache.credentials.iter().filter(|c| !c.is_expired()) {
+                println!();
+                println!(
+                    "  {BOLD}{CYAN}{}{RESET} => {GREEN}{}{RESET}",
+                    cred.client, cred.server
+                );
+                println!(
+                    "  {WHITE}Valid starting:{RESET}    {YELLOW}{}{RESET}",
+                    format_timestamp(cred.start_time)
+                );
+                println!(
+                    "  {WHITE}Expires:{RESET}           {YELLOW}{}{RESET}",
+                    format_timestamp(cred.end_time)
+                );
+                if cred.renew_till > 0 {
+                    println!(
+                        "  {WHITE}Renew until:{RESET}       {YELLOW}{}{RESET}",
+                        format_timestamp(cred.renew_till)
+                    );
+                }
+                println!(
+                    "  {WHITE}Flags:{RESET}             {MAGENTA}{}{RESET}",
+                    format_ticket_flags(cred.ticket_flags)
+                );
+                println!(
+                    "  {WHITE}Etype (skey):{RESET}      {CYAN}{}{RESET}",
+                    format_etype(cred.key.keytype as i32)
+                );
+            }
+            println!();
 
             // Check expiration warning on actual credential being used
             let valid_cred = ccache
@@ -112,13 +160,15 @@ fn validate_and_prepare_ccache(
             if let Some(cred) = valid_cred {
                 let minutes_remaining = cred.expires_in_minutes();
                 if minutes_remaining < 60 {
-                    println!("[!] Warning: Ticket expires in less than 1 hour!");
+                    println!(
+                        "{RED}[!]{RESET} {YELLOW}Warning: Ticket expires in less than 1 hour!{RESET}"
+                    );
                 }
             }
             info
         }
         Err(e) => {
-            eprintln!("[!] Ccache validation failed: {}", e);
+            eprintln!("\x1b[31m[!]\x1b[0m Ccache validation failed: {}", e);
             return Err(LdapError::Io {
                 source: std::io::Error::new(
                     std::io::ErrorKind::InvalidData,
@@ -594,4 +644,46 @@ pub fn reconnect_if_needed(
             Err(e.into())
         }
     }
+}
+
+/// Format Kerberos ticket flags to human-readable string (matching Cerberos style)
+#[cfg(any(target_os = "linux", target_os = "windows"))]
+fn format_ticket_flags(flags: u32) -> String {
+    let mut flag_names = Vec::new();
+
+    if flags & 0x40000000 != 0 { flag_names.push("forwardable"); }
+    if flags & 0x20000000 != 0 { flag_names.push("forwarded"); }
+    if flags & 0x10000000 != 0 { flag_names.push("proxiable"); }
+    if flags & 0x08000000 != 0 { flag_names.push("proxy"); }
+    if flags & 0x04000000 != 0 { flag_names.push("may-postdate"); }
+    if flags & 0x02000000 != 0 { flag_names.push("postdated"); }
+    if flags & 0x00800000 != 0 { flag_names.push("renewable"); }
+    if flags & 0x01000000 != 0 { flag_names.push("invalid"); }
+    if flags & 0x00400000 != 0 { flag_names.push("initial"); }
+    if flags & 0x00200000 != 0 { flag_names.push("pre-authent"); }
+    if flags & 0x00100000 != 0 { flag_names.push("hw-authent"); }
+    if flags & 0x00010000 != 0 { flag_names.push("enc-pa-rep"); }
+    if flags & 0x00001000 != 0 { flag_names.push("anonymous"); }
+
+    if flag_names.is_empty() {
+        format!("(0x{:08x})", flags)
+    } else {
+        format!("{} (0x{:08x})", flag_names.join(", "), flags)
+    }
+}
+
+/// Format encryption type to human-readable string (matching Cerberos style)
+#[cfg(any(target_os = "linux", target_os = "windows"))]
+fn format_etype(etype: i32) -> String {
+    let name = match etype {
+        1 => "des-cbc-crc",
+        2 => "des-cbc-md4",
+        3 => "des-cbc-md5",
+        17 => "aes128-cts-hmac-sha1-96",
+        18 => "aes256-cts-hmac-sha1-96",
+        23 => "rc4-hmac",
+        24 => "rc4-hmac-exp",
+        _ => "unknown",
+    };
+    format!("{} -> {}", etype, name)
 }

@@ -1,5 +1,7 @@
 pub mod computers;
 pub mod delegations;
+pub mod fileshares;
+pub mod full_collection;
 pub mod gpo;
 pub mod groups;
 pub mod ou;
