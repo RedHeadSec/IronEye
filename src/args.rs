@@ -221,14 +221,14 @@ pub fn get_connect_arguments() -> Option<LdapConfig> {
     );
     println!(
         "  Kerberos+IP:   -k -d <domain> -i <dc_ip> \
-         --dc-host <fqdn> [-c <ccache_path>]"
+         -dc-host <fqdn> [-c <ccache_path>]"
     );
     println!(
         "  Example: -k -c /tmp/krb5cc_1000 \
          -d domain.local -i dc01.domain.local"
     );
     println!(
-        "  Note: Use --dc-host when DC hostname \
+        "  Note: Use -dc-host when DC hostname \
          doesn't resolve via DNS"
     );
 
@@ -517,7 +517,7 @@ fn parse_connect_args(input: &str) -> Option<LdapConfig> {
                 config.ccache_path = Some(get_arg_value(&args, &mut i)?);
                 config.kerberos = true;
             }
-            "--dc-host" => {
+            "-dc-host" => {
                 config.dc_host = Some(get_arg_value(&args, &mut i)?);
             }
             _ => {

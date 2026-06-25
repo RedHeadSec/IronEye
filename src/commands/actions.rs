@@ -497,68 +497,47 @@ fn handle_reconnect_starttls(
         return Ok(());
     }
 
-    println!(
-        "[*] Reconnecting with STARTTLS \
-         on port 389..."
-    );
-    ldap_config.starttls = true;
-
     let _ = ldap.unbind();
+
+    ldap_config.secure_ldaps = true;
+    ldap_config.starttls = false;
 
     match ldap::ldap_connect(ldap_config) {
         Ok((new_ldap, _)) => {
             *ldap = new_ldap;
-            println!(
-                "[+] Successfully reconnected \
-                 with STARTTLS"
-            );
             add_terminal_spacing(1);
             Ok(())
         }
         Err(e) => {
-            eprintln!("[!] STARTTLS failed: {}", e);
+            ldap_config.secure_ldaps = false;
             ldap_config.starttls = false;
             eprintln!(
-                "[!] Falling back: trying LDAPS \
-                 on port 636..."
+                "[!] Secure connection failed: \
+                 {}",
+                e
             );
-            ldap_config.secure_ldaps = true;
+            eprintln!(
+                "[*] Reconnecting without \
+                 encryption..."
+            );
             match ldap::ldap_connect(ldap_config) {
                 Ok((new_ldap, _)) => {
                     *ldap = new_ldap;
-                    println!("[+] Reconnected with LDAPS");
+                    println!(
+                        "[+] Reconnected \
+                         (plaintext)"
+                    );
                     add_terminal_spacing(1);
                     Ok(())
                 }
-                Err(e2) => {
-                    ldap_config.secure_ldaps = false;
-                    eprintln!("[!] LDAPS also failed: {}", e2);
+                Err(e3) => {
                     eprintln!(
-                        "[!] DC may not support \
-                         TLS. Reconnecting \
-                         without encryption..."
+                        "[!] All reconnect \
+                         attempts failed: {}",
+                        e3
                     );
-                    match ldap::ldap_connect(ldap_config) {
-                        Ok((new_ldap, _)) => {
-                            *ldap = new_ldap;
-                            println!(
-                                "[+] Reconnected \
-                                 (plaintext)"
-                            );
-                            add_terminal_spacing(1);
-                            Ok(())
-                        }
-                        Err(e3) => {
-                            eprintln!(
-                                "[!] All reconnect \
-                                 attempts failed: \
-                                 {}",
-                                e3
-                            );
-                            add_terminal_spacing(1);
-                            Err(e3.into())
-                        }
-                    }
+                    add_terminal_spacing(1);
+                    Err(e3.into())
                 }
             }
         }

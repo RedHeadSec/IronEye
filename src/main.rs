@@ -103,21 +103,15 @@ fn handle_connect() {
     let (ldap, search_base) = match ldap::ldap_connect(&mut ldap_config) {
         Ok(conn) => conn,
         Err(e) => {
-            let error_msg = e.to_string();
-            eprintln!("[!] Failed to connect to LDAP server: {}", e);
+            eprintln!("[!] Failed to connect: {}", e);
 
-            if ldap_config.secure_ldaps
-                && (error_msg.contains("TLS")
-                    || error_msg.contains("tls")
-                    || error_msg.contains("EOF during handshake"))
-            {
+            if ldap_config.kerberos {
                 eprintln!(
-                    "[!] DC may not support TLS. \
-                     Try without -s flag or use \
-                     Kerberos auth"
+                    "[!] Obtain a TGT first: \
+                     ask-tgt -u <user> -p <pass> \
+                     -d {} -i <dc>",
+                    ldap_config.domain
                 );
-            } else if ldap_config.kerberos {
-                eprintln!("[!] Kerberos auth failed. Obtain a TGT first: ask-tgt -u <user> -p <pass> -d {} -i <dc>", ldap_config.domain);
             }
             return;
         }

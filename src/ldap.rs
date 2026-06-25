@@ -49,11 +49,11 @@ fn validate_kerberos_hostname(
         );
         eprintln!("[!] Current value: {}", dc_ip);
         eprintln!(
-            "[!] Use --dc-host <fqdn> to specify \
+            "[!] Use -dc-host <fqdn> to specify \
              the DC hostname separately."
         );
         eprintln!(
-            "[!] Example: -i {} --dc-host \
+            "[!] Example: -i {} -dc-host \
              dc01.{} -k -d {}",
             dc_ip, domain, domain
         );
@@ -61,7 +61,7 @@ fn validate_kerberos_hostname(
             source: std::io::Error::new(
                 std::io::ErrorKind::InvalidInput,
                 "Kerberos requires hostname/FQDN. \
-                 Use --dc-host to specify it.",
+                 Use -dc-host to specify it.",
             ),
         });
     }
@@ -369,25 +369,78 @@ fn try_connect_starttls(
     Ok((ldap, search_base))
 }
 
+fn try_secure_connect(
+    config: &mut LdapConfig,
+    host: &str,
+) -> Result<(LdapConn, String), LdapError> {
+    println!(
+        "[*] Secure mode: trying LDAPS \
+         on port 636..."
+    );
+
+    let ldaps_settings = LdapConnSettings::new()
+        .set_conn_timeout(Duration::from_secs(CONNECTION_TIMEOUT_SECS))
+        .set_no_tls_verify(true);
+    let ldaps_url = format!("ldaps://{}", host);
+
+    match LdapConn::with_settings(ldaps_settings, &ldaps_url) {
+        Ok(mut ldap) => {
+            debug::debug_log(1, "LDAPS connection established");
+
+            let bind_result = if config.kerberos {
+                let dc_ip = config.dc_ip.clone();
+                perform_kerberos_bind(&mut ldap, config, &dc_ip)
+            } else {
+                perform_simple_bind(&mut ldap, config)
+            };
+
+            match bind_result {
+                Ok(()) => {
+                    println!("[+] Connected with LDAPS");
+                    if config.timestamp_format {
+                        println!("[{}]\n", get_timestamp());
+                    }
+                    let search_base = build_search_base(&config.domain);
+                    validate_connection(&mut ldap, &search_base, vec!["distinguishedName"])?;
+                    return Ok((ldap, search_base));
+                }
+                Err(e) => {
+                    println!("[!] LDAPS bind failed: {}", e);
+                }
+            }
+        }
+        Err(e) => {
+            println!("[!] LDAPS failed: {}", e);
+        }
+    }
+
+    println!("[*] Trying STARTTLS on port 389...");
+    match try_connect_starttls(config, host) {
+        Ok(result) => return Ok(result),
+        Err(e) => {
+            println!("[!] STARTTLS failed: {}", e);
+        }
+    }
+
+    Err(LdapError::Io {
+        source: std::io::Error::new(
+            std::io::ErrorKind::ConnectionRefused,
+            "Secure connection failed. \
+             DC does not support LDAPS \
+             (port 636) or STARTTLS \
+             (port 389). Try without \
+             -s flag or use Kerberos auth \
+             which encrypts via GSSAPI.",
+        ),
+    })
+}
+
 #[cfg(target_os = "linux")]
 pub fn ldap_connect(config: &mut LdapConfig) -> Result<(LdapConn, String), LdapError> {
     let host = config.dc_ip.to_lowercase();
 
     if config.secure_ldaps && !config.starttls {
-        println!(
-            "[*] Secure mode: trying STARTTLS \
-             on port 389..."
-        );
-        match try_connect_starttls(config, &host) {
-            Ok(result) => return Ok(result),
-            Err(e) => {
-                println!("[!] STARTTLS failed: {}", e);
-                println!(
-                    "[*] Falling back to LDAPS \
-                     on port 636..."
-                );
-            }
-        }
+        return try_secure_connect(config, &host);
     }
 
     let mut settings = LdapConnSettings::new()
@@ -398,8 +451,8 @@ pub fn ldap_connect(config: &mut LdapConfig) -> Result<(LdapConn, String), LdapE
         settings = settings.set_starttls(true);
     }
 
-    let ldap_url = if config.secure_ldaps && !config.starttls {
-        format!("ldaps://{}", host)
+    let ldap_url = if config.starttls {
+        format!("ldap://{}", host)
     } else {
         format!("ldap://{}", host)
     };
@@ -436,20 +489,7 @@ pub fn ldap_connect(config: &mut LdapConfig) -> Result<(LdapConn, String), LdapE
     };
 
     if config.secure_ldaps && !config.starttls {
-        println!(
-            "[*] Secure mode: trying STARTTLS \
-             on port 389..."
-        );
-        match try_connect_starttls(config, &host) {
-            Ok(result) => return Ok(result),
-            Err(e) => {
-                println!("[!] STARTTLS failed: {}", e);
-                println!(
-                    "[*] Falling back to LDAPS \
-                     on port 636..."
-                );
-            }
-        }
+        return try_secure_connect(config, &host);
     }
 
     let mut settings = LdapConnSettings::new()
@@ -460,8 +500,8 @@ pub fn ldap_connect(config: &mut LdapConfig) -> Result<(LdapConn, String), LdapE
         settings = settings.set_starttls(true);
     }
 
-    let ldap_url = if config.secure_ldaps && !config.starttls {
-        format!("ldaps://{}", host)
+    let ldap_url = if config.starttls {
+        format!("ldap://{}", host)
     } else {
         format!("ldap://{}", host)
     };
@@ -492,20 +532,7 @@ pub fn ldap_connect(config: &mut LdapConfig) -> Result<(LdapConn, String), LdapE
     let host = config.dc_ip.clone();
 
     if config.secure_ldaps && !config.starttls {
-        println!(
-            "[*] Secure mode: trying STARTTLS \
-             on port 389..."
-        );
-        match try_connect_starttls(config, &host) {
-            Ok(result) => return Ok(result),
-            Err(e) => {
-                println!("[!] STARTTLS failed: {}", e);
-                println!(
-                    "[*] Falling back to LDAPS \
-                     on port 636..."
-                );
-            }
-        }
+        return try_secure_connect(config, &host);
     }
 
     let mut settings = LdapConnSettings::new()
@@ -516,8 +543,8 @@ pub fn ldap_connect(config: &mut LdapConfig) -> Result<(LdapConn, String), LdapE
         settings = settings.set_starttls(true);
     }
 
-    let ldap_url = if config.secure_ldaps && !config.starttls {
-        format!("ldaps://{}", host)
+    let ldap_url = if config.starttls {
+        format!("ldap://{}", host)
     } else {
         format!("ldap://{}", host)
     };
@@ -527,20 +554,36 @@ pub fn ldap_connect(config: &mut LdapConfig) -> Result<(LdapConn, String), LdapE
     debug::debug_log(1, "LDAP connection established");
 
     if config.kerberos {
-        println!("[!] Kerberos GSSAPI is not supported on macOS with Heimdal.");
+        println!(
+            "[!] Kerberos GSSAPI is not \
+             supported on macOS with Heimdal."
+        );
         println!("[!] Options:");
-        println!("    1. Use password authentication (-u -p)");
+        println!("    1. Use password auth (-u -p)");
         println!("    2. Run IronEye on Linux/Windows");
         println!("    3. Install MIT Kerberos on macOS:");
         println!("       brew install krb5");
-        println!("       export PATH=\"/opt/homebrew/opt/krb5/bin:$PATH\"");
-        println!("       export LDFLAGS=\"-L/opt/homebrew/opt/krb5/lib\"");
-        println!("       export CPPFLAGS=\"-I/opt/homebrew/opt/krb5/include\"");
-        println!("       cargo clean && cargo build --release");
+        println!(
+            "       export PATH=\"/opt/homebrew\
+             /opt/krb5/bin:$PATH\""
+        );
+        println!(
+            "       export LDFLAGS=\"-L/opt\
+             /homebrew/opt/krb5/lib\""
+        );
+        println!(
+            "       export CPPFLAGS=\"-I/opt\
+             /homebrew/opt/krb5/include\""
+        );
+        println!(
+            "       cargo clean && \
+             cargo build --release"
+        );
         return Err(LdapError::Io {
             source: std::io::Error::new(
                 std::io::ErrorKind::Other,
-                "Kerberos GSSAPI not supported with macOS Heimdal Kerberos",
+                "Kerberos GSSAPI not supported \
+                 with macOS Heimdal Kerberos",
             ),
         });
     } else {
