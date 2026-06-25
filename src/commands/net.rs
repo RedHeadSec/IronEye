@@ -1,28 +1,14 @@
+use crate::commands::ad_utils::{
+    extract_cn_from_dn, ldap_time_to_string, print_computer_uac_flags, print_uac_flags,
+    windows_time_to_string, UF_ACCOUNTDISABLE,
+};
 use crate::debug::debug_log;
 use crate::help::add_terminal_spacing;
 use crate::ldap::{escape_filter, LdapConfig};
 use crate::retry_with_reconnect;
-use chrono::DateTime;
 use ldap3::adapters::{Adapter, EntriesOnly, PagedResults};
 use ldap3::{Scope, SearchEntry};
 use std::error::Error;
-
-const UF_NORMAL_ACCOUNT: i64 = 0x0200;
-const UF_DONT_EXPIRE_PASSWORD: i64 = 0x10000;
-const UF_ACCOUNTDISABLE: i64 = 0x0002;
-const UF_PASSWD_NOTREQD: i64 = 0x0020;
-const UF_PASSWD_CANT_CHANGE: i64 = 0x0040;
-const UF_ENCRYPTED_TEXT_PWD_ALLOWED: i64 = 0x0080;
-const UF_TEMP_DUPLICATE_ACCOUNT: i64 = 0x0100;
-const UF_PASSWORD_EXPIRED: i64 = 0x800000;
-const UF_TRUSTED_FOR_DELEGATION: i64 = 0x80000;
-const UF_NOT_DELEGATED: i64 = 0x100000;
-const UF_USE_DES_KEY_ONLY: i64 = 0x200000;
-const UF_DONT_REQ_PREAUTH: i64 = 0x400000;
-const UF_TRUSTED_TO_AUTH_FOR_DELEGATION: i64 = 0x1000000;
-const UF_NO_AUTH_DATA_REQUIRED: i64 = 0x2000000;
-const UF_WORKSTATION_TRUST_ACCOUNT: i64 = 0x1000;
-const UF_SERVER_TRUST_ACCOUNT: i64 = 0x2000;
 
 pub fn net_command(
     ldap: &mut ldap3::LdapConn,
@@ -142,6 +128,8 @@ fn net_user(
             .and_then(|v| v.first())
             .and_then(|v| v.parse::<i64>().ok())
         {
+            let active = uac & UF_ACCOUNTDISABLE == 0;
+            println!("Account Active: \t{}", if active { "Yes" } else { "No" });
             println!("User Account Control: \t");
             print_uac_flags(uac);
         }
@@ -460,6 +448,8 @@ fn net_computer(
             .and_then(|v| v.first())
             .and_then(|v| v.parse::<i64>().ok())
         {
+            let active = uac & UF_ACCOUNTDISABLE == 0;
+            println!("Account Active: \t{}", if active { "Yes" } else { "No" });
             println!("User Account Control:");
             print_computer_uac_flags(uac);
         }
@@ -793,18 +783,6 @@ fn net_group(
     Ok(())
 }
 
-fn extract_cn_from_dn(dn: &str) -> &str {
-    if let Some(cn_part) = dn.split(',').next() {
-        if cn_part.starts_with("CN=") {
-            &cn_part[3..]
-        } else {
-            cn_part
-        }
-    } else {
-        dn
-    }
-}
-
 fn decode_group_type(group_type: i64) -> &'static str {
     match group_type {
         -2147483646 => "Global Security Group",
@@ -814,108 +792,5 @@ fn decode_group_type(group_type: i64) -> &'static str {
         4 => "Domain Local Distribution Group",
         8 => "Universal Distribution Group",
         _ => "Unknown Group Type",
-    }
-}
-
-fn windows_time_to_string(windows_time: i64) -> String {
-    let unix_time = (windows_time - 116444736000000000) / 10000000;
-    if let Some(dt) = DateTime::from_timestamp(unix_time, 0) {
-        dt.format("%m/%d/%Y %I:%M:%S %p").to_string()
-    } else {
-        "Invalid date".to_string()
-    }
-}
-
-fn ldap_time_to_string(ldap_time: &str) -> String {
-    if ldap_time.len() >= 14 {
-        let year = &ldap_time[0..4];
-        let month = &ldap_time[4..6];
-        let day = &ldap_time[6..8];
-        let hour = &ldap_time[8..10];
-        let minute = &ldap_time[10..12];
-        let second = &ldap_time[12..14];
-
-        format!("{}/{}/{} {}:{}:{}", month, day, year, hour, minute, second)
-    } else {
-        ldap_time.to_string()
-    }
-}
-
-fn print_uac_flags(uac: i64) {
-    if uac & UF_NORMAL_ACCOUNT != 0 {
-        println!("\t\t\tUSER_NORMAL_ACCOUNT");
-    }
-    if uac & UF_DONT_EXPIRE_PASSWORD != 0 {
-        println!("\t\t\tUSER_DONT_EXPIRE_PASSWORD");
-    }
-    if uac & UF_ACCOUNTDISABLE != 0 {
-        println!("\t\t\tUSER_ACCOUNT_DISABLED");
-    }
-    if uac & UF_PASSWD_NOTREQD != 0 {
-        println!("\t\t\tUSER_PASSWORD_NOT_REQUIRED");
-    }
-    if uac & UF_PASSWD_CANT_CHANGE != 0 {
-        println!("\t\t\tUSER_CANNOT_CHANGE_PASSWORD");
-    }
-    if uac & UF_ENCRYPTED_TEXT_PWD_ALLOWED != 0 {
-        println!("\t\t\tUSER_ENCRYPTED_TEXT_PASSWORD_ALLOWED");
-    }
-    if uac & UF_TEMP_DUPLICATE_ACCOUNT != 0 {
-        println!("\t\t\tUSER_TEMP_DUPLICATE_ACCOUNT");
-    }
-    if uac & UF_PASSWORD_EXPIRED != 0 {
-        println!("\t\t\tUSER_PASSWORD_EXPIRED");
-    }
-    if uac & UF_TRUSTED_FOR_DELEGATION != 0 {
-        println!("\t\t\tUSER_TRUSTED_FOR_DELEGATION");
-    }
-    if uac & UF_NOT_DELEGATED != 0 {
-        println!("\t\t\tUSER_NOT_DELEGATED");
-    }
-    if uac & UF_USE_DES_KEY_ONLY != 0 {
-        println!("\t\t\tUSER_USE_DES_KEY_ONLY");
-    }
-    if uac & UF_DONT_REQ_PREAUTH != 0 {
-        println!("\t\t\tUSER_DONT_REQUIRE_PREAUTH");
-    }
-    if uac & UF_TRUSTED_TO_AUTH_FOR_DELEGATION != 0 {
-        println!("\t\t\tUSER_TRUSTED_TO_AUTHENTICATE_FOR_DELEGATION");
-    }
-    if uac & UF_NO_AUTH_DATA_REQUIRED != 0 {
-        println!("\t\t\tUSER_NO_AUTH_DATA_REQUIRED");
-    }
-    println!("\t\t\t(If Enabled, Check Last Lockout Time)");
-}
-
-fn print_computer_uac_flags(uac: i64) {
-    if uac & UF_WORKSTATION_TRUST_ACCOUNT != 0 {
-        println!("\t\t\tWORKSTATION_TRUST_ACCOUNT");
-    }
-    if uac & UF_SERVER_TRUST_ACCOUNT != 0 {
-        println!("\t\t\tSERVER_TRUST_ACCOUNT (Domain Controller)");
-    }
-    if uac & UF_ACCOUNTDISABLE != 0 {
-        println!("\t\t\tACCOUNT_DISABLED");
-    }
-    if uac & UF_DONT_EXPIRE_PASSWORD != 0 {
-        println!("\t\t\tDONT_EXPIRE_PASSWORD");
-    }
-    if uac & UF_PASSWD_NOTREQD != 0 {
-        println!("\t\t\tPASSWORD_NOT_REQUIRED");
-    }
-    if uac & UF_TRUSTED_FOR_DELEGATION != 0 {
-        println!("\t\t\tTRUSTED_FOR_DELEGATION (Unconstrained)");
-    }
-    if uac & UF_NOT_DELEGATED != 0 {
-        println!("\t\t\tNOT_DELEGATED");
-    }
-    if uac & UF_TRUSTED_TO_AUTH_FOR_DELEGATION != 0 {
-        println!("\t\t\tTRUSTED_TO_AUTH_FOR_DELEGATION (Constrained)");
-    }
-    if uac & UF_USE_DES_KEY_ONLY != 0 {
-        println!("\t\t\tUSE_DES_KEY_ONLY");
-    }
-    if uac & UF_DONT_REQ_PREAUTH != 0 {
-        println!("\t\t\tDONT_REQUIRE_PREAUTH");
     }
 }

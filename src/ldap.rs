@@ -28,6 +28,7 @@ pub struct LdapConfig {
     pub dc_ip: String,
     pub hash: Option<String>,
     pub secure_ldaps: bool,
+    pub starttls: bool,
     pub timestamp_format: bool,
     pub kerberos: bool,
     pub ccache_path: Option<String>,
@@ -295,11 +296,15 @@ fn validate_connection(
 
 #[cfg(target_os = "linux")]
 pub fn ldap_connect(config: &mut LdapConfig) -> Result<(LdapConn, String), LdapError> {
-    let settings = LdapConnSettings::new()
+    let mut settings = LdapConnSettings::new()
         .set_conn_timeout(Duration::from_secs(CONNECTION_TIMEOUT_SECS))
         .set_no_tls_verify(true);
 
-    let ldap_url = if config.secure_ldaps {
+    if config.starttls {
+        settings = settings.set_starttls(true);
+    }
+
+    let ldap_url = if config.secure_ldaps && !config.starttls {
         format!("ldaps://{}", config.dc_ip.to_lowercase())
     } else {
         format!("ldap://{}", config.dc_ip.to_lowercase())
@@ -328,9 +333,13 @@ pub fn ldap_connect(config: &mut LdapConfig) -> Result<(LdapConn, String), LdapE
 
 #[cfg(target_os = "windows")]
 pub fn ldap_connect(config: &mut LdapConfig) -> Result<(LdapConn, String), LdapError> {
-    let settings = LdapConnSettings::new()
+    let mut settings = LdapConnSettings::new()
         .set_conn_timeout(Duration::from_secs(CONNECTION_TIMEOUT_SECS))
         .set_no_tls_verify(true);
+
+    if config.starttls {
+        settings = settings.set_starttls(true);
+    }
 
     let host = if config.kerberos {
         config.dc_ip.clone()
@@ -338,7 +347,7 @@ pub fn ldap_connect(config: &mut LdapConfig) -> Result<(LdapConn, String), LdapE
         config.dc_ip.to_lowercase()
     };
 
-    let ldap_url = if config.secure_ldaps {
+    let ldap_url = if config.secure_ldaps && !config.starttls {
         format!("ldaps://{}", host)
     } else {
         format!("ldap://{}", host)
@@ -367,11 +376,15 @@ pub fn ldap_connect(config: &mut LdapConfig) -> Result<(LdapConn, String), LdapE
 
 #[cfg(target_os = "macos")]
 pub fn ldap_connect(config: &mut LdapConfig) -> Result<(LdapConn, String), LdapError> {
-    let settings = LdapConnSettings::new()
+    let mut settings = LdapConnSettings::new()
         .set_conn_timeout(Duration::from_secs(CONNECTION_TIMEOUT_SECS))
         .set_no_tls_verify(true);
 
-    let ldap_url = if config.secure_ldaps {
+    if config.starttls {
+        settings = settings.set_starttls(true);
+    }
+
+    let ldap_url = if config.secure_ldaps && !config.starttls {
         format!("ldaps://{}", config.dc_ip)
     } else {
         format!("ldap://{}", config.dc_ip)

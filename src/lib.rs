@@ -12,6 +12,7 @@ pub mod ldap;
 pub mod ldapping;
 pub mod macros;
 pub mod spray;
+pub mod utils;
 
 pub fn track_history(module: &str, command: &str) {
     if let Ok(manager) = history::HistoryManager::new() {

@@ -1,6 +1,7 @@
 use crate::commands::{
-    add_computer, add_user_to_group, adidns, del_computer, disable_account, enable_account,
-    set_dontreqpreauth, set_spn,
+    add_computer, add_user, add_user_to_group, adidns, del_computer, del_object,
+    del_user_from_group, disable_account, enable_account, set_dacl, set_owner, set_password,
+    set_rbcd, set_spn, set_uac,
 };
 use crate::help::{add_terminal_spacing, read_input, read_input_with_history};
 use crate::ldap::LdapConfig;
@@ -9,12 +10,21 @@ use ldap3::LdapConn;
 
 const ACTIONS_OPTIONS: &[&str] = &[
     "Add Computer",
+    "Add User",
     "Delete Computer",
     "SPN Management",
     "Add User to Group",
-    "Set DONT_REQUIRE_PREAUTH",
+    "Remove User from Group",
     "Enable Account",
     "Disable Account",
+    "Set Password",
+    "Set UAC Flags",
+    "Delete Object",
+    "Set RBCD",
+    "Remove RBCD",
+    "Add DACL ACE",
+    "Remove DACL ACE",
+    "Set Owner",
     "DNS Management",
     "Reconnect with Secure Connection",
     "Back",
@@ -36,17 +46,26 @@ pub fn run_actions_menu(
 
         match selection {
             0 => handle_add_computer(ldap, search_base, ldap_config)?,
-            1 => handle_del_computer(ldap, search_base)?,
-            2 => handle_set_spn(ldap, search_base)?,
-            3 => handle_add_user_to_group(ldap, search_base)?,
-            4 => handle_set_dontreqpreauth(ldap, search_base)?,
-            5 => handle_enable_account(ldap, search_base)?,
-            6 => handle_disable_account(ldap, search_base)?,
-            7 => handle_dns_management(ldap, search_base, ldap_config)?,
-            8 => {
+            1 => handle_add_user(ldap, search_base, ldap_config)?,
+            2 => handle_del_computer(ldap, search_base)?,
+            3 => handle_set_spn(ldap, search_base)?,
+            4 => handle_add_user_to_group(ldap, search_base)?,
+            5 => handle_del_user_from_group(ldap, search_base)?,
+            6 => handle_enable_account(ldap, search_base)?,
+            7 => handle_disable_account(ldap, search_base)?,
+            8 => handle_set_password(ldap, search_base, ldap_config)?,
+            9 => handle_set_uac(ldap, search_base)?,
+            10 => handle_del_object(ldap, search_base)?,
+            11 => handle_set_rbcd(ldap, search_base, false)?,
+            12 => handle_set_rbcd(ldap, search_base, true)?,
+            13 => handle_set_dacl(ldap, search_base, false)?,
+            14 => handle_set_dacl(ldap, search_base, true)?,
+            15 => handle_set_owner(ldap, search_base)?,
+            16 => handle_dns_management(ldap, search_base, ldap_config)?,
+            17 => {
                 handle_reconnect_starttls(ldap, ldap_config)?;
             }
-            9 => break,
+            18 => break,
             _ => unreachable!(),
         }
     }
@@ -89,6 +108,45 @@ fn handle_add_computer(
         search_base,
         ldap_config,
         &computer_name,
+        password,
+        target_dn,
+    )
+}
+
+fn handle_add_user(
+    ldap: &mut LdapConn,
+    search_base: &str,
+    ldap_config: &LdapConfig,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let Some(username) = read_input_with_history("Enter username (sAMAccountName): ", "actions")
+    else {
+        return Ok(());
+    };
+    if username.is_empty() {
+        println!("[!] Username is required");
+        return Ok(());
+    }
+    crate::track_history("actions", &format!("add-user {}", username));
+
+    let password = read_input("Enter password (leave empty for random): ");
+    let password = if password.is_empty() {
+        None
+    } else {
+        Some(password.as_str())
+    };
+
+    let target_dn = read_input("Enter target DN (leave empty for CN=Users): ");
+    let target_dn = if target_dn.is_empty() {
+        None
+    } else {
+        Some(target_dn.as_str())
+    };
+
+    add_user::add_user(
+        ldap,
+        search_base,
+        ldap_config,
+        &username,
         password,
         target_dn,
     )
@@ -175,28 +233,28 @@ fn handle_add_user_to_group(
     add_user_to_group::add_user_to_group(ldap, search_base, &user, &group)
 }
 
-fn handle_set_dontreqpreauth(
+fn handle_del_user_from_group(
     ldap: &mut LdapConn,
     search_base: &str,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let Some(target) = read_input_with_history("Enter target user (sAMAccountName): ", "actions")
-    else {
+    let Some(user) = read_input_with_history("Enter user (sAMAccountName): ", "actions") else {
         return Ok(());
     };
-    if target.is_empty() {
-        println!("[!] Target user is required");
+    if user.is_empty() {
+        println!("[!] User is required");
         return Ok(());
     }
 
-    let Some(flag) =
-        read_input_with_history("Enable DONT_REQUIRE_PREAUTH? (true/false): ", "actions")
-    else {
+    let Some(group) = read_input_with_history("Enter group (sAMAccountName): ", "actions") else {
         return Ok(());
     };
-    let enable = flag.trim().to_lowercase() == "true";
-    crate::track_history("actions", &format!("set-preauth {} {}", target, enable));
+    if group.is_empty() {
+        println!("[!] Group is required");
+        return Ok(());
+    }
+    crate::track_history("actions", &format!("del-from-group {} -> {}", user, group));
 
-    set_dontreqpreauth::set_dontreqpreauth(ldap, search_base, &target, enable)
+    del_user_from_group::del_user_from_group(ldap, search_base, &user, &group)
 }
 
 fn handle_enable_account(
@@ -231,6 +289,177 @@ fn handle_disable_account(
     disable_account::disable_account(ldap, search_base, &username)
 }
 
+fn handle_set_password(
+    ldap: &mut LdapConn,
+    search_base: &str,
+    ldap_config: &LdapConfig,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let Some(target) = read_input_with_history("Enter target (sAMAccountName): ", "actions") else {
+        return Ok(());
+    };
+    if target.is_empty() {
+        println!("[!] Target is required");
+        return Ok(());
+    }
+
+    let new_password = read_input("Enter new password: ");
+    if new_password.is_empty() {
+        println!("[!] New password is required");
+        return Ok(());
+    }
+
+    let old_password = read_input("Enter old password (leave empty for reset): ");
+    let old_password = if old_password.is_empty() {
+        None
+    } else {
+        Some(old_password.as_str())
+    };
+    crate::track_history("actions", &format!("set-password {}", target));
+
+    set_password::set_password(
+        ldap,
+        search_base,
+        ldap_config,
+        &target,
+        &new_password,
+        old_password,
+    )
+}
+
+fn handle_set_uac(
+    ldap: &mut LdapConn,
+    search_base: &str,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let Some(target) = read_input_with_history("Enter target (sAMAccountName): ", "actions") else {
+        return Ok(());
+    };
+    if target.is_empty() {
+        println!("[!] Target is required");
+        return Ok(());
+    }
+    crate::track_history("actions", &format!("set-uac {}", target));
+
+    set_uac::set_uac(ldap, search_base, &target)
+}
+
+fn handle_del_object(
+    ldap: &mut LdapConn,
+    search_base: &str,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let Some(target) = read_input_with_history("Enter target (sAMAccountName or DN): ", "actions")
+    else {
+        return Ok(());
+    };
+    if target.is_empty() {
+        println!("[!] Target is required");
+        return Ok(());
+    }
+
+    let confirm = read_input(&format!(
+        "Type 'DELETE' to confirm deletion of {}: ",
+        target
+    ));
+    if confirm != "DELETE" {
+        println!("[!] Deletion cancelled");
+        return Ok(());
+    }
+    crate::track_history("actions", &format!("del-object {}", target));
+
+    del_object::del_object(ldap, search_base, &target)
+}
+
+fn handle_set_rbcd(
+    ldap: &mut LdapConn,
+    search_base: &str,
+    remove: bool,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let action = if remove { "remove" } else { "add" };
+
+    let Some(target) =
+        read_input_with_history("Enter target computer (sAMAccountName): ", "actions")
+    else {
+        return Ok(());
+    };
+    if target.is_empty() {
+        println!("[!] Target computer is required");
+        return Ok(());
+    }
+
+    let Some(service) =
+        read_input_with_history("Enter service account (sAMAccountName): ", "actions")
+    else {
+        return Ok(());
+    };
+    if service.is_empty() {
+        println!("[!] Service account is required");
+        return Ok(());
+    }
+    crate::track_history(
+        "actions",
+        &format!("rbcd-{} {} -> {}", action, service, target),
+    );
+
+    set_rbcd::set_rbcd(ldap, search_base, &target, &service, remove)
+}
+
+fn handle_set_dacl(
+    ldap: &mut LdapConn,
+    search_base: &str,
+    remove: bool,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let action = if remove { "remove" } else { "add" };
+
+    let Some(target) = read_input_with_history("Enter target object (sAMAccountName): ", "actions")
+    else {
+        return Ok(());
+    };
+    if target.is_empty() {
+        println!("[!] Target object is required");
+        return Ok(());
+    }
+
+    let Some(trustee) = read_input_with_history("Enter trustee (sAMAccountName): ", "actions")
+    else {
+        return Ok(());
+    };
+    if trustee.is_empty() {
+        println!("[!] Trustee is required");
+        return Ok(());
+    }
+    crate::track_history(
+        "actions",
+        &format!("dacl-{} {} -> {}", action, trustee, target),
+    );
+
+    set_dacl::set_dacl(ldap, search_base, &target, &trustee, remove)
+}
+
+fn handle_set_owner(
+    ldap: &mut LdapConn,
+    search_base: &str,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let Some(target) = read_input_with_history("Enter target object (sAMAccountName): ", "actions")
+    else {
+        return Ok(());
+    };
+    if target.is_empty() {
+        println!("[!] Target object is required");
+        return Ok(());
+    }
+
+    let Some(owner) = read_input_with_history("Enter new owner (sAMAccountName): ", "actions")
+    else {
+        return Ok(());
+    };
+    if owner.is_empty() {
+        println!("[!] New owner is required");
+        return Ok(());
+    }
+    crate::track_history("actions", &format!("set-owner {} -> {}", owner, target));
+
+    set_owner::set_owner(ldap, search_base, &target, &owner)
+}
+
 fn handle_dns_management(
     ldap: &mut LdapConn,
     search_base: &str,
@@ -245,30 +474,93 @@ fn handle_reconnect_starttls(
 ) -> Result<(), Box<dyn std::error::Error>> {
     use crate::ldap;
 
-    #[cfg(target_os = "windows")]
-    println!("[*] Reconnecting with secure connection (Kerberos over LDAP)...");
-    #[cfg(target_os = "linux")]
-    println!("[*] Reconnecting with secure connection (LDAPS)...");
+    if ldap_config.kerberos {
+        println!(
+            "[*] Kerberos authentication \
+             already provides encryption \
+             via GSSAPI"
+        );
+        println!(
+            "[*] LDAPS/STARTTLS is not needed \
+             for Kerberos connections"
+        );
+        add_terminal_spacing(1);
+        return Ok(());
+    }
 
-    ldap_config.secure_ldaps = true;
+    if ldap_config.secure_ldaps || ldap_config.starttls {
+        println!(
+            "[*] Already using a secure \
+             connection"
+        );
+        add_terminal_spacing(1);
+        return Ok(());
+    }
+
+    println!(
+        "[*] Reconnecting with STARTTLS \
+         on port 389..."
+    );
+    ldap_config.starttls = true;
 
     let _ = ldap.unbind();
 
     match ldap::ldap_connect(ldap_config) {
         Ok((new_ldap, _)) => {
             *ldap = new_ldap;
-            #[cfg(target_os = "windows")]
-            println!("[+] Successfully reconnected");
-            #[cfg(target_os = "linux")]
-            println!("[+] Successfully reconnected with LDAPS");
+            println!(
+                "[+] Successfully reconnected \
+                 with STARTTLS"
+            );
             add_terminal_spacing(1);
             Ok(())
         }
         Err(e) => {
-            eprintln!("[!] Failed to reconnect: {}", e);
-            eprintln!("[!] You may need to exit and reconnect manually");
-            add_terminal_spacing(1);
-            Err(e.into())
+            eprintln!("[!] STARTTLS failed: {}", e);
+            ldap_config.starttls = false;
+            eprintln!(
+                "[!] Falling back: trying LDAPS \
+                 on port 636..."
+            );
+            ldap_config.secure_ldaps = true;
+            match ldap::ldap_connect(ldap_config) {
+                Ok((new_ldap, _)) => {
+                    *ldap = new_ldap;
+                    println!("[+] Reconnected with LDAPS");
+                    add_terminal_spacing(1);
+                    Ok(())
+                }
+                Err(e2) => {
+                    ldap_config.secure_ldaps = false;
+                    eprintln!("[!] LDAPS also failed: {}", e2);
+                    eprintln!(
+                        "[!] DC may not support \
+                         TLS. Reconnecting \
+                         without encryption..."
+                    );
+                    match ldap::ldap_connect(ldap_config) {
+                        Ok((new_ldap, _)) => {
+                            *ldap = new_ldap;
+                            println!(
+                                "[+] Reconnected \
+                                 (plaintext)"
+                            );
+                            add_terminal_spacing(1);
+                            Ok(())
+                        }
+                        Err(e3) => {
+                            eprintln!(
+                                "[!] All reconnect \
+                                 attempts failed: \
+                                 {}",
+                                e3
+                            );
+                            add_terminal_spacing(1);
+                            Err(e3.into())
+                        }
+                    }
+                }
+            }
         }
     }
 }

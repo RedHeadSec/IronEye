@@ -51,6 +51,7 @@ const CMD_OPTIONS: &[&str] = &[
     "Password Policy",
     "Deep-Queries",
     "Custom Ldap Query",
+    "Whoami",
     "Actions",
     "Help",
     "Back",
@@ -158,12 +159,13 @@ fn run_command_menu(
             7 => commands::getpasspol::get_password_policy(&mut ldap, &search_base, ldap_config),
             8 => run_nested_query_menu(&mut ldap, &search_base, ldap_config).map_err(|e| e.into()),
             9 => commands::customldap::custom_ldap_query(&mut ldap, &search_base, ldap_config),
-            10 => commands::actions::run_actions_menu(&mut ldap, &search_base, ldap_config),
-            11 => {
+            10 => commands::whoami::whoami(&mut ldap, &search_base, ldap_config),
+            11 => commands::actions::run_actions_menu(&mut ldap, &search_base, ldap_config),
+            12 => {
                 show_help_connect();
                 Ok(())
             }
-            12 => break,
+            13 => break,
             _ => unreachable!(),
         };
 
@@ -227,7 +229,12 @@ fn run_command_menu(
                                         &search_base,
                                         ldap_config,
                                     ),
-                                    10 => commands::actions::run_actions_menu(
+                                    10 => commands::whoami::whoami(
+                                        &mut ldap,
+                                        &search_base,
+                                        ldap_config,
+                                    ),
+                                    11 => commands::actions::run_actions_menu(
                                         &mut ldap,
                                         &search_base,
                                         ldap_config,
