@@ -111,7 +111,11 @@ fn handle_connect() {
                     || error_msg.contains("tls")
                     || error_msg.contains("EOF during handshake"))
             {
-                eprintln!("[!] Try without -s flag or use Kerberos auth");
+                eprintln!(
+                    "[!] DC may not support TLS. \
+                     Try without -s flag or use \
+                     Kerberos auth"
+                );
             } else if ldap_config.kerberos {
                 eprintln!("[!] Kerberos auth failed. Obtain a TGT first: ask-tgt -u <user> -p <pass> -d {} -i <dc>", ldap_config.domain);
             }

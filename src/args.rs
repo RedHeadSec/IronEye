@@ -215,9 +215,22 @@ pub fn get_connect_arguments() -> Option<LdapConfig> {
     let mut rl = HistoryEditor::new("connect").ok()?;
     println!("Enter Connect arguments:");
     println!("  Password Auth: -u <user> -p <pass> -d <domain> -i <dc_ip> [-s] [-t]");
-    println!("  Kerberos Auth: -k -d <domain> -i <dc_fqdn> [-c <ccache_path>] [-s] [-t]");
-    println!("  Example: -k -c /tmp/krb5cc_1000 -d domain.local -i dc01.domain.local");
-    println!("  Note: Kerberos requires FQDN/hostname, not IP address");
+    println!(
+        "  Kerberos Auth: -k -d <domain> -i <dc_fqdn> \
+         [-c <ccache_path>] [-s] [-t]"
+    );
+    println!(
+        "  Kerberos+IP:   -k -d <domain> -i <dc_ip> \
+         --dc-host <fqdn> [-c <ccache_path>]"
+    );
+    println!(
+        "  Example: -k -c /tmp/krb5cc_1000 \
+         -d domain.local -i dc01.domain.local"
+    );
+    println!(
+        "  Note: Use --dc-host when DC hostname \
+         doesn't resolve via DNS"
+    );
 
     let line = read_with_history(&mut rl)?;
     parse_connect_args(&line)
@@ -504,6 +517,9 @@ fn parse_connect_args(input: &str) -> Option<LdapConfig> {
                 config.ccache_path = Some(get_arg_value(&args, &mut i)?);
                 config.kerberos = true;
             }
+            "--dc-host" => {
+                config.dc_host = Some(get_arg_value(&args, &mut i)?);
+            }
             _ => {
                 eprintln!("Unrecognized argument: {}", args[i]);
                 i += 1;
@@ -668,6 +684,7 @@ struct ConnectConfig {
     password: String,
     domain: String,
     dc_ip: String,
+    dc_host: Option<String>,
     hash: Option<String>,
     secure_ldaps: bool,
     timestamp_format: bool,
@@ -698,6 +715,7 @@ impl ConnectConfig {
             password: self.password,
             domain: self.domain,
             dc_ip: self.dc_ip,
+            dc_host: self.dc_host,
             hash: self.hash,
             secure_ldaps: self.secure_ldaps,
             starttls: false,

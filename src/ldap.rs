@@ -26,6 +26,7 @@ pub struct LdapConfig {
     pub password: String,
     pub domain: String,
     pub dc_ip: String,
+    pub dc_host: Option<String>,
     pub hash: Option<String>,
     pub secure_ldaps: bool,
     pub starttls: bool,
@@ -35,34 +36,54 @@ pub struct LdapConfig {
 }
 
 #[cfg(any(target_os = "linux", target_os = "windows"))]
-fn validate_kerberos_hostname(dc_ip: &str, domain: &str) -> Result<(), LdapError> {
-    if dc_ip.parse::<std::net::IpAddr>().is_ok() {
+fn validate_kerberos_hostname(
+    dc_ip: &str,
+    dc_host: Option<&str>,
+    domain: &str,
+) -> Result<(), LdapError> {
+    if dc_ip.parse::<std::net::IpAddr>().is_ok() && dc_host.is_none() {
         eprintln!(
-            "[!] Error: Kerberos authentication requires a hostname/FQDN, not an IP address."
+            "[!] Error: Kerberos authentication \
+             requires a hostname/FQDN, not an \
+             IP address."
         );
         eprintln!("[!] Current value: {}", dc_ip);
-        eprintln!("[!] Please use the DC's FQDN instead.");
         eprintln!(
-            "[!] Example: -i dc01.redheadsec.local instead of -i {}",
-            dc_ip
+            "[!] Use --dc-host <fqdn> to specify \
+             the DC hostname separately."
+        );
+        eprintln!(
+            "[!] Example: -i {} --dc-host \
+             dc01.{} -k -d {}",
+            dc_ip, domain, domain
         );
         return Err(LdapError::Io {
             source: std::io::Error::new(
                 std::io::ErrorKind::InvalidInput,
-                "Kerberos requires hostname/FQDN, not IP address",
+                "Kerberos requires hostname/FQDN. \
+                 Use --dc-host to specify it.",
             ),
         });
     }
 
-    if !dc_ip.contains('.') {
+    let effective_host = dc_host.unwrap_or(dc_ip);
+    if !effective_host.contains('.') {
         debug::debug_log(
             2,
             format!(
-                "Warning: Kerberos works best with FQDNs, not short hostnames. Current value: {}",
-                dc_ip
+                "Warning: Kerberos works best with \
+                 FQDNs. Current value: {}",
+                effective_host
             ),
         );
-        debug::debug_log(2, format!("If connection fails, use the full domain name instead. Example: -i {}.{} instead of -i {}", dc_ip, domain, dc_ip));
+        debug::debug_log(
+            2,
+            format!(
+                "If connection fails, use the full \
+                 domain name. Example: {}.{}",
+                effective_host, domain
+            ),
+        );
     }
 
     Ok(())
@@ -227,19 +248,24 @@ fn perform_kerberos_bind(
 ) -> Result<(), LdapError> {
     debug::debug_log(1, "Using Kerberos authentication");
 
-    validate_kerberos_hostname(&config.dc_ip, &config.domain)?;
+    validate_kerberos_hostname(&config.dc_ip, config.dc_host.as_deref(), &config.domain)?;
+
+    let gssapi_target = config
+        .dc_host
+        .clone()
+        .unwrap_or_else(|| normalized_dc.to_string());
 
     let (ccache_to_use, krb5_conf_path, temp_ccache) =
-        validate_and_prepare_ccache(config, normalized_dc)?;
+        validate_and_prepare_ccache(config, &gssapi_target)?;
 
     let original_krb5_config = set_krb5_config_env(&krb5_conf_path);
     let original_krb5ccname = set_krb5ccname_temp(&ccache_to_use);
 
     debug::debug_log(
         1,
-        format!("Attempting SASL GSSAPI bind to {}", normalized_dc),
+        format!("Attempting SASL GSSAPI bind to {}", gssapi_target),
     );
-    let bind_result = ldap.sasl_gssapi_bind(normalized_dc)?.success();
+    let bind_result = ldap.sasl_gssapi_bind(&gssapi_target)?.success();
     debug::debug_log(1, "SASL GSSAPI bind successful");
 
     restore_krb5ccname(original_krb5ccname);
@@ -294,8 +320,76 @@ fn validate_connection(
     Ok(())
 }
 
+fn try_connect_starttls(
+    config: &mut LdapConfig,
+    host: &str,
+) -> Result<(LdapConn, String), LdapError> {
+    let settings = LdapConnSettings::new()
+        .set_conn_timeout(Duration::from_secs(CONNECTION_TIMEOUT_SECS))
+        .set_no_tls_verify(true)
+        .set_starttls(true);
+
+    let ldap_url = format!("ldap://{}", host);
+
+    debug::debug_log(1, format!("Connecting with STARTTLS: {}", ldap_url));
+    let mut ldap = LdapConn::with_settings(settings, &ldap_url)?;
+    debug::debug_log(1, "STARTTLS connection established");
+    println!("[+] Connected with STARTTLS");
+
+    #[cfg(any(target_os = "linux", target_os = "windows"))]
+    if config.kerberos {
+        let dc_ip = config.dc_ip.clone();
+        perform_kerberos_bind(&mut ldap, config, &dc_ip)?;
+    } else {
+        perform_simple_bind(&mut ldap, config)?;
+    }
+
+    #[cfg(target_os = "macos")]
+    if config.kerberos {
+        return Err(LdapError::Io {
+            source: std::io::Error::new(
+                std::io::ErrorKind::Other,
+                "Kerberos not supported on macOS",
+            ),
+        });
+    } else {
+        perform_simple_bind(&mut ldap, config)?;
+    }
+
+    if config.timestamp_format {
+        println!("[{}]\n", get_timestamp());
+    }
+
+    config.starttls = true;
+    config.secure_ldaps = false;
+
+    let search_base = build_search_base(&config.domain);
+    validate_connection(&mut ldap, &search_base, vec!["distinguishedName"])?;
+
+    Ok((ldap, search_base))
+}
+
 #[cfg(target_os = "linux")]
 pub fn ldap_connect(config: &mut LdapConfig) -> Result<(LdapConn, String), LdapError> {
+    let host = config.dc_ip.to_lowercase();
+
+    if config.secure_ldaps && !config.starttls {
+        println!(
+            "[*] Secure mode: trying STARTTLS \
+             on port 389..."
+        );
+        match try_connect_starttls(config, &host) {
+            Ok(result) => return Ok(result),
+            Err(e) => {
+                println!("[!] STARTTLS failed: {}", e);
+                println!(
+                    "[*] Falling back to LDAPS \
+                     on port 636..."
+                );
+            }
+        }
+    }
+
     let mut settings = LdapConnSettings::new()
         .set_conn_timeout(Duration::from_secs(CONNECTION_TIMEOUT_SECS))
         .set_no_tls_verify(true);
@@ -305,9 +399,9 @@ pub fn ldap_connect(config: &mut LdapConfig) -> Result<(LdapConn, String), LdapE
     }
 
     let ldap_url = if config.secure_ldaps && !config.starttls {
-        format!("ldaps://{}", config.dc_ip.to_lowercase())
+        format!("ldaps://{}", host)
     } else {
-        format!("ldap://{}", config.dc_ip.to_lowercase())
+        format!("ldap://{}", host)
     };
 
     debug::debug_log(1, format!("Connecting to LDAP: {}", ldap_url));
@@ -333,6 +427,31 @@ pub fn ldap_connect(config: &mut LdapConfig) -> Result<(LdapConn, String), LdapE
 
 #[cfg(target_os = "windows")]
 pub fn ldap_connect(config: &mut LdapConfig) -> Result<(LdapConn, String), LdapError> {
+    let host = if config.kerberos && config.dc_host.is_some() {
+        config.dc_ip.to_lowercase()
+    } else if config.kerberos {
+        config.dc_ip.clone()
+    } else {
+        config.dc_ip.to_lowercase()
+    };
+
+    if config.secure_ldaps && !config.starttls {
+        println!(
+            "[*] Secure mode: trying STARTTLS \
+             on port 389..."
+        );
+        match try_connect_starttls(config, &host) {
+            Ok(result) => return Ok(result),
+            Err(e) => {
+                println!("[!] STARTTLS failed: {}", e);
+                println!(
+                    "[*] Falling back to LDAPS \
+                     on port 636..."
+                );
+            }
+        }
+    }
+
     let mut settings = LdapConnSettings::new()
         .set_conn_timeout(Duration::from_secs(CONNECTION_TIMEOUT_SECS))
         .set_no_tls_verify(true);
@@ -340,12 +459,6 @@ pub fn ldap_connect(config: &mut LdapConfig) -> Result<(LdapConn, String), LdapE
     if config.starttls {
         settings = settings.set_starttls(true);
     }
-
-    let host = if config.kerberos {
-        config.dc_ip.clone()
-    } else {
-        config.dc_ip.to_lowercase()
-    };
 
     let ldap_url = if config.secure_ldaps && !config.starttls {
         format!("ldaps://{}", host)
@@ -376,6 +489,25 @@ pub fn ldap_connect(config: &mut LdapConfig) -> Result<(LdapConn, String), LdapE
 
 #[cfg(target_os = "macos")]
 pub fn ldap_connect(config: &mut LdapConfig) -> Result<(LdapConn, String), LdapError> {
+    let host = config.dc_ip.clone();
+
+    if config.secure_ldaps && !config.starttls {
+        println!(
+            "[*] Secure mode: trying STARTTLS \
+             on port 389..."
+        );
+        match try_connect_starttls(config, &host) {
+            Ok(result) => return Ok(result),
+            Err(e) => {
+                println!("[!] STARTTLS failed: {}", e);
+                println!(
+                    "[*] Falling back to LDAPS \
+                     on port 636..."
+                );
+            }
+        }
+    }
+
     let mut settings = LdapConnSettings::new()
         .set_conn_timeout(Duration::from_secs(CONNECTION_TIMEOUT_SECS))
         .set_no_tls_verify(true);
@@ -385,9 +517,9 @@ pub fn ldap_connect(config: &mut LdapConfig) -> Result<(LdapConn, String), LdapE
     }
 
     let ldap_url = if config.secure_ldaps && !config.starttls {
-        format!("ldaps://{}", config.dc_ip)
+        format!("ldaps://{}", host)
     } else {
-        format!("ldap://{}", config.dc_ip)
+        format!("ldap://{}", host)
     };
 
     debug::debug_log(1, format!("Connecting to LDAP: {}", ldap_url));
