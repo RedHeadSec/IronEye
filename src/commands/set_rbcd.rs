@@ -1,13 +1,16 @@
 use crate::commands::ldap_utils::{
-    build_sd_with_aces, get_dacl_offset, handle_modify_error, parse_aces, resolve_object_dn,
-    resolve_object_sid,
+    get_dacl_offset, handle_modify_error, parse_aces, resolve_object_dn, resolve_object_sid,
 };
 use crate::help::add_terminal_spacing;
 use ldap3::{LdapConn, Mod, Scope};
 use std::collections::HashSet;
 
-const GENERIC_ALL_MASK: u32 = 0x000F01FF;
-const ACL_REVISION_SIMPLE: u8 = 0x02;
+const ADS_RIGHT_DS_CONTROL_ACCESS: u32 = 0x00000100;
+const ACL_REVISION_DS: u8 = 0x04;
+// BUILTIN\Administrators (S-1-5-32-544)
+const BUILTIN_ADMINS_SID: [u8; 16] = [
+    0x01, 0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0x05, 0x20, 0x00, 0x00, 0x00, 0x20, 0x02, 0x00, 0x00,
+];
 
 pub fn set_rbcd(
     ldap: &mut LdapConn,
@@ -208,10 +211,10 @@ fn build_access_allowed_ace(sid: &[u8]) -> Vec<u8> {
     let ace_size = (4 + 4 + sid.len()) as u16;
 
     let mut ace = Vec::with_capacity(ace_size as usize);
-    ace.push(0x00);
-    ace.push(0x00);
+    ace.push(0x00); // ACCESS_ALLOWED_ACE_TYPE
+    ace.push(0x00); // AceFlags
     ace.extend_from_slice(&ace_size.to_le_bytes());
-    ace.extend_from_slice(&GENERIC_ALL_MASK.to_le_bytes());
+    ace.extend_from_slice(&ADS_RIGHT_DS_CONTROL_ACCESS.to_le_bytes());
     ace.extend_from_slice(sid);
 
     ace
@@ -219,7 +222,42 @@ fn build_access_allowed_ace(sid: &[u8]) -> Vec<u8> {
 
 fn create_rbcd_sd(service_sid: &[u8]) -> Vec<u8> {
     let ace = build_access_allowed_ace(service_sid);
-    build_sd_with_aces(&[ace], ACL_REVISION_SIMPLE)
+    build_rbcd_sd_with_owner(&[ace])
+}
+
+fn build_rbcd_sd_with_owner(aces: &[Vec<u8>]) -> Vec<u8> {
+    let total_ace_size: usize = aces.iter().map(|a| a.len()).sum();
+    let acl_size = (8 + total_ace_size) as u16;
+    let ace_count = aces.len() as u16;
+
+    let mut acl = Vec::with_capacity(acl_size as usize);
+    acl.push(ACL_REVISION_DS);
+    acl.push(0x00); // Sbz1
+    acl.extend_from_slice(&acl_size.to_le_bytes());
+    acl.extend_from_slice(&ace_count.to_le_bytes());
+    acl.extend_from_slice(&0u16.to_le_bytes()); // Sbz2
+    for ace in aces {
+        acl.extend_from_slice(ace);
+    }
+
+    let owner_size = BUILTIN_ADMINS_SID.len();
+    let owner_offset: u32 = 20;
+    let dacl_offset: u32 = owner_offset + owner_size as u32;
+    // SE_DACL_PRESENT | SE_SELF_RELATIVE
+    let control: u16 = 0x8004;
+
+    let total = 20 + owner_size + acl.len();
+    let mut sd = Vec::with_capacity(total);
+    sd.push(0x01); // Revision
+    sd.push(0x00); // Sbz1
+    sd.extend_from_slice(&control.to_le_bytes());
+    sd.extend_from_slice(&owner_offset.to_le_bytes());
+    sd.extend_from_slice(&0u32.to_le_bytes()); // GroupOffset
+    sd.extend_from_slice(&0u32.to_le_bytes()); // SaclOffset
+    sd.extend_from_slice(&dacl_offset.to_le_bytes());
+    sd.extend_from_slice(&BUILTIN_ADMINS_SID);
+    sd.extend_from_slice(&acl);
+    sd
 }
 
 fn add_ace_to_sd(
@@ -241,7 +279,7 @@ fn add_ace_to_sd(
     let new_ace = build_access_allowed_ace(service_sid);
     existing_aces.push(new_ace);
 
-    Ok(build_sd_with_aces(&existing_aces, ACL_REVISION_SIMPLE))
+    Ok(build_rbcd_sd_with_owner(&existing_aces))
 }
 
 fn remove_ace_from_sd(
@@ -284,9 +322,6 @@ fn remove_ace_from_sd(
     if remaining_aces.is_empty() {
         Ok(None)
     } else {
-        Ok(Some(build_sd_with_aces(
-            &remaining_aces,
-            ACL_REVISION_SIMPLE,
-        )))
+        Ok(Some(build_rbcd_sd_with_owner(&remaining_aces)))
     }
 }
