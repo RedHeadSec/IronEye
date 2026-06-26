@@ -7,7 +7,8 @@ use dialoguer::{theme::ColorfulTheme, Select};
 use ldap3::{LdapConn, Mod, Scope};
 use std::collections::HashSet;
 
-const DACL_OPTIONS: &[&str] = &["GenericAll", "DCSync", "WriteDACL", "WriteOwner"];
+const DACL_OPTIONS: &[&str] =
+    &["GenericAll", "DCSync", "WriteDACL", "WriteOwner", "Back"];
 
 const GENERIC_ALL_MASK: u32 = 0x000F01FF;
 const WRITE_DACL_MASK: u32 = 0x00040000;
@@ -30,6 +31,10 @@ pub fn set_dacl(
         .items(DACL_OPTIONS)
         .default(0)
         .interact()?;
+
+    if right_idx == 4 {
+        return Ok(());
+    }
 
     let right_name = DACL_OPTIONS[right_idx];
 

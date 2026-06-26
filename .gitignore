@@ -24,6 +24,9 @@ output_*
 *_tgt.krb
 *_tgt.ccache
 
+# Generated certificates
+*.pfx
+
 # Rust specific
 /target/
 **/*.rs.bk

@@ -26,11 +26,13 @@ pub fn set_uac(
 ) -> Result<(), Box<dyn std::error::Error>> {
     add_terminal_spacing(1);
 
-    let flag_labels: Vec<String> = UAC_FLAGS
+    let mut flag_labels: Vec<String> = UAC_FLAGS
         .iter()
         .map(|(name, val)| format!("{} (0x{:X})", name, val))
         .collect();
-    let flag_refs: Vec<&str> = flag_labels.iter().map(|s| s.as_str()).collect();
+    flag_labels.push("Back".to_string());
+    let flag_refs: Vec<&str> =
+        flag_labels.iter().map(|s| s.as_str()).collect();
 
     let flag_idx = Select::with_theme(&ColorfulTheme::default())
         .with_prompt("Select UAC flag")
@@ -38,14 +40,23 @@ pub fn set_uac(
         .default(0)
         .interact()?;
 
+    if flag_idx == UAC_FLAGS.len() {
+        return Ok(());
+    }
+
     let (flag_name, flag_value) = UAC_FLAGS[flag_idx];
 
-    let action_options = &["Enable (set flag)", "Disable (clear flag)"];
+    let action_options =
+        &["Enable (set flag)", "Disable (clear flag)", "Back"];
     let action_idx = Select::with_theme(&ColorfulTheme::default())
         .with_prompt("Action")
         .items(action_options)
         .default(0)
         .interact()?;
+
+    if action_idx == 2 {
+        return Ok(());
+    }
 
     let enable = action_idx == 0;
 

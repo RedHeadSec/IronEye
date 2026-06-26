@@ -16,13 +16,18 @@ pub fn get_service_principal_names(
     search_base: &str,
     config: &LdapConfig,
 ) -> Result<(), Box<dyn Error>> {
-    const SPN_OPTIONS: &[&str] = &["Get All SPNs", "Targeted Search"];
+    const SPN_OPTIONS: &[&str] =
+        &["Get All SPNs", "Targeted Search", "Back"];
 
     let selection = Select::with_theme(&ColorfulTheme::default())
         .with_prompt("Select SPN query type")
         .items(SPN_OPTIONS)
         .default(0)
         .interact()?;
+
+    if selection == 2 {
+        return Ok(());
+    }
 
     let keyword = match selection {
         0 => {
