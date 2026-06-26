@@ -2,7 +2,6 @@ use crate::bofhound::export_both_formats;
 use crate::help::add_terminal_spacing;
 use crate::ldap::LdapConfig;
 use crate::retry_with_reconnect;
-use ldap3::adapters::{Adapter, EntriesOnly, PagedResults};
 use ldap3::{LdapConn, Scope, SearchEntry};
 use std::error::Error;
 
@@ -33,7 +32,12 @@ pub fn get_trusts(
         println!("\nTrust Relationship:");
         raw_output.push_str("\nTrust Relationship:\n");
 
-        if let Some(trust_partner) = entry.attrs.get("cn").and_then(|v| v.first()) {
+        let partner = entry
+            .attrs
+            .get("trustPartner")
+            .or_else(|| entry.attrs.get("cn"))
+            .and_then(|v| v.first());
+        if let Some(trust_partner) = partner {
             println!("Trust Partner: {}", trust_partner);
             raw_output.push_str(&format!("Trust Partner: {}\n", trust_partner));
         }
@@ -121,29 +125,52 @@ fn query_trusts(
     search_base: &str,
     config: &mut LdapConfig,
 ) -> Result<Vec<SearchEntry>, Box<dyn Error>> {
-    let search_filter = "(objectClass=trustedDomain)";
+    let filter = "(objectClass=trustedDomain)";
+    let attrs = vec![
+        "cn",
+        "distinguishedName",
+        "trustType",
+        "trustAttributes",
+        "trustDirection",
+        "trustPartner",
+        "flatName",
+        "whenCreated",
+        "securityIdentifier",
+    ];
 
-    let mut search = retry_with_reconnect!(ldap, config, {
-        let adapters: Vec<Box<dyn Adapter<_, _>>> = vec![
-            Box::new(EntriesOnly::new()),
-            Box::new(PagedResults::new(500)),
-        ];
-        ldap.streaming_search_with(
-            adapters,
-            search_base,
-            Scope::Subtree,
-            search_filter,
-            vec!["*"],
-        )
-    })?;
+    let system_base = format!("CN=System,{}", search_base);
 
     let mut entries = Vec::new();
-    while let Some(entry) = search.next()? {
-        entries.push(SearchEntry::construct(entry));
+
+    // Search CN=System first (where trust
+    // objects live)
+    if let Ok(results) = search_trust_base(ldap, &system_base, filter, &attrs, config) {
+        entries.extend(results);
     }
-    let _ = search.result().success()?;
+
+    // Fall back to full subtree if nothing found
+    if entries.is_empty() {
+        if let Ok(results) = search_trust_base(ldap, search_base, filter, &attrs, config) {
+            entries.extend(results);
+        }
+    }
 
     Ok(entries)
+}
+
+fn search_trust_base(
+    ldap: &mut LdapConn,
+    base: &str,
+    filter: &str,
+    attrs: &[&str],
+    config: &mut LdapConfig,
+) -> Result<Vec<SearchEntry>, Box<dyn Error>> {
+    let result = retry_with_reconnect!(ldap, config, {
+        ldap.search(base, Scope::Subtree, filter, attrs.to_vec())
+    })?;
+
+    let (results, _) = result.success()?;
+    Ok(results.into_iter().map(SearchEntry::construct).collect())
 }
 
 fn interpret_trust_type(trust_type: &str) -> &str {

@@ -26,4 +26,5 @@ pub mod set_password;
 pub mod set_rbcd;
 pub mod set_spn;
 pub mod set_uac;
+pub mod shadow_creds;
 pub mod whoami;

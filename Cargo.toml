@@ -1,6 +1,6 @@
 [package]
 name = "ironeye"
-version = "2.5.0"
+version = "3.0.0"
 edition = "2021"
 
 [lib]
@@ -27,6 +27,12 @@ serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 tokio = { version = "1", features = ["rt", "net"] }
 
+# Crypto for shadow credentials
+rcgen = "0.11"
+rsa = "0.9"
+sha2 = "0.10"
+p12-keystore = { version = "0.3", features = ["pbes1"] }
+
 # Kerberos attack library
 cerbero_lib = { path = "lib/cerbero_lib", default-features = false }
 kerberos_crypto = "0.3"
@@ -37,11 +43,9 @@ libc = "0.2"
 
 [target.'cfg(target_os = "linux")'.dependencies]
 ldap3 = { version = "0.11", features = ["gssapi"] }
-native-tls = "0.2"
 
 [target.'cfg(target_os = "windows")'.dependencies]
 ldap3 = { version = "0.11", features = ["gssapi"] }
-native-tls = "0.2"
 
 [target.'cfg(target_os = "macos")'.dependencies]
 ldap3 = { version = "0.11" }

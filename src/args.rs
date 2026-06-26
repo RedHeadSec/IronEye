@@ -696,18 +696,23 @@ impl ConnectConfig {
     fn validate(self) -> Option<LdapConfig> {
         if self.kerberos {
             if self.domain.is_empty() || self.dc_ip.is_empty() {
-                eprintln!("Missing required arguments for Kerberos! Provide -d and -i.");
+                eprintln!(
+                    "Missing required arguments \
+                     for Kerberos! Provide -d \
+                     and -i."
+                );
                 return None;
             }
-        } else {
-            if self.username.is_empty()
-                || self.password.is_empty()
-                || self.domain.is_empty()
-                || self.dc_ip.is_empty()
-            {
-                eprintln!("Missing required arguments! Provide -u, -p, -d, and -i.");
-                return None;
-            }
+        } else if self.username.is_empty()
+            || self.password.is_empty()
+            || self.domain.is_empty()
+            || self.dc_ip.is_empty()
+        {
+            eprintln!(
+                "Missing required arguments! \
+                 Provide -u, -p, -d, and -i."
+            );
+            return None;
         }
 
         Some(LdapConfig {

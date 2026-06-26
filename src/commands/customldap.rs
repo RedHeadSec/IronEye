@@ -21,16 +21,122 @@ pub fn custom_ldap_query(
     let mut rl = HistoryEditor::new("ldapquery").map_err(|e| Box::new(e) as Box<dyn Error>)?;
 
     println!("\nCustom LDAP Query (Bofhound Compatible)");
-    println!("-------------------");
-    println!("Enter your LDAP filter followed by attributes to return:");
-    println!("An output file will be created for all successful queries. These can be fed into Bofhound to create BloodHound compatiable files. You will need to include samaccounttype, distinguishedname, objectsid if specifying attributes to ensure Bofhound functionality");
-    println!("Examples: \n  (objectCategory=user) samaccountname description");
-    println!("  (objectCategory=user) - Pull users");
-    println!("  (objectCategory=computer) - Pull computers");
-    println!("  (|(cn=*admin*)(sAMAccountName=*admin*)(displayName=*admin*)(description=*admin*)) - Find certain attributes with 'admin' in them.");
-    println!("  (&(samAccountType=805306368)(userAccountControl:1.2.840.113556.1.4.803:=4194304)) - Find user accounts without Kerberos pre-authentication");
-    println!("  (&(objectClass=user)(userAccountControl:1.2.840.113556.1.4.803:=65536)) sAMAccountName pwdLastSet lastLogonTimestamp - Find user accounts with password never expires");
-    println!("Type 'run' to execute the query, or 'exit' to return to the menu.\n");
+    println!("{}", "=".repeat(40));
+    println!(
+        "Enter an LDAP filter, optionally \
+         followed by attributes."
+    );
+    println!(
+        "Type 'run' to execute, 'exit' to \
+         return.\n"
+    );
+    println!(
+        "Output is auto-saved in Bofhound \
+         format."
+    );
+    println!(
+        "Include samaccounttype, \
+         distinguishedname, objectsid \
+         for Bofhound compatibility.\n"
+    );
+    println!("FILTER SYNTAX LEGEND:");
+    println!("  &   AND operator");
+    println!("  |   OR operator");
+    println!("  !   NOT operator");
+    println!("  =   Equals");
+    println!("  ~=  Approximately equals");
+    println!("  >=  Greater than or equal");
+    println!("  <=  Less than or equal");
+    println!("  *   Wildcard (substring match)");
+    println!(
+        "  :1.2.840.113556.1.4.803:=  \
+         Bitwise AND (LDAP_MATCHING_RULE_BIT_AND)"
+    );
+    println!(
+        "  :1.2.840.113556.1.4.804:=  \
+         Bitwise OR (LDAP_MATCHING_RULE_BIT_OR)"
+    );
+    println!(
+        "  :1.2.840.113556.1.4.1941:= \
+         Recursive/transitive \
+         (LDAP_MATCHING_RULE_IN_CHAIN)\n"
+    );
+    println!("COMMON UAC FLAGS (for bitwise filters):");
+    println!("  2        ACCOUNTDISABLE");
+    println!("  512      NORMAL_ACCOUNT");
+    println!("  65536    DONT_EXPIRE_PASSWORD");
+    println!("  4194304  DONT_REQ_PREAUTH");
+    println!("  524288   TRUSTED_FOR_DELEGATION");
+    println!("  1048576  NOT_DELEGATED\n");
+    println!("COMMON samAccountType VALUES:");
+    println!("  268435456  Group");
+    println!("  268435457  Non-Security Group");
+    println!("  536870912  Domain Local Group");
+    println!("  805306368  User");
+    println!("  805306369  Computer\n");
+    println!("EXAMPLES:");
+    println!(
+        "  (objectCategory=user)\n    \
+         All users (all attributes)\n"
+    );
+    println!(
+        "  (objectCategory=computer) \
+         sAMAccountName operatingSystem\n    \
+         Computers with specific attrs\n"
+    );
+    println!(
+        "  (|(cn=*admin*)(description=*admin*))\
+         \n    Objects with 'admin' in \
+         cn or description\n"
+    );
+    println!(
+        "  (&(objectClass=user)\
+         (adminCount=1))\n    \
+         Privileged user accounts\n"
+    );
+    println!(
+        "  (&(samAccountType=805306368)\
+         (userAccountControl\
+         :1.2.840.113556.1.4.803:=4194304))\
+         \n    AS-REP roastable accounts \
+         (no preauth)\n"
+    );
+    println!(
+        "  (&(objectClass=user)\
+         (userAccountControl\
+         :1.2.840.113556.1.4.803:=65536)) \
+         sAMAccountName pwdLastSet\n    \
+         Password never expires\n"
+    );
+    println!(
+        "  (&(objectClass=user)\
+         (servicePrincipalName=*)) \
+         sAMAccountName servicePrincipalName\
+         \n    Kerberoastable accounts\n"
+    );
+    println!(
+        "  (userAccountControl\
+         :1.2.840.113556.1.4.803:=524288)\
+         \n    Unconstrained delegation\n"
+    );
+    println!(
+        "  (&(objectClass=computer)\
+         (msDS-AllowedToActOnBehalfOf\
+         OtherIdentity=*))\n    \
+         Computers with RBCD configured\n"
+    );
+    println!(
+        "  (memberOf:1.2.840.113556.1.4.1941:\
+         =CN=Domain Admins,CN=Users,{})\
+         \n    Recursive Domain Admin members\n",
+        search_base
+    );
+    println!(
+        "  (&(objectCategory=person)\
+         (!(userAccountControl\
+         :1.2.840.113556.1.4.803:=2)))\
+         \n    Enabled user accounts only\n"
+    );
 
     let mut query_line: Option<String> = None;
 
@@ -49,17 +155,16 @@ pub fn custom_ldap_query(
                     continue;
                 };
 
-                let input_parts: Vec<&str> = query.split_whitespace().collect();
-                if input_parts.is_empty() {
-                    println!("Invalid input. Please provide a valid LDAP filter.");
-                    continue;
-                }
-
-                let filter = input_parts[0].to_string();
-                let attributes = if input_parts.len() > 1 {
-                    input_parts[1..].to_vec()
-                } else {
-                    vec!["*"]
+                let (filter, attributes) = match split_filter_and_attrs(query) {
+                    Some(pair) => pair,
+                    None => {
+                        println!(
+                            "Invalid input. \
+                                 Please provide a \
+                                 valid LDAP filter."
+                        );
+                        continue;
+                    }
                 };
 
                 println!("\nRunning query with filter: {}", filter);
@@ -207,6 +312,43 @@ fn generate_output_path(filter: &str, config: &LdapConfig) -> Result<PathBuf, Bo
     path.push(filename);
 
     Ok(path)
+}
+
+fn split_filter_and_attrs(input: &str) -> Option<(String, Vec<&str>)> {
+    let trimmed = input.trim();
+    if !trimmed.starts_with('(') {
+        return None;
+    }
+
+    let mut depth = 0;
+    let mut filter_end = 0;
+    for (i, c) in trimmed.char_indices() {
+        match c {
+            '(' => depth += 1,
+            ')' => {
+                depth -= 1;
+                if depth == 0 {
+                    filter_end = i + 1;
+                    break;
+                }
+            }
+            _ => {}
+        }
+    }
+
+    if depth != 0 || filter_end == 0 {
+        return None;
+    }
+
+    let filter = trimmed[..filter_end].to_string();
+    let rest = trimmed[filter_end..].trim();
+    let attributes = if rest.is_empty() {
+        vec!["*"]
+    } else {
+        rest.split_whitespace().collect()
+    };
+
+    Some((filter, attributes))
 }
 
 fn validate_filter(filter: &str) -> Result<(), String> {

@@ -1,7 +1,7 @@
 use crate::commands::{
     add_computer, add_user, add_user_to_group, adidns, del_computer, del_object,
     del_user_from_group, disable_account, enable_account, set_dacl, set_owner, set_password,
-    set_rbcd, set_spn, set_uac,
+    set_rbcd, set_spn, set_uac, shadow_creds,
 };
 use crate::help::{add_terminal_spacing, read_input, read_input_with_history};
 use crate::ldap::LdapConfig;
@@ -26,6 +26,7 @@ const ACTIONS_OPTIONS: &[&str] = &[
     "Remove DACL ACE",
     "Set Owner",
     "DNS Management",
+    "Shadow Credentials",
     "Reconnect with Secure Connection",
     "Back",
 ];
@@ -62,10 +63,11 @@ pub fn run_actions_menu(
             14 => handle_set_dacl(ldap, search_base, true)?,
             15 => handle_set_owner(ldap, search_base)?,
             16 => handle_dns_management(ldap, search_base, ldap_config)?,
-            17 => {
+            17 => handle_shadow_credentials(ldap, search_base, &ldap_config.domain)?,
+            18 => {
                 handle_reconnect_starttls(ldap, ldap_config)?;
             }
-            18 => break,
+            19 => break,
             _ => unreachable!(),
         }
     }
@@ -458,6 +460,153 @@ fn handle_set_owner(
     crate::track_history("actions", &format!("set-owner {} -> {}", owner, target));
 
     set_owner::set_owner(ldap, search_base, &target, &owner)
+}
+
+fn handle_shadow_credentials(
+    ldap: &mut LdapConn,
+    search_base: &str,
+    domain: &str,
+) -> Result<(), Box<dyn std::error::Error>> {
+    const SHADOW_OPTIONS: &[&str] = &[
+        "List Key Credentials",
+        "Add Shadow Credential",
+        "Remove Shadow Credential",
+        "Clear All Key Credentials",
+        "Back",
+    ];
+
+    loop {
+        let selection = Select::with_theme(&ColorfulTheme::default())
+            .with_prompt("Shadow Credentials")
+            .default(0)
+            .items(SHADOW_OPTIONS)
+            .interact()?;
+
+        add_terminal_spacing(1);
+
+        match selection {
+            0 => {
+                let Some(target) = read_input_with_history(
+                    "Enter target \
+                         (sAMAccountName): ",
+                    "actions",
+                ) else {
+                    continue;
+                };
+                if target.is_empty() {
+                    println!("[!] Target is required");
+                    continue;
+                }
+                crate::track_history("actions", &format!("shadow-list {}", target));
+                shadow_creds::list_shadow_credentials(ldap, search_base, &target)?;
+            }
+            1 => {
+                let Some(target) = read_input_with_history(
+                    "Enter target \
+                         (sAMAccountName): ",
+                    "actions",
+                ) else {
+                    continue;
+                };
+                if target.is_empty() {
+                    println!("[!] Target is required");
+                    continue;
+                }
+
+                let pfx_path = read_input(
+                    "Output PFX path \
+                     (default: shadow_creds.pfx): ",
+                );
+                let pfx_path = if pfx_path.is_empty() {
+                    "shadow_creds.pfx".to_string()
+                } else {
+                    pfx_path
+                };
+
+                let pfx_pass = read_input(
+                    "PFX password \
+                     (default: ironeye): ",
+                );
+                let pfx_pass = if pfx_pass.is_empty() {
+                    "ironeye".to_string()
+                } else {
+                    pfx_pass
+                };
+
+                crate::track_history("actions", &format!("shadow-add {}", target));
+                shadow_creds::add_shadow_credential(
+                    ldap,
+                    search_base,
+                    &target,
+                    domain,
+                    &pfx_path,
+                    &pfx_pass,
+                )?;
+            }
+            2 => {
+                let Some(target) = read_input_with_history(
+                    "Enter target \
+                         (sAMAccountName): ",
+                    "actions",
+                ) else {
+                    continue;
+                };
+                if target.is_empty() {
+                    println!("[!] Target is required");
+                    continue;
+                }
+
+                let Some(device_id) = read_input_with_history(
+                    "Enter DeviceId \
+                         (UUID to remove): ",
+                    "actions",
+                ) else {
+                    continue;
+                };
+                if device_id.is_empty() {
+                    println!("[!] DeviceId is required");
+                    continue;
+                }
+
+                crate::track_history(
+                    "actions",
+                    &format!("shadow-remove {} {}", target, device_id),
+                );
+                shadow_creds::remove_shadow_credential(ldap, search_base, &target, &device_id)?;
+            }
+            3 => {
+                let Some(target) = read_input_with_history(
+                    "Enter target \
+                         (sAMAccountName): ",
+                    "actions",
+                ) else {
+                    continue;
+                };
+                if target.is_empty() {
+                    println!("[!] Target is required");
+                    continue;
+                }
+
+                let confirm = read_input(&format!(
+                    "Type 'CLEAR' to confirm \
+                         clearing all credentials \
+                         on {}: ",
+                    target
+                ));
+                if confirm != "CLEAR" {
+                    println!("[!] Clear cancelled");
+                    continue;
+                }
+
+                crate::track_history("actions", &format!("shadow-clear {}", target));
+                shadow_creds::clear_shadow_credentials(ldap, search_base, &target)?;
+            }
+            4 => break,
+            _ => unreachable!(),
+        }
+    }
+
+    Ok(())
 }
 
 fn handle_dns_management(

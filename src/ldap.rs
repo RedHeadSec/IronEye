@@ -400,17 +400,30 @@ fn try_secure_connect(
                     if config.timestamp_format {
                         println!("[{}]\n", get_timestamp());
                     }
-                    let search_base = build_search_base(&config.domain);
-                    validate_connection(&mut ldap, &search_base, vec!["distinguishedName"])?;
+                    let search_base =
+                        build_search_base(&config.domain);
+                    validate_connection(
+                        &mut ldap,
+                        &search_base,
+                        vec!["distinguishedName"],
+                    )?;
                     return Ok((ldap, search_base));
                 }
                 Err(e) => {
-                    println!("[!] LDAPS bind failed: {}", e);
+                    // Auth failed on LDAPS - do NOT retry
+                    // with StartTLS as that would send
+                    // credentials again and risk lockout
+                    return Err(e);
                 }
             }
         }
         Err(e) => {
-            println!("[!] LDAPS failed: {}", e);
+            // LDAPS connection failed (not auth) -
+            // safe to try StartTLS
+            println!(
+                "[!] LDAPS connection failed: {}",
+                e
+            );
         }
     }
 
