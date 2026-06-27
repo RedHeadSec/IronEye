@@ -2,6 +2,7 @@ use crate::bofhound::export_both_formats;
 use crate::help::add_terminal_spacing;
 use crate::ldap::LdapConfig;
 use crate::retry_with_reconnect;
+use crate::spinner::Spinner;
 use ldap3::{LdapConn, Scope, SearchEntry};
 use std::error::Error;
 
@@ -165,12 +166,23 @@ fn search_trust_base(
     attrs: &[&str],
     config: &mut LdapConfig,
 ) -> Result<Vec<SearchEntry>, Box<dyn Error>> {
+    let spinner =
+        Spinner::start("Querying trusts...");
     let result = retry_with_reconnect!(ldap, config, {
-        ldap.search(base, Scope::Subtree, filter, attrs.to_vec())
+        ldap.search(
+            base,
+            Scope::Subtree,
+            filter,
+            attrs.to_vec(),
+        )
     })?;
+    spinner.stop();
 
     let (results, _) = result.success()?;
-    Ok(results.into_iter().map(SearchEntry::construct).collect())
+    Ok(results
+        .into_iter()
+        .map(SearchEntry::construct)
+        .collect())
 }
 
 fn interpret_trust_type(trust_type: &str) -> &str {

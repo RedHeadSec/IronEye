@@ -11,6 +11,7 @@ pub mod kerberos;
 pub mod ldap;
 pub mod ldapping;
 pub mod macros;
+pub mod spinner;
 pub mod spray;
 pub mod utils;
 

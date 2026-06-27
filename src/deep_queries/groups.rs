@@ -3,6 +3,7 @@ use crate::debug;
 use crate::help::add_terminal_spacing;
 use crate::ldap::LdapConfig;
 use crate::retry_with_reconnect;
+use crate::spinner::Spinner;
 use ldap3::adapters::{Adapter, EntriesOnly, PagedResults};
 use ldap3::{Scope, SearchEntry};
 use std::error::Error;
@@ -66,6 +67,8 @@ fn query_all_groups(
         ),
     );
 
+    let spinner =
+        Spinner::start("Querying groups...");
     let mut search = retry_with_reconnect!(ldap, config, {
         let adapters: Vec<Box<dyn Adapter<_, _>>> = vec![
             Box::new(EntriesOnly::new()),
@@ -85,6 +88,7 @@ fn query_all_groups(
         entries.push(SearchEntry::construct(entry));
     }
     let _ = search.result().success()?;
+    spinner.stop();
     debug::debug_log(
         3,
         format!("Retrieved {} raw group entries from LDAP", entries.len()),

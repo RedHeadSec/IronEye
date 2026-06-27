@@ -7,6 +7,7 @@ pub mod adidns;
 pub mod customldap;
 pub mod del_computer;
 pub mod del_object;
+pub mod del_user;
 pub mod del_user_from_group;
 pub mod disable_account;
 pub mod enable_account;

@@ -249,6 +249,23 @@ pub fn add_shadow_credential(
          -dc-ip <dc_ip>",
         output_pfx, pfx_password, domain
     );
+    println!();
+    println!(
+        "[!] If you receive \
+         KDC_ERR_PADATA_TYPE_NOSUPP, \
+         the DC does not support PKINIT."
+    );
+    println!(
+        "    Try targeting a different DC \
+         with -dc-ip, or verify that AD CS \
+         is deployed and DCs have"
+    );
+    println!(
+        "    certificates with the \
+         KDC Authentication EKU. \
+         Consider RBCD as an alternative \
+         attack path."
+    );
 
     add_terminal_spacing(1);
     Ok(())

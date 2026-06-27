@@ -2,6 +2,7 @@ use crate::bofhound::export_both_formats;
 use crate::help::add_terminal_spacing;
 use crate::ldap::LdapConfig;
 use crate::retry_with_reconnect;
+use crate::spinner::Spinner;
 use ldap3::adapters::{Adapter, EntriesOnly, PagedResults};
 use ldap3::{LdapConn, Scope, SearchEntry};
 use std::error::Error;
@@ -83,6 +84,9 @@ fn query_organizational_units(
 ) -> Result<Vec<SearchEntry>, Box<dyn Error>> {
     let filter = "(objectClass=organizationalUnit)";
 
+    let spinner = Spinner::start(
+        "Querying organizational units...",
+    );
     let mut search = retry_with_reconnect!(ldap, config, {
         let adapters: Vec<Box<dyn Adapter<_, _>>> = vec![
             Box::new(EntriesOnly::new()),
@@ -96,6 +100,7 @@ fn query_organizational_units(
         entries.push(SearchEntry::construct(entry));
     }
     let _ = search.result().success()?;
+    spinner.stop();
 
     Ok(entries)
 }

@@ -1,6 +1,8 @@
 use crate::completion::CerberoCompleter;
 use crate::deep_queries::{
-    computers, delegations, dnsdump, gpo, groups, ou, pki, sccm, scom, scp, subnets, trusts, users,
+    computers, delegations, dnsdump, gpo, groups,
+    hunt_fileshares, hunt_sql, ou, pki, sccm, scom,
+    scp, subnets, trusts, users,
 };
 use crate::help::add_terminal_spacing;
 use crate::history::{HistoryEditor, HistoryEditorWithCompleter};
@@ -429,6 +431,8 @@ pub fn run_nested_query_menu(
         "Query All Delegations",
         "Query All Service Connection Points",
         "DNS Dump",
+        "Hunt: Fileshares",
+        "Hunt: SQL Servers",
         "Back to Main Menu",
     ];
 
@@ -454,7 +458,9 @@ pub fn run_nested_query_menu(
             10 => run_query(|| delegations::get_delegations(ldap, search_base, ldap_config)),
             11 => run_query(|| scp::get_service_connection_points(ldap, search_base, ldap_config)),
             12 => run_query(|| dnsdump::dnsdump(ldap, search_base, ldap_config)),
-            13 => {
+            13 => run_query(|| hunt_fileshares::hunt_fileshares(ldap, search_base, ldap_config)),
+            14 => run_query(|| hunt_sql::hunt_sql_servers(ldap, search_base, ldap_config)),
+            15 => {
                 println!("Returning to the main menu...");
                 add_terminal_spacing(1);
                 break;

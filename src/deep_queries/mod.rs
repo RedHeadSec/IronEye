@@ -3,6 +3,8 @@ pub mod delegations;
 pub mod dnsdump;
 pub mod gpo;
 pub mod groups;
+pub mod hunt_fileshares;
+pub mod hunt_sql;
 pub mod ou;
 pub mod pki;
 pub mod sccm;

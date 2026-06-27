@@ -1,7 +1,10 @@
-use crate::bofhound::{export_both_formats, query_with_security_descriptor};
+use crate::bofhound::{
+    export_both_formats, query_with_security_descriptor,
+};
 use crate::help::add_terminal_spacing;
 use crate::ldap::LdapConfig;
 use crate::retry_with_reconnect;
+use crate::spinner::Spinner;
 use chrono::NaiveDateTime;
 use ldap3::adapters::{Adapter, EntriesOnly, PagedResults};
 use ldap3::{LdapConn, Scope, SearchEntry};
@@ -202,6 +205,8 @@ fn query_gpo_links(
 ) -> Result<Vec<(String, Vec<String>)>, Box<dyn Error>> {
     let filter = "(gPLink=*)";
 
+    let spinner =
+        Spinner::start("Querying GPO links...");
     let mut search = retry_with_reconnect!(ldap, config, {
         let adapters: Vec<Box<dyn Adapter<_, _>>> = vec![
             Box::new(EntriesOnly::new()),
@@ -215,6 +220,7 @@ fn query_gpo_links(
             vec!["distinguishedName", "gPLink"],
         )
     })?;
+    spinner.stop();
 
     let mut links = Vec::new();
     while let Some(entry) = search.next()? {

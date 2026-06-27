@@ -3,6 +3,7 @@ use crate::debug;
 use crate::help::add_terminal_spacing;
 use crate::ldap::LdapConfig;
 use crate::retry_with_reconnect;
+use crate::spinner::Spinner;
 use ldap3::adapters::{Adapter, EntriesOnly, PagedResults};
 use ldap3::{Scope, SearchEntry};
 use std::error::Error;
@@ -16,6 +17,8 @@ pub fn get_delegations(
     let delegation_filter = "(&(objectClass=User)(|(userAccountControl:1.2.840.113556.1.4.803:=524288)(msDS-AllowedToDelegateTo=*)(msDS-AllowedToActOnBehalfOfOtherIdentity=*)))";
     debug::debug_log(2, format!("Delegation filter: {}", delegation_filter));
 
+    let spinner =
+        Spinner::start("Querying delegations...");
     let mut search = retry_with_reconnect!(ldap, config, {
         let adapters: Vec<Box<dyn Adapter<_, _>>> = vec![
             Box::new(EntriesOnly::new()),
@@ -35,6 +38,7 @@ pub fn get_delegations(
         entries.push(SearchEntry::construct(entry));
     }
     let _ = search.result().success()?;
+    spinner.stop();
     debug::debug_log(2, format!("Found {} delegation entries", entries.len()));
 
     if entries.is_empty() {

@@ -1,7 +1,11 @@
-use crate::commands::adidns::structures::{format_a_record, get_record_type_name, DnsRecord};
+use crate::bofhound::export_both_formats;
+use crate::commands::adidns::structures::{
+    format_a_record, get_record_type_name, DnsRecord,
+};
 use crate::help::add_terminal_spacing;
 use crate::ldap::LdapConfig;
 use crate::retry_with_reconnect;
+use crate::spinner::Spinner;
 use ldap3::adapters::{Adapter, EntriesOnly, PagedResults};
 use ldap3::{LdapConn, Scope, SearchEntry};
 use std::error::Error;
@@ -33,18 +37,60 @@ pub fn dnsdump(
     );
 
     let mut total_records = 0;
+    let mut raw_output = String::new();
+    raw_output.push_str("AD-Integrated DNS Dump\n");
+    raw_output.push_str(&"=".repeat(80));
+    raw_output.push_str("\n\n");
 
     for zone in &zones {
-        let zone_base = format!("DC={},CN=MicrosoftDNS,{}", zone, domain_dns_base);
-        total_records += dump_zone_records(ldap, &zone_base, zone, "Domain", config)?;
+        let zone_base = format!(
+            "DC={},CN=MicrosoftDNS,{}",
+            zone, domain_dns_base
+        );
+        let (count, zone_output) =
+            dump_zone_records(
+                ldap, &zone_base, zone, "Domain",
+                config,
+            )?;
+        total_records += count;
+        raw_output.push_str(&zone_output);
     }
 
     for zone in &forest_zones {
-        let zone_base = format!("DC={},CN=MicrosoftDNS,{}", zone, forest_dns_base);
-        total_records += dump_zone_records(ldap, &zone_base, zone, "Forest", config)?;
+        let zone_base = format!(
+            "DC={},CN=MicrosoftDNS,{}",
+            zone, forest_dns_base
+        );
+        let (count, zone_output) =
+            dump_zone_records(
+                ldap, &zone_base, zone, "Forest",
+                config,
+            )?;
+        total_records += count;
+        raw_output.push_str(&zone_output);
     }
 
-    println!("\n[+] DNS dump complete: {} total record(s)", total_records);
+    raw_output.push_str(&format!(
+        "\nTotal: {} record(s)\n",
+        total_records
+    ));
+
+    let output_dir = export_both_formats(
+        "dnsdump_export.txt",
+        &[],
+        &raw_output,
+        &config.username,
+        &config.domain,
+    )?;
+
+    println!(
+        "\n[+] DNS dump complete: {} total record(s)",
+        total_records
+    );
+    println!(
+        "[+] Results saved to '{}/ironeye_dnsdump_export.txt'",
+        output_dir
+    );
     add_terminal_spacing(1);
     Ok(())
 }
@@ -56,6 +102,8 @@ fn enumerate_zones(
 ) -> Result<Vec<String>, Box<dyn Error>> {
     let ms_dns_base = format!("CN=MicrosoftDNS,{}", dns_base);
 
+    let spinner =
+        Spinner::start("Enumerating DNS zones...");
     let result = retry_with_reconnect!(ldap, config, {
         ldap.search(
             &ms_dns_base,
@@ -64,6 +112,7 @@ fn enumerate_zones(
             vec!["dc", "name"],
         )
     });
+    spinner.stop();
 
     let result = match result {
         Ok(r) => r,
@@ -100,22 +149,38 @@ fn dump_zone_records(
     zone_name: &str,
     scope_label: &str,
     config: &mut LdapConfig,
-) -> Result<usize, Box<dyn Error>> {
-    println!("\n--- {} Zone: {} ---", scope_label, zone_name);
+) -> Result<(usize, String), Box<dyn Error>> {
+    println!(
+        "\n--- {} Zone: {} ---",
+        scope_label, zone_name
+    );
 
-    let mut search = retry_with_reconnect!(ldap, config, {
-        let adapters: Vec<Box<dyn Adapter<_, _>>> = vec![
-            Box::new(EntriesOnly::new()),
-            Box::new(PagedResults::new(500)),
-        ];
-        ldap.streaming_search_with(
-            adapters,
-            zone_base,
-            Scope::Subtree,
-            "(objectClass=dnsNode)",
-            vec!["dc", "name", "dnsRecord"],
-        )
-    })?;
+    let mut raw_output = String::new();
+    raw_output.push_str(&format!(
+        "--- {} Zone: {} ---\n",
+        scope_label, zone_name
+    ));
+
+    let spinner = Spinner::start(&format!(
+        "Dumping zone {}...",
+        zone_name
+    ));
+    let mut search =
+        retry_with_reconnect!(ldap, config, {
+            let adapters: Vec<Box<dyn Adapter<_, _>>> =
+                vec![
+                    Box::new(EntriesOnly::new()),
+                    Box::new(PagedResults::new(500)),
+                ];
+            ldap.streaming_search_with(
+                adapters,
+                zone_base,
+                Scope::Subtree,
+                "(objectClass=dnsNode)",
+                vec!["dc", "name", "dnsRecord"],
+            )
+        })?;
+    spinner.stop();
 
     let mut record_count = 0;
 
@@ -136,20 +201,36 @@ fn dump_zone_records(
             format!("{}.{}", node_name, zone_name)
         };
 
-        if let Some(records) = entry.bin_attrs.get("dnsRecord") {
+        if let Some(records) =
+            entry.bin_attrs.get("dnsRecord")
+        {
             for record_bytes in records {
-                match DnsRecord::from_bytes(record_bytes) {
+                match DnsRecord::from_bytes(record_bytes)
+                {
                     Ok(record) => {
-                        let type_name = get_record_type_name(record.record_type);
-                        let data_str = format_record_data(&record);
-                        println!(
+                        let type_name =
+                            get_record_type_name(
+                                record.record_type,
+                            );
+                        let data_str =
+                            format_record_data(&record);
+                        let line = format!(
                             "  {} {} {} (TTL: {})",
-                            fqdn, type_name, data_str, record.ttl_seconds
+                            fqdn,
+                            type_name,
+                            data_str,
+                            record.ttl_seconds
                         );
+                        println!("{}", line);
+                        raw_output.push_str(&line);
+                        raw_output.push('\n');
                         record_count += 1;
                     }
                     Err(e) => {
-                        eprintln!("  {} [parse error: {}]", fqdn, e);
+                        eprintln!(
+                            "  {} [parse error: {}]",
+                            fqdn, e
+                        );
                     }
                 }
             }
@@ -157,8 +238,15 @@ fn dump_zone_records(
     }
 
     let _ = search.result().success();
-    println!("  [{} record(s) in {}]", record_count, zone_name);
-    Ok(record_count)
+    println!(
+        "  [{} record(s) in {}]",
+        record_count, zone_name
+    );
+    raw_output.push_str(&format!(
+        "  [{} record(s) in {}]\n\n",
+        record_count, zone_name
+    ));
+    Ok((record_count, raw_output))
 }
 
 fn format_record_data(record: &DnsRecord) -> String {

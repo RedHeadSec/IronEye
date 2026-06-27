@@ -1,6 +1,8 @@
 use crate::commands::{
-    add_computer, add_user, add_user_to_group, adidns, del_computer, del_object,
-    del_user_from_group, disable_account, enable_account, set_dacl, set_owner, set_password,
+    add_computer, add_user, add_user_to_group, adidns,
+    del_computer, del_object, del_user,
+    del_user_from_group, disable_account,
+    enable_account, set_dacl, set_owner, set_password,
     set_rbcd, set_spn, set_uac, shadow_creds,
 };
 use crate::help::{add_terminal_spacing, read_input, read_input_with_history};
@@ -12,6 +14,7 @@ const ACTIONS_OPTIONS: &[&str] = &[
     "Add Computer",
     "Add User",
     "Delete Computer",
+    "Delete User",
     "SPN Management",
     "Add User to Group",
     "Remove User from Group",
@@ -49,25 +52,26 @@ pub fn run_actions_menu(
             0 => handle_add_computer(ldap, search_base, ldap_config)?,
             1 => handle_add_user(ldap, search_base, ldap_config)?,
             2 => handle_del_computer(ldap, search_base)?,
-            3 => handle_set_spn(ldap, search_base)?,
-            4 => handle_add_user_to_group(ldap, search_base)?,
-            5 => handle_del_user_from_group(ldap, search_base)?,
-            6 => handle_enable_account(ldap, search_base)?,
-            7 => handle_disable_account(ldap, search_base)?,
-            8 => handle_set_password(ldap, search_base, ldap_config)?,
-            9 => handle_set_uac(ldap, search_base)?,
-            10 => handle_del_object(ldap, search_base)?,
-            11 => handle_set_rbcd(ldap, search_base, false)?,
-            12 => handle_set_rbcd(ldap, search_base, true)?,
-            13 => handle_set_dacl(ldap, search_base, false)?,
-            14 => handle_set_dacl(ldap, search_base, true)?,
-            15 => handle_set_owner(ldap, search_base)?,
-            16 => handle_dns_management(ldap, search_base, ldap_config)?,
-            17 => handle_shadow_credentials(ldap, search_base, &ldap_config.domain)?,
-            18 => {
+            3 => handle_del_user(ldap, search_base)?,
+            4 => handle_set_spn(ldap, search_base)?,
+            5 => handle_add_user_to_group(ldap, search_base)?,
+            6 => handle_del_user_from_group(ldap, search_base)?,
+            7 => handle_enable_account(ldap, search_base)?,
+            8 => handle_disable_account(ldap, search_base)?,
+            9 => handle_set_password(ldap, search_base, ldap_config)?,
+            10 => handle_set_uac(ldap, search_base)?,
+            11 => handle_del_object(ldap, search_base)?,
+            12 => handle_set_rbcd(ldap, search_base, false)?,
+            13 => handle_set_rbcd(ldap, search_base, true)?,
+            14 => handle_set_dacl(ldap, search_base, false)?,
+            15 => handle_set_dacl(ldap, search_base, true)?,
+            16 => handle_set_owner(ldap, search_base)?,
+            17 => handle_dns_management(ldap, search_base, ldap_config)?,
+            18 => handle_shadow_credentials(ldap, search_base, &ldap_config.domain)?,
+            19 => {
                 handle_reconnect_starttls(ldap, ldap_config)?;
             }
-            19 => break,
+            20 => break,
             _ => unreachable!(),
         }
     }
@@ -171,6 +175,29 @@ fn handle_del_computer(
     crate::track_history("actions", &format!("del-computer {}", computer_name));
 
     del_computer::del_computer(ldap, search_base, &computer_name)
+}
+
+fn handle_del_user(
+    ldap: &mut LdapConn,
+    search_base: &str,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let Some(username) = read_input_with_history(
+        "Enter username to delete \
+         (sAMAccountName): ",
+        "actions",
+    ) else {
+        return Ok(());
+    };
+    if username.is_empty() {
+        println!("[!] Username is required");
+        return Ok(());
+    }
+    crate::track_history(
+        "actions",
+        &format!("del-user {}", username),
+    );
+
+    del_user::del_user(ldap, search_base, &username)
 }
 
 fn handle_set_spn(

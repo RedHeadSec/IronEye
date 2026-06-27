@@ -15,6 +15,10 @@ pub fn query_with_security_descriptor(
     filter: &str,
     attributes: Vec<&str>,
 ) -> Result<Vec<SearchEntry>, Box<dyn Error>> {
+    use crate::spinner::Spinner;
+
+    let spinner = Spinner::start("Querying LDAP...");
+
     ldap.with_controls(vec![RawControl {
         ctype: String::from("1.2.840.113556.1.4.801"),
         crit: false,
@@ -40,6 +44,8 @@ pub fn query_with_security_descriptor(
         entries.push(SearchEntry::construct(entry));
     }
     let _ = search.result().success()?;
+
+    spinner.stop();
 
     Ok(entries)
 }
