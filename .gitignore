@@ -18,6 +18,8 @@ results.txt
 proxychains*
 output_*
 *.txt
+*.pfx
+*.der
 
 # Generated Kerberos tickets
 *.ticket
