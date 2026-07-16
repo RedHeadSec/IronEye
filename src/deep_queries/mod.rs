@@ -13,3 +13,4 @@ pub mod scp;
 pub mod subnets;
 pub mod trusts;
 pub mod users;
+pub mod wsus;
