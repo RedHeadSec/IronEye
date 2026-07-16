@@ -390,23 +390,17 @@ fn fetch_registry_pol(
     let (_, _, remote_path) =
         split_unc(&unc).ok_or("cannot parse gPCFileSysPath")?;
 
-    let mut last_err: Option<String> = None;
-
     #[cfg(windows)]
-    {
-        match windows_net_use_fetch(&remote_path, config) {
-            Ok(bytes) => return Ok(bytes),
-            Err(e) => last_err = Some(e.to_string()),
-        }
-    }
+    let last_err = match windows_net_use_fetch(&remote_path, config) {
+        Ok(bytes) => return Ok(bytes),
+        Err(e) => e.to_string(),
+    };
 
     #[cfg(not(windows))]
-    {
-        match smbclient_get(&remote_path, config) {
-            Ok(bytes) => return Ok(bytes),
-            Err(e) => last_err = Some(e.to_string()),
-        }
-    }
+    let last_err = match smbclient_get(&remote_path, config) {
+        Ok(bytes) => return Ok(bytes),
+        Err(e) => e.to_string(),
+    };
 
     let dc_target = config
         .dc_host
@@ -418,7 +412,7 @@ fn fetch_registry_pol(
          Fetch it manually and re-run:\n         \
          smbclient //{dc}/SysVol -U '{d}\\{u}%PASSWORD'{k} \
          -c 'get \"{rp}\" /tmp/regpol.bin'",
-        err = last_err.as_deref().unwrap_or("unknown"),
+        err = last_err,
         dc = dc_target,
         u = config.username,
         d = config.domain,
