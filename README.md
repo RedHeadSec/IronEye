@@ -23,8 +23,6 @@ sudo dnf install pkg-config openssl-devel krb5-devel clang-devel
 brew install openssl pkg-config
 ```
 
-**Windows:** No additional dependencies required — OpenSSL is vendored automatically.
-
 ### Build
 
 ```bash
