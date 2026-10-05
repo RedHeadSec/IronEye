@@ -249,6 +249,7 @@ fn run_command_menu(
     loop {
         let prompt = if ldap_config.cert_auth {
             help::get_cert_prompt_string(
+                &ldap_config.username,
                 &ldap_config.domain,
                 ldap_config.secure_ldaps,
                 &ldap_config.dc_ip,

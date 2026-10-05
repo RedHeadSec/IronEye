@@ -713,6 +713,12 @@ pub fn ldap_connect_cert(config: &mut LdapConfig) -> Result<(LdapConn, String), 
         authzid
     );
 
+    // Reflect the DC-resolved identity in the session (prompt, history, bind DN)
+    // instead of the placeholder "cert", since cert auth carries no -u.
+    if config.username.is_empty() {
+        config.username = account_from_authzid(&authzid);
+    }
+
     if config.timestamp_format {
         println!("[{}]\n", get_timestamp());
     }
@@ -740,6 +746,25 @@ fn whoami_cert_identity(ldap: &mut LdapConn) -> Result<String, LdapError> {
                  matches the target account, and try -s if StartTLS did not map it.",
             ),
         }),
+    }
+}
+
+/// Extract the account name from a Schannel/LDAP whoami authzId.
+///
+/// Typical forms are `u:NETBIOSDOMAIN\sAMAccountName` (e.g.
+/// `u:GALACTIC\emperor.palpatine`) or `dn:CN=...`. Returns the account portion
+/// so the session reflects the real identity rather than the placeholder
+/// "cert"; falls back to the raw value when it does not match a known form.
+fn account_from_authzid(authzid: &str) -> String {
+    let stripped = authzid
+        .strip_prefix("u:")
+        .or_else(|| authzid.strip_prefix("dn:"))
+        .unwrap_or(authzid)
+        .trim();
+
+    match stripped.rsplit_once('\\') {
+        Some((_domain, user)) if !user.is_empty() => user.to_string(),
+        _ => stripped.to_string(),
     }
 }
 
@@ -924,5 +949,39 @@ pub fn reconnect_if_needed(
             debug::debug_log(1, format!("Reconnection failed: {:?}", e));
             Err(e.into())
         }
+    }
+}
+
+#[cfg(test)]
+mod cert_identity_tests {
+    use super::account_from_authzid;
+
+    #[test]
+    fn parses_netbios_form() {
+        assert_eq!(
+            account_from_authzid("u:galactic\\emperor.palpatine"),
+            "emperor.palpatine"
+        );
+    }
+
+    #[test]
+    fn parses_without_prefix() {
+        assert_eq!(
+            account_from_authzid("GALACTIC\\vader"),
+            "vader"
+        );
+    }
+
+    #[test]
+    fn falls_back_to_raw_when_no_domain() {
+        assert_eq!(account_from_authzid("u:emperor.palpatine"), "emperor.palpatine");
+    }
+
+    #[test]
+    fn handles_dn_form() {
+        assert_eq!(
+            account_from_authzid("dn:CN=Emperor,OU=Sith,DC=galactic,DC=empire"),
+            "CN=Emperor,OU=Sith,DC=galactic,DC=empire"
+        );
     }
 }

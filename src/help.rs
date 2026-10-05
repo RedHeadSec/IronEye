@@ -93,9 +93,15 @@ pub fn get_prompt_string(
     format!("{}@{}\n({}:{})", username, domain, server, protocol)
 }
 
-pub fn get_cert_prompt_string(domain: &str, secure_ldaps: bool, server: &str) -> String {
+pub fn get_cert_prompt_string(
+    username: &str,
+    domain: &str,
+    secure_ldaps: bool,
+    server: &str,
+) -> String {
     let protocol = if secure_ldaps { "ldaps+cert" } else { "ldap+cert" };
-    format!("{}@{}\n({}:{})", "cert", domain, server, protocol)
+    let who = if username.is_empty() { "cert" } else { username };
+    format!("{}@{}\n({}:{})", who, domain, server, protocol)
 }
 
 pub fn read_file_lines(filename: &str) -> Result<Vec<String>, Box<dyn Error>> {
