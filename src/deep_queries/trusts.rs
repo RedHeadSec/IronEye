@@ -22,7 +22,6 @@ pub fn get_trusts(
     raw_output.push_str(&"=".repeat(80));
     raw_output.push_str("\n\n");
 
-    // Get forest functional level
     if let Ok(forest_level) = get_forest_functional_level(ldap, config) {
         let level_str = format!("Forest Functional Level: {}", forest_level);
         println!("{}", level_str);
@@ -55,7 +54,6 @@ pub fn get_trusts(
             println!("Trust Attributes: {}", ta);
             raw_output.push_str(&format!("Trust Attributes: {}\n", ta));
 
-            // SID filtering
             let sid_filtering = is_sid_filtering_enabled(ta_raw);
             let sid_str = format!(
                 "SID Filtering: {}",
@@ -68,7 +66,6 @@ pub fn get_trusts(
             println!("{}", sid_str);
             raw_output.push_str(&format!("{}\n", sid_str));
 
-            // Selective authentication
             let selective_auth = is_selective_auth_enabled(ta_raw);
             let auth_str = format!(
                 "Selective Authentication: {}",
@@ -81,7 +78,6 @@ pub fn get_trusts(
             println!("{}", auth_str);
             raw_output.push_str(&format!("{}\n", auth_str));
 
-            // Transitivity
             let transitive = ta_raw & 0x1 == 0;
             let trans_str = format!("Transitive: {}", if transitive { "Yes" } else { "No" });
             println!("{}", trans_str);

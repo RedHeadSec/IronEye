@@ -147,7 +147,6 @@ fn parse_kerberoast_service(
     return Ok(KerberoastService::new(user, Some(spn)));
 }
 
-/// Parse a file that includes services to be kerberoasted.
 fn parse_kerberoast_file(
     filename: &str,
     default_realm: &str,

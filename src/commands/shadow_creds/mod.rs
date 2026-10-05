@@ -181,7 +181,6 @@ pub fn add_shadow_credential(
         &device_id,
     );
 
-    // Encode as DN-Binary string
     let dn_binary_value = builder::encode_dn_binary(&blob, &target_dn);
 
     let (results, _) = retry_with_reconnect!(ldap, config, {
@@ -196,7 +195,6 @@ pub fn add_shadow_credential(
 
     let entry = SearchEntry::construct(results[0].clone());
 
-    // Collect existing DN-Binary string values
     let mut existing: Vec<String> = entry.attrs.get(ATTR_NAME).cloned().unwrap_or_default();
 
     existing.push(dn_binary_value);

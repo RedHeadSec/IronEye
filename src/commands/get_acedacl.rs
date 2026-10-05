@@ -513,7 +513,6 @@ impl PermissionCollector {
         let filename_without_ext = filename.trim_end_matches(".txt");
         let affected_objects = self.get_all_affected_objects();
 
-        // Export bofhound format (.log)
         let log_filename = format!("ironeye_{}.log", filename_without_ext);
         let mut log_path = PathBuf::from(&output_dir);
         log_path.push(&log_filename);
@@ -533,7 +532,6 @@ impl PermissionCollector {
             }
         }
 
-        // Export raw text format (.txt)
         let txt_filename = format!("ironeye_{}.txt", filename_without_ext);
         let mut txt_path = PathBuf::from(&output_dir);
         txt_path.push(&txt_filename);

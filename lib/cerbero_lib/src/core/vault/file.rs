@@ -102,7 +102,6 @@ pub fn get_cred_format_by_file(creds_file: &str) -> Result<Option<CredFormat>> {
     }
 }
 
-/// Deduce the credentials format based on the file content.
 pub fn get_cred_format_by_file_content(
     creds_file: &str,
 ) -> Result<Option<CredFormat>> {
@@ -118,7 +117,6 @@ pub fn get_cred_format_by_file_content(
     }
 }
 
-/// Load the Ticket credentials from a file
 pub fn load_file_ticket_creds(creds_file: &str) -> Result<(TicketCreds, CredFormat)> {
     let (krb_cred, format) = load_file_krb_cred(creds_file)?;
 
@@ -128,7 +126,6 @@ pub fn load_file_ticket_creds(creds_file: &str) -> Result<(TicketCreds, CredForm
     return Ok((ticket_creds, format));
 }
 
-/// Load the Kerberos credentials from a file.
 pub fn load_file_krb_cred(creds_file: &str) -> Result<(KrbCred, CredFormat)> {
     let data = fs::read(creds_file).map_err(|err| {
         let message = format!("Unable to read the file '{}'", creds_file);
@@ -167,7 +164,6 @@ pub fn save_file_creds(
     return save_file_krb_cred(creds_file, krb_cred, cred_format);
 }
 
-/// Save the Kerberos credentials in the file with the specified format.
 pub fn save_file_krb_cred(
     creds_file: &str,
     krb_cred: KrbCred,

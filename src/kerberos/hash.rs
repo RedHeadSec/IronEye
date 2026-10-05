@@ -1,5 +1,3 @@
-//! Kerberos hash calculation using Cerberos library
-
 use cerbero_lib::KrbUser;
 
 pub struct KerberosHash {

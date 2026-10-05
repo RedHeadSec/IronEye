@@ -68,7 +68,6 @@ pub fn get_user_tgt(
     return Ok(tgt);
 }
 
-/// Try to get the TGT user from the credentials file
 fn get_user_tgt_from_file(
     user: &KrbUser,
     vault: &dyn Vault,

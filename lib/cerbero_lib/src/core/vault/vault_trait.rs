@@ -12,7 +12,6 @@ pub trait Vault {
     /// Retrieve all the tickets.
     fn dump(&self) -> Result<TicketCreds>;
 
-    /// Add a new ticket.
     fn add(&mut self, ticket_info: TicketCred) -> Result<()>;
 
     /// Saves the given tickets into the vault. The rest of the tickets are
@@ -27,7 +26,6 @@ pub trait Vault {
         cred_format: CredFormat,
     ) -> Result<()>;
 
-    /// Changes the support format to the one given.
     fn change_format(
         &self,
         cred_format: CredFormat,

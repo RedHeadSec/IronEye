@@ -8,7 +8,6 @@ use crate::error::Result;
 use kerberos_crypto::Key;
 use log::{debug, info};
 
-/// Main function to ask a TGT
 pub fn ask_tgt(
     user: KrbUser,
     user_key: &Key,

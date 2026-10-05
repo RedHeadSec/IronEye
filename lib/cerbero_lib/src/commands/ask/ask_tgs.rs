@@ -12,7 +12,6 @@ use crate::error::Result;
 use kerberos_crypto::Key;
 use log::{debug, info};
 
-/// Main function to request a new TGS for a user for the selected service
 pub fn ask_tgs(
     user: KrbUser,
     service: String,
@@ -61,7 +60,6 @@ pub fn ask_tgs(
     return Ok(());
 }
 
-/// Main function to perform an S4U2Self operation
 pub fn ask_s4u2self(
     user: KrbUser,
     impersonate_user: KrbUser,
@@ -102,7 +100,6 @@ pub fn ask_s4u2self(
     return Ok(());
 }
 
-/// Main function to perform an S4U2Proxy operation
 pub fn ask_s4u2proxy(
     user: KrbUser,
     impersonate_user: KrbUser,

@@ -231,7 +231,6 @@ impl HistoryEditor {
     }
 }
 
-/// History editor with custom completion support
 pub struct HistoryEditorWithCompleter<H: Helper> {
     manager: HistoryManager,
     module: String,

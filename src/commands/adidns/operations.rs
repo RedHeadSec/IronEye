@@ -1,5 +1,3 @@
-// DNS Operations Module - Main menu and operation handlers
-
 use crate::commands::adidns::{serial, structures, zones};
 use crate::debug::debug_log;
 use crate::help::{add_terminal_spacing, read_input, read_input_with_history};

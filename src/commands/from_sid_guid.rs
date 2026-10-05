@@ -8,7 +8,6 @@ use ldap3::{
 use std::collections::HashMap;
 use std::error::Error;
 
-/// List of well-known Windows SIDs
 const WELL_KNOWN_SIDS: &[(&str, &str)] = &[
     ("S-1-0", "Null Authority"),
     ("S-1-0-0", "Nobody"),
@@ -95,7 +94,6 @@ const WELL_KNOWN_SIDS: &[(&str, &str)] = &[
     ("S-1-5-32-580", "BUILTIN\\Remote Management Users"),
 ];
 
-/// Converts the `WELL_KNOWN_SIDS` array into a HashMap for fast lookups.
 fn get_well_known_sids() -> HashMap<&'static str, &'static str> {
     WELL_KNOWN_SIDS.iter().cloned().collect()
 }

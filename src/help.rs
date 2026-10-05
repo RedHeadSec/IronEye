@@ -140,7 +140,6 @@ pub fn read_input_with_history(prompt: &str, module: &str) -> Option<String> {
     let mut editor = match HistoryEditor::new(module) {
         Ok(e) => e,
         Err(_) => {
-            // Fallback to regular input if history fails
             return Some(read_input(prompt));
         }
     };

@@ -1,5 +1,3 @@
-// Cerberos Kerberos Operations
-
 use cerbero_lib::{
     load_file_ticket_creds, new_krb_channel, request_tgs_renew, save_file_creds,
     CrackFormat, CredFormat, FileVault, KdcComm, Kdcs, KrbUser,

@@ -56,10 +56,8 @@ impl Completer for CerberoCompleter {
     ) -> Result<(usize, Vec<Pair>), ReadlineError> {
         if let Some(file_start) = self.find_file_completion_start(line) {
             if pos >= file_start {
-                // Extract the file path portion being typed
                 let file_part = &line[file_start..pos];
 
-                // Use FilenameCompleter on just the file portion
                 match self
                     .file_completer
                     .complete(file_part, file_part.len(), ctx)
@@ -93,7 +91,6 @@ impl Completer for CerberoCompleter {
             }
         }
 
-        // No completion available
         Ok((0, vec![]))
     }
 }

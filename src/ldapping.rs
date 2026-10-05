@@ -181,8 +181,7 @@ fn process_username_chunk(
                     }
                     Err(e) => {
                         if is_recoverable_error(&e) {
-                            if e.to_string().contains("ResultCode: 201") {
-                            } else {
+                            if !e.to_string().contains("ResultCode: 201") {
                                 eprintln!("Recoverable LDAP error for {}: {}", username, e);
                             }
                         } else {

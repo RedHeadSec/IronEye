@@ -97,10 +97,8 @@ pub fn export_both_formats(
     let output_dir = format!("output_{}_{}_{}", date, username, domain);
     fs::create_dir_all(&output_dir)?;
 
-    // Export bofhound format (.log)
     export_bofhound_format(base_filename, entries, &output_dir)?;
 
-    // Export raw text format (.txt)
     let filename_without_ext = base_filename.trim_end_matches(".txt");
     let txt_filename = format!("ironeye_{}.txt", filename_without_ext);
     let mut txt_path = PathBuf::from(&output_dir);

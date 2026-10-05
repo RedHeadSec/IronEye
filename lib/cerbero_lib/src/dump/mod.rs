@@ -177,7 +177,6 @@ const BOLD: &str = "\x1b[1m";
 const RESET: &str = "\x1b[0m";
 
 pub fn print_ticket_meta(ticket_info: &DumpTicketMeta) {
-    // Principal => Service (bold cyan for principal, green for service)
     println!(
         "{BOLD}{CYAN}{}@{}{RESET} => {GREEN}{}@{}{RESET}",
         ticket_info.client_name,

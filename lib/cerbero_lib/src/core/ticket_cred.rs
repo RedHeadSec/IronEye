@@ -61,7 +61,6 @@ impl TicketCreds {
             .into()
     }
 
-    /// Filter tickets for etype
     pub fn etype(&self, etype: i32) -> Self {
         self.filter(|tci| tci.cred_info.key.keytype == etype)
     }
@@ -111,7 +110,6 @@ impl TicketCreds {
         return self.prealm(realm);
     }
 
-    /// Filter for the username.
     pub fn username(&self, name: &str) -> Self {
         let pname = new_nt_principal(name);
         return self.pname(&pname);
@@ -128,7 +126,7 @@ impl TicketCreds {
         return self.sname(&tgt_service);
     }
 
-    /// Filter to only returns TGTs for a given realm.
+    /// Filter to only return TGTs for a given user in a given realm.
     pub fn user_tgt_realm(&self, user: &KrbUser, realm: &str) -> Self {
         return self.tgt_realm(realm).user(user);
     }
@@ -143,7 +141,6 @@ impl TicketCreds {
         return self.user(client).sname(sname).srealm(srealm);
     }
 
-    /// Returns the s4u2self tgss.
     pub fn s4u2self_tgss(
         &self,
         user: &KrbUser,

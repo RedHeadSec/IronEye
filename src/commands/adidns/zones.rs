@@ -1,5 +1,3 @@
-// DNS Zone Enumeration via LDAP
-
 use crate::debug::debug_log;
 use ldap3::{LdapConn, Scope, SearchEntry};
 

@@ -8,9 +8,6 @@ pub fn extract_ticket_meta_from_lsa(
     enum_all: bool,
 ) -> Result<Vec<LsaTicketSession>> {
     return extract_creds_from_lsa(false, enum_all);
-
-    // let result = extract_tickets_from_lsa_inner(lsa_handle, false)
-    //    .map(|v| v.into_iter().map(|x| x.meta).collect());
 }
 
 pub fn extract_tickets_from_lsa(

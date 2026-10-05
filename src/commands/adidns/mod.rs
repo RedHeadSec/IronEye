@@ -1,5 +1,3 @@
-// ADIDNS Management Module
-
 mod operations;
 mod serial;
 pub mod structures;

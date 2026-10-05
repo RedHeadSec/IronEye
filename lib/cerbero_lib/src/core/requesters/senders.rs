@@ -37,7 +37,6 @@ pub fn send_recv(channel: &dyn KrbChannel, raw: &[u8]) -> io::Result<Rep> {
     return Ok(Rep::Raw(raw_rep));
 }
 
-/// Function to send a TGS-REQ message and receive a TGS-REP
 pub fn send_recv_tgs(channel: &dyn KrbChannel, req: &TgsReq) -> Result<TgsRep> {
     debug!(
         "===>>=== TGS-REQ ===>>=== {}\n{}",
@@ -82,7 +81,6 @@ pub fn send_recv_tgs(channel: &dyn KrbChannel, req: &TgsReq) -> Result<TgsRep> {
     }
 }
 
-/// Function to send an AS-REQ message and receive an AS-REP
 pub fn send_recv_as(channel: &dyn KrbChannel, req: &AsReq) -> Result<AsRep> {
     debug!(
         "===>>=== AS-REQ ===>>=== {}\n{}",

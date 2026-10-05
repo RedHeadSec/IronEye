@@ -11,7 +11,7 @@ pub fn del_object(
 ) -> Result<(), Box<dyn std::error::Error>> {
     add_terminal_spacing(1);
 
-    // If target looks like a DN (contains DC= or OU=), use it directly
+    // If target looks like a DN (contains DC=, OU=, or CN=), use it directly
     let target_dn = if target.contains("DC=") || target.contains("OU=") || target.contains("CN=") {
         println!("[*] Using DN directly: {}", target);
         target.to_string()

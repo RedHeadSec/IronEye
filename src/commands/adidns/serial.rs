@@ -1,5 +1,3 @@
-// Serial Number Management for DNS Records
-
 use crate::debug::debug_log;
 use std::io::{Read, Write};
 use std::net::{TcpStream, ToSocketAddrs, UdpSocket};

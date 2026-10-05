@@ -129,7 +129,6 @@ pub fn query_groups(
                 let timestamp = Local::now().format("%Y%m%d_%H%M%S");
                 let filename = format!("user_groups_{}_{}.txt", user, timestamp);
 
-                // Build raw output
                 let mut raw_output = String::new();
                 raw_output.push_str(&format!("Group Memberships for user: {}\n", user));
                 raw_output.push_str(&"=".repeat(80));
@@ -181,7 +180,6 @@ pub fn query_groups(
             let timestamp = Local::now().format("%Y%m%d_%H%M%S");
             let filename = format!("domain_groups_{}.txt", timestamp);
 
-            // Build raw output
             let mut raw_output = String::new();
             raw_output.push_str("All Domain Groups\n");
             raw_output.push_str(&"=".repeat(80));

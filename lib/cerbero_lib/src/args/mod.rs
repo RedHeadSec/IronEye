@@ -12,7 +12,6 @@ mod validators;
 use clap::{command, ArgMatches, Command};
 
 pub fn args() -> Command {
-    // App::new(env!("CARGO_PKG_NAME"))
     command!()
         .author(env!("CARGO_PKG_AUTHORS"))
         .about(env!("CARGO_PKG_DESCRIPTION"))

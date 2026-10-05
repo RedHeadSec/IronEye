@@ -15,16 +15,13 @@ pub fn write_ccache_file(ccache: &CcacheFile, path: &str) -> io::Result<()> {
 pub fn write_ccache_bytes(ccache: &CcacheFile) -> io::Result<Vec<u8>> {
     let mut buf = Vec::new();
 
-    // Version
     buf.write_u16::<BigEndian>(CCACHE_V4)?;
 
     // Empty tags for v4
     buf.write_u16::<BigEndian>(0)?;
 
-    // Default principal
     write_principal(&mut buf, &ccache.default_principal)?;
 
-    // Credentials
     for cred in &ccache.credentials {
         write_credential(&mut buf, cred)?;
     }
@@ -58,14 +55,12 @@ fn write_credential(buf: &mut Vec<u8>, cred: &Credential) -> io::Result<()> {
     buf.write_u8(cred.is_skey)?;
     buf.write_u32::<BigEndian>(cred.ticket_flags)?;
 
-    // Addresses
     buf.write_u32::<BigEndian>(cred.addresses.len() as u32)?;
     for addr in &cred.addresses {
         buf.write_u16::<BigEndian>(addr.addr_type)?;
         write_counted_data(buf, &addr.addr_data)?;
     }
 
-    // Authdata
     buf.write_u32::<BigEndian>(cred.authdata.len() as u32)?;
     for ad in &cred.authdata {
         buf.write_u16::<BigEndian>(ad.ad_type)?;

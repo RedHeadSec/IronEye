@@ -472,7 +472,6 @@ fn process_password_batch_realtime(
                 let rx = work_rx_clone.lock().expect("Work receiver mutex poisoned");
                 rx.recv()
             } {
-                // Apply global rate limiting before each attempt
                 rate_limiter_clone.wait_if_needed();
 
                 debug::debug_log(
