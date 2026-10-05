@@ -20,6 +20,7 @@ output_*
 *.txt
 *.pfx
 *.der
+*.pem
 
 # Generated Kerberos tickets
 *.ticket

@@ -153,9 +153,49 @@ fn handle_connect() {
                     ldap_config.domain
                 );
             } else if ldap_config.cert_auth {
+                let msg = e.to_string();
+
+                // The DC failed to bring up TLS at all (no usable server
+                // certificate) - neither StartTLS nor LDAPS can work until
+                // LDAPS/Schannel is configured on the DC.
+                let tls_init_failed = msg.contains("Error initializing SSL/TLS")
+                    || msg.contains("rc=52")
+                    || msg.contains("Connection reset");
+
+                if tls_init_failed {
+                    eprintln!(
+                        "[!] The DC could not establish LDAP over TLS. This usually means \
+                         LDAPS/Schannel is not configured on the DC (no server certificate),\n\
+                         [!] so Pass-the-Certificate is not available against this target."
+                    );
+                    if !ldap_config.secure_ldaps {
+                        eprintln!(
+                            "[!] You can also try -s (LDAPS/636), but the DC still needs a \
+                             working server certificate."
+                        );
+                    }
+                } else if !ldap_config.secure_ldaps {
+                    // StartTLS bind failed but TLS came up: LDAPS is the usual
+                    // fallback for DCs that refuse SASL EXTERNAL over StartTLS.
+                    eprintln!(
+                        "[!] Some DCs refuse SASL EXTERNAL over StartTLS; \
+                         retry with -s to use LDAPS/636 instead."
+                    );
+                } else {
+                    // Already on LDAPS and still failing: most likely the client
+                    // certificate is not usable for Schannel client auth.
+                    eprintln!(
+                        "[!] LDAPS bind failed. Verify the certificate is valid for Schannel \
+                         client auth: issued by an enterprise CA in the NTAuth store, or\n\
+                         [!] explicitly mapped via altSecurityIdentities."
+                    );
+                }
+
+                // Shadow Credentials certs are self-signed for PKINIT, not
+                // Schannel - a common source of confusion when testing this.
                 eprintln!(
-                    "[!] Some DCs refuse SASL EXTERNAL over StartTLS; \
-                     retry with -s to use LDAPS/636 instead."
+                    "[!] Note: self-signed Shadow Credentials certs are for PKINIT, not \
+                     Schannel. Use them with PKINIT (e.g. certipy auth) to obtain a TGT."
                 );
             }
             return;
