@@ -1,6 +1,6 @@
 [package]
 name = "ironeye"
-version = "3.0.0"
+version = "3.2.0"
 edition = "2021"
 
 [lib]
@@ -20,6 +20,7 @@ fastrand = "2.0"
 byteorder = "1.4"
 log = "0.4"
 env_logger = "0.10"
+ctrlc = "3.4"
 csv = "1.1"
 uuid = { version = "1", features = ["v4"] }
 x509-parser = "0.12"
@@ -36,16 +37,30 @@ p12-keystore = { version = "0.3", features = ["pbes1"] }
 # Kerberos attack library
 cerbero_lib = { path = "lib/cerbero_lib", default-features = false }
 kerberos_crypto = "0.3"
+kerberos_constants = "0.0"
 ms_pac = "0.0.4"
+
+# Pass-the-Certificate (Schannel) LDAP auth: client-cert TLS config.
+# Pulled in via ldap3's own "tls-rustls" feature (see below), pinned to the
+# same 0.21 line ldap3 0.11.5 depends on.
+rustls = { version = "0.21", default-features = false, features = ["dangerous_configuration"] }
+rustls-pemfile = "1"
 
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"
 
+# default-features = false drops ldap3's default "tls-native" backend
+# (OpenSSL/Schannel/SecureTransport depending on OS) in favor of "tls-rustls"
+# everywhere: one pure-Rust TLS stack across platforms, and the only backend
+# that exposes set_config(Arc<rustls::ClientConfig>) for presenting a client
+# certificate (needed for Pass-the-Cert auth). IronEye's own code never calls
+# a native-tls-specific API, so this is a drop-in swap for existing LDAPS/
+# StartTLS behavior.
 [target.'cfg(target_os = "linux")'.dependencies]
-ldap3 = { version = "0.11", features = ["gssapi"] }
+ldap3 = { version = "0.11", default-features = false, features = ["sync", "gssapi", "tls-rustls"] }
 
 [target.'cfg(target_os = "windows")'.dependencies]
-ldap3 = { version = "0.11", features = ["gssapi"] }
+ldap3 = { version = "0.11", default-features = false, features = ["sync", "gssapi", "tls-rustls"] }
 
 [target.'cfg(target_os = "macos")'.dependencies]
-ldap3 = { version = "0.11" }
+ldap3 = { version = "0.11", default-features = false, features = ["sync", "tls-rustls"] }

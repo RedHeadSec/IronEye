@@ -119,6 +119,43 @@ pub fn build_tgs_req(
         .build_tgs_req();
 }
 
+/// Helper to craft a TGS-REQ message to *renew* an existing ticket.
+///
+/// Unlike [`build_tgs_req`], this sets the `RENEW` KDC option and targets the
+/// ticket's own service (`sname`), placing the ticket to be renewed in the
+/// AP-REQ pre-authentication data. The KDC authenticates the request with the
+/// ticket's session key, so no long-term key (password/NT hash/AES key) is
+/// required - only the ticket and its session key, both of which already live
+/// in the credential cache. The KDC returns a fresh ticket with an extended
+/// endtime, capped at the original `renew-till`.
+pub fn build_tgs_renew_req(
+    user: KrbUser,
+    server_realm: String,
+    ticket: Ticket,
+    sname: PrincipalName,
+    cipher: &Cipher,
+    etypes: Option<Vec<i32>>,
+) -> TgsReq {
+    let etypes = match etypes {
+        Some(etypes) => etypes,
+        None => win10_client_tgs_req_etypes(),
+    };
+
+    return KdcReqBuilder::new(server_realm)
+        .kdc_options(
+            kdc_options::FORWARDABLE
+                | kdc_options::RENEWABLE
+                | kdc_options::RENEW
+                | kdc_options::CANONICALIZE,
+        )
+        .etypes(etypes)
+        .sname(Some(sname))
+        .push_padata(new_pa_data_ap_req(user, ticket, cipher))
+        .push_padata(new_pa_data_pac_options(pa_pac_options::BRANCH_AWARE))
+        .clear_rtime()
+        .build_tgs_req();
+}
+
 fn win10_client_tgs_req_etypes() -> Vec<i32> {
     vec![
         etypes::AES256_CTS_HMAC_SHA1_96,

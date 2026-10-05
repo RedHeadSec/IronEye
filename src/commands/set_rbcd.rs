@@ -2,6 +2,8 @@ use crate::commands::ldap_utils::{
     get_dacl_offset, handle_modify_error, parse_aces, resolve_object_dn, resolve_object_sid,
 };
 use crate::help::add_terminal_spacing;
+use crate::ldap::LdapConfig;
+use crate::retry_with_reconnect;
 use ldap3::{LdapConn, Mod, Scope};
 use std::collections::HashSet;
 
@@ -15,24 +17,26 @@ const BUILTIN_ADMINS_SID: [u8; 16] = [
 pub fn set_rbcd(
     ldap: &mut LdapConn,
     search_base: &str,
+    config: &mut LdapConfig,
     target: &str,
     service: &str,
     remove: bool,
 ) -> Result<(), Box<dyn std::error::Error>> {
     add_terminal_spacing(1);
 
-    let service_sid = resolve_object_sid(ldap, search_base, service)?;
+    let service_sid = resolve_object_sid(ldap, search_base, config, service)?;
     println!("[*] Service SID: {}", crate::ldap::format_sid(&service_sid));
 
-    let target_dn = resolve_object_dn(ldap, search_base, target)?;
+    let target_dn = resolve_object_dn(ldap, search_base, config, target)?;
     println!("[*] Target DN: {}", target_dn);
 
     let attr_name = "msDS-AllowedToActOnBehalfOfOtherIdentity";
 
-    let (results, _) = ldap
-        .search(&target_dn, Scope::Base, "(objectClass=*)", vec![attr_name])?
-        .success()
-        .map_err(|e| format!("Failed to query {}: {}", attr_name, e))?;
+    let (results, _) = retry_with_reconnect!(ldap, config, {
+        ldap.search(&target_dn, Scope::Base, "(objectClass=*)", vec![attr_name])
+    })?
+    .success()
+    .map_err(|e| format!("Failed to query {}: {}", attr_name, e))?;
 
     if results.is_empty() {
         return Err("Target object not found".into());
@@ -43,6 +47,7 @@ pub fn set_rbcd(
     if remove {
         handle_remove(
             ldap,
+            config,
             &target_dn,
             &entry,
             attr_name,
@@ -53,6 +58,7 @@ pub fn set_rbcd(
     } else {
         handle_add(
             ldap,
+            config,
             &target_dn,
             &entry,
             attr_name,
@@ -65,6 +71,7 @@ pub fn set_rbcd(
 
 fn handle_add(
     ldap: &mut LdapConn,
+    config: &mut LdapConfig,
     target_dn: &str,
     entry: &ldap3::SearchEntry,
     attr_name: &str,
@@ -89,7 +96,9 @@ fn handle_add(
     let mut sd_set = HashSet::new();
     sd_set.insert(new_sd);
 
-    match ldap.modify(target_dn, vec![Mod::Replace(attr_bytes, sd_set)]) {
+    match retry_with_reconnect!(ldap, config, {
+        ldap.modify(target_dn, vec![Mod::Replace(attr_bytes.clone(), sd_set.clone())])
+    }) {
         Ok(result) => match result.success() {
             Ok(_) => {
                 println!(
@@ -126,6 +135,7 @@ fn handle_add(
 
 fn handle_remove(
     ldap: &mut LdapConn,
+    config: &mut LdapConfig,
     target_dn: &str,
     entry: &ldap3::SearchEntry,
     attr_name: &str,
@@ -152,7 +162,9 @@ fn handle_remove(
         let mut sd_set = HashSet::new();
         sd_set.insert(sd);
 
-        match ldap.modify(target_dn, vec![Mod::Replace(attr_bytes, sd_set)]) {
+        match retry_with_reconnect!(ldap, config, {
+            ldap.modify(target_dn, vec![Mod::Replace(attr_bytes.clone(), sd_set.clone())])
+        }) {
             Ok(result) => match result.success() {
                 Ok(_) => {
                     println!(
@@ -181,7 +193,9 @@ fn handle_remove(
         }
     } else {
         let empty_set: HashSet<Vec<u8>> = HashSet::new();
-        match ldap.modify(target_dn, vec![Mod::Delete(attr_bytes, empty_set)]) {
+        match retry_with_reconnect!(ldap, config, {
+            ldap.modify(target_dn, vec![Mod::Delete(attr_bytes.clone(), empty_set.clone())])
+        }) {
             Ok(result) => match result.success() {
                 Ok(_) => {
                     println!("[+] Cleared all RBCD on {}", target);

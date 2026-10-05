@@ -1,11 +1,13 @@
 use crate::help::add_terminal_spacing;
-use crate::ldap::escape_filter;
+use crate::ldap::{escape_filter, LdapConfig};
+use crate::retry_with_reconnect;
 use ldap3::{LdapConn, Mod, Scope};
 use std::collections::HashSet;
 
 pub fn set_spn(
     ldap: &mut LdapConn,
     search_base: &str,
+    config: &mut LdapConfig,
     target: &str,
     action: &str,
     spn: Option<&str>,
@@ -15,12 +17,14 @@ pub fn set_spn(
     let escaped_target = escape_filter(target);
     let search_filter = format!("(sAMAccountName={})", escaped_target);
 
-    let (results, _) = match ldap.search(
-        search_base,
-        Scope::Subtree,
-        &search_filter,
-        vec!["distinguishedName", "servicePrincipalName"],
-    ) {
+    let (results, _) = match retry_with_reconnect!(ldap, config, {
+        ldap.search(
+            search_base,
+            Scope::Subtree,
+            &search_filter,
+            vec!["distinguishedName", "servicePrincipalName"],
+        )
+    }) {
         Ok(res) => match res.success() {
             Ok(r) => r,
             Err(e) => {
@@ -76,10 +80,12 @@ pub fn set_spn(
             let mut new_spns: HashSet<&str> = current_spns.iter().map(String::as_str).collect();
             new_spns.insert(spn_value);
 
-            match ldap.modify(
-                &target_dn,
-                vec![Mod::Replace("servicePrincipalName", new_spns)],
-            ) {
+            match retry_with_reconnect!(ldap, config, {
+                ldap.modify(
+                    &target_dn,
+                    vec![Mod::Replace("servicePrincipalName", new_spns.clone())],
+                )
+            }) {
                 Ok(result) => match result.success() {
                     Ok(_) => {
                         println!("[+] SPN {} added successfully", spn_value);
@@ -127,10 +133,12 @@ pub fn set_spn(
                 .map(String::as_str)
                 .collect();
 
-            match ldap.modify(
-                &target_dn,
-                vec![Mod::Replace("servicePrincipalName", new_spns)],
-            ) {
+            match retry_with_reconnect!(ldap, config, {
+                ldap.modify(
+                    &target_dn,
+                    vec![Mod::Replace("servicePrincipalName", new_spns.clone())],
+                )
+            }) {
                 Ok(result) => match result.success() {
                     Ok(_) => {
                         println!("[+] SPN {} deleted successfully", spn_value);

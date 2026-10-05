@@ -1,20 +1,23 @@
 use crate::commands::ldap_utils::{handle_modify_error, resolve_object_dn, resolve_object_sid};
 use crate::help::add_terminal_spacing;
+use crate::ldap::LdapConfig;
+use crate::retry_with_reconnect;
 use ldap3::{LdapConn, Mod};
 use std::collections::HashSet;
 
 pub fn set_owner(
     ldap: &mut LdapConn,
     search_base: &str,
+    config: &mut LdapConfig,
     target: &str,
     new_owner: &str,
 ) -> Result<(), Box<dyn std::error::Error>> {
     add_terminal_spacing(1);
 
-    let owner_sid = resolve_object_sid(ldap, search_base, new_owner)?;
+    let owner_sid = resolve_object_sid(ldap, search_base, config, new_owner)?;
     println!("[*] New owner SID: {}", crate::ldap::format_sid(&owner_sid));
 
-    let target_dn = resolve_object_dn(ldap, search_base, target)?;
+    let target_dn = resolve_object_dn(ldap, search_base, config, target)?;
     println!("[*] Target DN: {}", target_dn);
 
     let sd = build_owner_sd(&owner_sid);
@@ -23,7 +26,9 @@ pub fn set_owner(
     let mut sd_set = HashSet::new();
     sd_set.insert(sd);
 
-    match ldap.modify(&target_dn, vec![Mod::Replace(attr, sd_set)]) {
+    match retry_with_reconnect!(ldap, config, {
+        ldap.modify(&target_dn, vec![Mod::Replace(attr.clone(), sd_set.clone())])
+    }) {
         Ok(result) => match result.success() {
             Ok(_) => {
                 println!("[+] Owner of {} set to {}", target, new_owner);

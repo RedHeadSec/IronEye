@@ -51,23 +51,23 @@ pub fn run_actions_menu(
         match selection {
             0 => handle_add_computer(ldap, search_base, ldap_config)?,
             1 => handle_add_user(ldap, search_base, ldap_config)?,
-            2 => handle_del_computer(ldap, search_base)?,
-            3 => handle_del_user(ldap, search_base)?,
-            4 => handle_set_spn(ldap, search_base)?,
-            5 => handle_add_user_to_group(ldap, search_base)?,
-            6 => handle_del_user_from_group(ldap, search_base)?,
-            7 => handle_enable_account(ldap, search_base)?,
-            8 => handle_disable_account(ldap, search_base)?,
+            2 => handle_del_computer(ldap, search_base, ldap_config)?,
+            3 => handle_del_user(ldap, search_base, ldap_config)?,
+            4 => handle_set_spn(ldap, search_base, ldap_config)?,
+            5 => handle_add_user_to_group(ldap, search_base, ldap_config)?,
+            6 => handle_del_user_from_group(ldap, search_base, ldap_config)?,
+            7 => handle_enable_account(ldap, search_base, ldap_config)?,
+            8 => handle_disable_account(ldap, search_base, ldap_config)?,
             9 => handle_set_password(ldap, search_base, ldap_config)?,
-            10 => handle_set_uac(ldap, search_base)?,
-            11 => handle_del_object(ldap, search_base)?,
-            12 => handle_set_rbcd(ldap, search_base, false)?,
-            13 => handle_set_rbcd(ldap, search_base, true)?,
-            14 => handle_set_dacl(ldap, search_base, false)?,
-            15 => handle_set_dacl(ldap, search_base, true)?,
-            16 => handle_set_owner(ldap, search_base)?,
+            10 => handle_set_uac(ldap, search_base, ldap_config)?,
+            11 => handle_del_object(ldap, search_base, ldap_config)?,
+            12 => handle_set_rbcd(ldap, search_base, ldap_config, false)?,
+            13 => handle_set_rbcd(ldap, search_base, ldap_config, true)?,
+            14 => handle_set_dacl(ldap, search_base, ldap_config, false)?,
+            15 => handle_set_dacl(ldap, search_base, ldap_config, true)?,
+            16 => handle_set_owner(ldap, search_base, ldap_config)?,
             17 => handle_dns_management(ldap, search_base, ldap_config)?,
-            18 => handle_shadow_credentials(ldap, search_base, &ldap_config.domain)?,
+            18 => handle_shadow_credentials(ldap, search_base, ldap_config)?,
             19 => {
                 handle_reconnect_starttls(ldap, ldap_config)?;
             }
@@ -82,7 +82,7 @@ pub fn run_actions_menu(
 fn handle_add_computer(
     ldap: &mut LdapConn,
     search_base: &str,
-    ldap_config: &LdapConfig,
+    ldap_config: &mut LdapConfig,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let Some(computer_name) =
         read_input_with_history("Enter computer name (e.g., SRV01 or SRV01$): ", "actions")
@@ -122,7 +122,7 @@ fn handle_add_computer(
 fn handle_add_user(
     ldap: &mut LdapConn,
     search_base: &str,
-    ldap_config: &LdapConfig,
+    ldap_config: &mut LdapConfig,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let Some(username) = read_input_with_history("Enter username (sAMAccountName): ", "actions")
     else {
@@ -161,6 +161,7 @@ fn handle_add_user(
 fn handle_del_computer(
     ldap: &mut LdapConn,
     search_base: &str,
+    ldap_config: &mut LdapConfig,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let Some(computer_name) = read_input_with_history(
         "Enter computer name to delete (e.g., SRV01 or SRV01$): ",
@@ -174,12 +175,13 @@ fn handle_del_computer(
     }
     crate::track_history("actions", &format!("del-computer {}", computer_name));
 
-    del_computer::del_computer(ldap, search_base, &computer_name)
+    del_computer::del_computer(ldap, search_base, ldap_config, &computer_name)
 }
 
 fn handle_del_user(
     ldap: &mut LdapConn,
     search_base: &str,
+    ldap_config: &mut LdapConfig,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let Some(username) = read_input_with_history(
         "Enter username to delete \
@@ -197,12 +199,13 @@ fn handle_del_user(
         &format!("del-user {}", username),
     );
 
-    del_user::del_user(ldap, search_base, &username)
+    del_user::del_user(ldap, search_base, ldap_config, &username)
 }
 
 fn handle_set_spn(
     ldap: &mut LdapConn,
     search_base: &str,
+    ldap_config: &mut LdapConfig,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let Some(target) = read_input_with_history("Enter target object (sAMAccountName): ", "actions")
     else {
@@ -235,12 +238,13 @@ fn handle_set_spn(
         Some(spn_value)
     };
 
-    set_spn::set_spn(ldap, search_base, &target, &action, spn.as_deref())
+    set_spn::set_spn(ldap, search_base, ldap_config, &target, &action, spn.as_deref())
 }
 
 fn handle_add_user_to_group(
     ldap: &mut LdapConn,
     search_base: &str,
+    ldap_config: &mut LdapConfig,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let Some(user) = read_input_with_history("Enter user (sAMAccountName): ", "actions") else {
         return Ok(());
@@ -259,12 +263,13 @@ fn handle_add_user_to_group(
     }
     crate::track_history("actions", &format!("add-to-group {} -> {}", user, group));
 
-    add_user_to_group::add_user_to_group(ldap, search_base, &user, &group)
+    add_user_to_group::add_user_to_group(ldap, search_base, ldap_config, &user, &group)
 }
 
 fn handle_del_user_from_group(
     ldap: &mut LdapConn,
     search_base: &str,
+    ldap_config: &mut LdapConfig,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let Some(user) = read_input_with_history("Enter user (sAMAccountName): ", "actions") else {
         return Ok(());
@@ -283,12 +288,13 @@ fn handle_del_user_from_group(
     }
     crate::track_history("actions", &format!("del-from-group {} -> {}", user, group));
 
-    del_user_from_group::del_user_from_group(ldap, search_base, &user, &group)
+    del_user_from_group::del_user_from_group(ldap, search_base, ldap_config, &user, &group)
 }
 
 fn handle_enable_account(
     ldap: &mut LdapConn,
     search_base: &str,
+    ldap_config: &mut LdapConfig,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let Some(username) = read_input_with_history("Enter username to enable: ", "actions") else {
         return Ok(());
@@ -299,12 +305,13 @@ fn handle_enable_account(
     }
     crate::track_history("actions", &format!("enable-account {}", username));
 
-    enable_account::enable_account(ldap, search_base, &username)
+    enable_account::enable_account(ldap, search_base, ldap_config, &username)
 }
 
 fn handle_disable_account(
     ldap: &mut LdapConn,
     search_base: &str,
+    ldap_config: &mut LdapConfig,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let Some(username) = read_input_with_history("Enter username to disable: ", "actions") else {
         return Ok(());
@@ -315,13 +322,13 @@ fn handle_disable_account(
     }
     crate::track_history("actions", &format!("disable-account {}", username));
 
-    disable_account::disable_account(ldap, search_base, &username)
+    disable_account::disable_account(ldap, search_base, ldap_config, &username)
 }
 
 fn handle_set_password(
     ldap: &mut LdapConn,
     search_base: &str,
-    ldap_config: &LdapConfig,
+    ldap_config: &mut LdapConfig,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let Some(target) = read_input_with_history("Enter target (sAMAccountName): ", "actions") else {
         return Ok(());
@@ -358,6 +365,7 @@ fn handle_set_password(
 fn handle_set_uac(
     ldap: &mut LdapConn,
     search_base: &str,
+    ldap_config: &mut LdapConfig,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let Some(target) = read_input_with_history("Enter target (sAMAccountName): ", "actions") else {
         return Ok(());
@@ -368,12 +376,13 @@ fn handle_set_uac(
     }
     crate::track_history("actions", &format!("set-uac {}", target));
 
-    set_uac::set_uac(ldap, search_base, &target)
+    set_uac::set_uac(ldap, search_base, ldap_config, &target)
 }
 
 fn handle_del_object(
     ldap: &mut LdapConn,
     search_base: &str,
+    ldap_config: &mut LdapConfig,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let Some(target) = read_input_with_history("Enter target (sAMAccountName or DN): ", "actions")
     else {
@@ -394,12 +403,13 @@ fn handle_del_object(
     }
     crate::track_history("actions", &format!("del-object {}", target));
 
-    del_object::del_object(ldap, search_base, &target)
+    del_object::del_object(ldap, search_base, ldap_config, &target)
 }
 
 fn handle_set_rbcd(
     ldap: &mut LdapConn,
     search_base: &str,
+    ldap_config: &mut LdapConfig,
     remove: bool,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let action = if remove { "remove" } else { "add" };
@@ -428,12 +438,13 @@ fn handle_set_rbcd(
         &format!("rbcd-{} {} -> {}", action, service, target),
     );
 
-    set_rbcd::set_rbcd(ldap, search_base, &target, &service, remove)
+    set_rbcd::set_rbcd(ldap, search_base, ldap_config, &target, &service, remove)
 }
 
 fn handle_set_dacl(
     ldap: &mut LdapConn,
     search_base: &str,
+    ldap_config: &mut LdapConfig,
     remove: bool,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let action = if remove { "remove" } else { "add" };
@@ -460,12 +471,13 @@ fn handle_set_dacl(
         &format!("dacl-{} {} -> {}", action, trustee, target),
     );
 
-    set_dacl::set_dacl(ldap, search_base, &target, &trustee, remove)
+    set_dacl::set_dacl(ldap, search_base, ldap_config, &target, &trustee, remove)
 }
 
 fn handle_set_owner(
     ldap: &mut LdapConn,
     search_base: &str,
+    ldap_config: &mut LdapConfig,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let Some(target) = read_input_with_history("Enter target object (sAMAccountName): ", "actions")
     else {
@@ -486,13 +498,13 @@ fn handle_set_owner(
     }
     crate::track_history("actions", &format!("set-owner {} -> {}", owner, target));
 
-    set_owner::set_owner(ldap, search_base, &target, &owner)
+    set_owner::set_owner(ldap, search_base, ldap_config, &target, &owner)
 }
 
 fn handle_shadow_credentials(
     ldap: &mut LdapConn,
     search_base: &str,
-    domain: &str,
+    ldap_config: &mut LdapConfig,
 ) -> Result<(), Box<dyn std::error::Error>> {
     const SHADOW_OPTIONS: &[&str] = &[
         "List Key Credentials",
@@ -525,7 +537,7 @@ fn handle_shadow_credentials(
                     continue;
                 }
                 crate::track_history("actions", &format!("shadow-list {}", target));
-                shadow_creds::list_shadow_credentials(ldap, search_base, &target)?;
+                shadow_creds::list_shadow_credentials(ldap, search_base, ldap_config, &target)?;
             }
             1 => {
                 let Some(target) = read_input_with_history(
@@ -561,11 +573,13 @@ fn handle_shadow_credentials(
                 };
 
                 crate::track_history("actions", &format!("shadow-add {}", target));
+                let domain = ldap_config.domain.clone();
                 shadow_creds::add_shadow_credential(
                     ldap,
                     search_base,
+                    ldap_config,
                     &target,
-                    domain,
+                    &domain,
                     &pfx_path,
                     &pfx_pass,
                 )?;
@@ -599,7 +613,13 @@ fn handle_shadow_credentials(
                     "actions",
                     &format!("shadow-remove {} {}", target, device_id),
                 );
-                shadow_creds::remove_shadow_credential(ldap, search_base, &target, &device_id)?;
+                shadow_creds::remove_shadow_credential(
+                    ldap,
+                    search_base,
+                    ldap_config,
+                    &target,
+                    &device_id,
+                )?;
             }
             3 => {
                 let Some(target) = read_input_with_history(
@@ -626,7 +646,7 @@ fn handle_shadow_credentials(
                 }
 
                 crate::track_history("actions", &format!("shadow-clear {}", target));
-                shadow_creds::clear_shadow_credentials(ldap, search_base, &target)?;
+                shadow_creds::clear_shadow_credentials(ldap, search_base, ldap_config, &target)?;
             }
             4 => break,
             _ => unreachable!(),
@@ -659,6 +679,20 @@ fn handle_reconnect_starttls(
         println!(
             "[*] LDAPS/STARTTLS is not needed \
              for Kerberos connections"
+        );
+        add_terminal_spacing(1);
+        return Ok(());
+    }
+
+    if ldap_config.cert_auth {
+        println!(
+            "[*] Certificate auth already runs \
+             over TLS (StartTLS+SASL EXTERNAL or \
+             LDAPS)"
+        );
+        println!(
+            "[*] Reconnect with -s on the connect \
+             prompt to switch transports instead"
         );
         add_terminal_spacing(1);
         return Ok(());

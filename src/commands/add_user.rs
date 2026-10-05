@@ -1,5 +1,6 @@
 use crate::help::add_terminal_spacing;
 use crate::ldap::{escape_filter, LdapConfig};
+use crate::retry_with_reconnect;
 use crate::utils::{
     encode_password_for_ad, generate_password, require_secure_connection,
     validate_password_complexity,
@@ -12,7 +13,7 @@ const UF_NORMAL_ACCOUNT: &str = "512";
 pub fn add_user(
     ldap: &mut LdapConn,
     search_base: &str,
-    config: &LdapConfig,
+    config: &mut LdapConfig,
     username: &str,
     password: Option<&str>,
     target_dn: Option<&str>,
@@ -24,12 +25,14 @@ pub fn add_user(
     let escaped_name = escape_filter(username);
     let search_filter = format!("(sAMAccountName={})", escaped_name);
 
-    let (results, _) = match ldap.search(
-        search_base,
-        Scope::Subtree,
-        &search_filter,
-        vec!["distinguishedName"],
-    ) {
+    let (results, _) = match retry_with_reconnect!(ldap, config, {
+        ldap.search(
+            search_base,
+            Scope::Subtree,
+            &search_filter,
+            vec!["distinguishedName"],
+        )
+    }) {
         Ok(res) => match res.success() {
             Ok(r) => r,
             Err(e) => {
@@ -93,17 +96,19 @@ pub fn add_user(
     let mut uac_set = HashSet::new();
     uac_set.insert("514");
 
-    let result = match ldap.add(
-        &user_dn,
-        vec![
-            ("objectClass", object_classes),
-            ("sAMAccountName", sam_set),
-            ("userPrincipalName", upn_set),
-            ("userAccountControl", uac_set),
-            ("name", name_set.clone()),
-            ("cn", name_set),
-        ],
-    ) {
+    let result = match retry_with_reconnect!(ldap, config, {
+        ldap.add(
+            &user_dn,
+            vec![
+                ("objectClass", object_classes.clone()),
+                ("sAMAccountName", sam_set.clone()),
+                ("userPrincipalName", upn_set.clone()),
+                ("userAccountControl", uac_set.clone()),
+                ("name", name_set.clone()),
+                ("cn", name_set.clone()),
+            ],
+        )
+    }) {
         Ok(r) => r,
         Err(e) => {
             eprintln!("[!] Failed to create user account: {}", e);
@@ -137,7 +142,9 @@ pub fn add_user(
             let mut pwd_set = HashSet::new();
             pwd_set.insert(encoded_pwd);
 
-            match ldap.modify(&user_dn, vec![Mod::Replace(attr_name, pwd_set)]) {
+            match retry_with_reconnect!(ldap, config, {
+                ldap.modify(&user_dn, vec![Mod::Replace(attr_name.clone(), pwd_set.clone())])
+            }) {
                 Ok(mod_result) => match mod_result.success() {
                     Ok(_) => {
                         println!(
@@ -172,7 +179,9 @@ pub fn add_user(
             let mut uac_set = HashSet::new();
             uac_set.insert(UF_NORMAL_ACCOUNT);
 
-            match ldap.modify(&user_dn, vec![Mod::Replace("userAccountControl", uac_set)]) {
+            match retry_with_reconnect!(ldap, config, {
+                ldap.modify(&user_dn, vec![Mod::Replace("userAccountControl", uac_set.clone())])
+            }) {
                 Ok(mod_result) => match mod_result.success() {
                     Ok(_) => {
                         println!("[+] Account enabled");

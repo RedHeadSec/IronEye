@@ -3,6 +3,7 @@ use crate::bofhound::create_output_dir;
 use crate::debug;
 use crate::help::add_terminal_spacing;
 use crate::ldap::LdapConfig;
+use crate::retry_with_reconnect;
 use chrono::Local;
 use dialoguer::Confirm;
 use ldap3::controls::RawControl;
@@ -16,17 +17,19 @@ use std::path::PathBuf;
 pub fn get_machine_account_quota(
     ldap: &mut LdapConn,
     search_base: &str,
-    config: &LdapConfig,
+    config: &mut LdapConfig,
 ) -> Result<(), Box<dyn Error>> {
     debug::debug_log(1, "Querying machine account quota...");
     debug::debug_log(2, format!("Search base: {}", search_base));
 
-    let result = ldap.search(
-        &search_base,
-        Scope::Base,
-        "(&(objectClass=domain))",
-        vec!["ms-DS-MachineAccountQuota"],
-    )?;
+    let result = retry_with_reconnect!(ldap, config, {
+        ldap.search(
+            &search_base,
+            Scope::Base,
+            "(&(objectClass=domain))",
+            vec!["ms-DS-MachineAccountQuota"],
+        )
+    })?;
 
     let (entries, _) = result.success()?;
 
@@ -79,12 +82,8 @@ pub fn get_machine_account_quota(
                 );
             } else {
                 println!("\n=== Current User Analysis ===");
-                match analyze_current_user_rights(
-                    ldap,
-                    search_base,
-                    &config.username,
-                    &config.domain,
-                ) {
+                let current_username = config.username.clone();
+                match analyze_current_user_rights(ldap, search_base, config, &current_username) {
                     Ok((can_create, locations)) => {
                         if can_create {
                             println!(
@@ -113,7 +112,8 @@ pub fn get_machine_account_quota(
             }
 
             println!("\n=== Custom Computer Creation Delegations ===");
-            match find_custom_delegations(ldap, search_base, &config.domain) {
+            let current_domain = config.domain.clone();
+            match find_custom_delegations(ldap, search_base, config, &current_domain) {
                 Ok(delegations) => {
                     if delegations.is_empty() {
                         println!("No non-default delegations found");
@@ -191,13 +191,13 @@ pub fn get_machine_account_quota(
 fn analyze_current_user_rights(
     ldap: &mut LdapConn,
     search_base: &str,
+    config: &mut LdapConfig,
     username: &str,
-    _domain: &str,
 ) -> Result<(bool, Vec<String>), Box<dyn Error>> {
     debug::debug_log(2, format!("Analyzing rights for user: {}", username));
 
     let user_filter = format!("(sAMAccountName={})", username);
-    let user_entries = search_with_sd(ldap, search_base, &user_filter)?;
+    let user_entries = search_with_sd(ldap, search_base, config, &user_filter)?;
 
     if user_entries.is_empty() {
         return Ok((false, Vec::new()));
@@ -237,7 +237,7 @@ fn analyze_current_user_rights(
         );
         for group_dn in member_of {
             let group_filter = format!("(distinguishedName={})", group_dn);
-            if let Ok(groups) = search_with_sd(ldap, search_base, &group_filter) {
+            if let Ok(groups) = search_with_sd(ldap, search_base, config, &group_filter) {
                 if let Some(group) = groups.first() {
                     if let Some(sid_values) = group.bin_attrs.get("objectSid") {
                         if let Some(sid_bytes) = sid_values.first() {
@@ -264,7 +264,7 @@ fn analyze_current_user_rights(
 
     let container_filter =
         "(&(|(objectClass=container)(objectClass=organizationalUnit))(|(cn=Computers)(ou=*)))";
-    let containers = search_with_sd(ldap, search_base, container_filter)?;
+    let containers = search_with_sd(ldap, search_base, config, container_filter)?;
 
     let parser = AclParser::new();
     let mut allowed_locations = Vec::new();
@@ -307,16 +307,17 @@ fn analyze_current_user_rights(
 fn find_custom_delegations(
     ldap: &mut LdapConn,
     search_base: &str,
+    config: &mut LdapConfig,
     domain: &str,
 ) -> Result<HashMap<String, Vec<String>>, Box<dyn Error>> {
     let container_filter =
         "(&(|(objectClass=container)(objectClass=organizationalUnit))(|(cn=Computers)(ou=*)))";
-    let containers = search_with_sd(ldap, search_base, container_filter)?;
+    let containers = search_with_sd(ldap, search_base, config, container_filter)?;
 
     let parser = AclParser::new();
     let mut delegations: HashMap<String, HashSet<String>> = HashMap::new();
 
-    let domain_sid = get_domain_sid(ldap, search_base)?;
+    let domain_sid = get_domain_sid(ldap, search_base, config)?;
     let ignored_sids = build_ignored_sids(&domain_sid);
 
     for container in containers {
@@ -341,7 +342,8 @@ fn find_custom_delegations(
                         if rel.right_name == "CreateComputerObject"
                             && !ignored_sids.contains(&rel.sid)
                         {
-                            let resolved_name = resolve_sid(ldap, search_base, &rel.sid, domain)?;
+                            let resolved_name =
+                                resolve_sid(ldap, search_base, config, &rel.sid, domain)?;
                             delegations
                                 .entry(dn.to_string())
                                 .or_insert_with(HashSet::new)
@@ -364,6 +366,7 @@ fn find_custom_delegations(
 fn search_with_sd(
     ldap: &mut LdapConn,
     search_base: &str,
+    config: &mut LdapConfig,
     filter: &str,
 ) -> Result<Vec<SearchEntry>, Box<dyn Error>> {
     let sd_control = RawControl {
@@ -404,10 +407,12 @@ fn search_with_sd(
             val: Some(paging_val),
         };
 
-        ldap.with_controls(vec![sd_control.clone(), paging_control]);
-
-        let (results, res) = ldap
-            .search(
+        let (results, res) = retry_with_reconnect!(ldap, config, {
+            // Set inside the retry block: a reconnect gets a fresh
+            // connection with no controls applied, so this must be
+            // reapplied on every attempt, not just the first.
+            ldap.with_controls(vec![sd_control.clone(), paging_control.clone()]);
+            ldap.search(
                 search_base,
                 Scope::Subtree,
                 filter,
@@ -418,8 +423,9 @@ fn search_with_sd(
                     "objectSid",
                     "nTSecurityDescriptor",
                 ],
-            )?
-            .success()?;
+            )
+        })?
+        .success()?;
 
         for entry in results {
             all_entries.push(SearchEntry::construct(entry));
@@ -453,15 +459,20 @@ fn search_with_sd(
     Ok(all_entries)
 }
 
-fn get_domain_sid(ldap: &mut LdapConn, search_base: &str) -> Result<String, Box<dyn Error>> {
-    let (results, _) = ldap
-        .search(
+fn get_domain_sid(
+    ldap: &mut LdapConn,
+    search_base: &str,
+    config: &mut LdapConfig,
+) -> Result<String, Box<dyn Error>> {
+    let (results, _) = retry_with_reconnect!(ldap, config, {
+        ldap.search(
             search_base,
             Scope::Base,
             "(objectClass=domain)",
             vec!["objectSid"],
-        )?
-        .success()?;
+        )
+    })?
+    .success()?;
 
     if let Some(entry) = results.first() {
         let search_entry = SearchEntry::construct(entry.clone());
@@ -494,6 +505,7 @@ fn build_ignored_sids(domain_sid: &str) -> HashSet<String> {
 fn resolve_sid(
     ldap: &mut LdapConn,
     search_base: &str,
+    config: &mut LdapConfig,
     sid: &str,
     domain: &str,
 ) -> Result<String, Box<dyn Error>> {
@@ -515,9 +527,10 @@ fn resolve_sid(
             .collect::<String>();
 
         let filter = format!("(objectSid={})", hex_str);
-        if let Ok((results, _)) = ldap
-            .search(search_base, Scope::Subtree, &filter, vec!["sAMAccountName"])
-            .and_then(|r| r.success())
+        if let Ok((results, _)) = retry_with_reconnect!(ldap, config, {
+            ldap.search(search_base, Scope::Subtree, &filter, vec!["sAMAccountName"])
+        })
+        .and_then(|r| r.success())
         {
             if let Some(entry) = results.first() {
                 let search_entry = SearchEntry::construct(entry.clone());

@@ -1,11 +1,13 @@
 use crate::help::add_terminal_spacing;
-use crate::ldap::escape_filter;
+use crate::ldap::{escape_filter, LdapConfig};
+use crate::retry_with_reconnect;
 use ldap3::{LdapConn, Mod, Scope};
 use std::collections::HashSet;
 
 pub fn add_user_to_group(
     ldap: &mut LdapConn,
     search_base: &str,
+    config: &mut LdapConfig,
     user: &str,
     group: &str,
 ) -> Result<(), Box<dyn std::error::Error>> {
@@ -14,12 +16,14 @@ pub fn add_user_to_group(
     let escaped_user = escape_filter(user);
     let user_filter = format!("(sAMAccountName={})", escaped_user);
 
-    let (user_results, _) = match ldap.search(
-        search_base,
-        Scope::Subtree,
-        &user_filter,
-        vec!["distinguishedName"],
-    ) {
+    let (user_results, _) = match retry_with_reconnect!(ldap, config, {
+        ldap.search(
+            search_base,
+            Scope::Subtree,
+            &user_filter,
+            vec!["distinguishedName"],
+        )
+    }) {
         Ok(res) => match res.success() {
             Ok(r) => r,
             Err(e) => {
@@ -47,12 +51,14 @@ pub fn add_user_to_group(
     let escaped_group = escape_filter(group);
     let group_filter = format!("(sAMAccountName={})", escaped_group);
 
-    let (group_results, _) = match ldap.search(
-        search_base,
-        Scope::Subtree,
-        &group_filter,
-        vec!["distinguishedName"],
-    ) {
+    let (group_results, _) = match retry_with_reconnect!(ldap, config, {
+        ldap.search(
+            search_base,
+            Scope::Subtree,
+            &group_filter,
+            vec!["distinguishedName"],
+        )
+    }) {
         Ok(res) => match res.success() {
             Ok(r) => r,
             Err(e) => {
@@ -80,7 +86,9 @@ pub fn add_user_to_group(
     let mut member_set = HashSet::new();
     member_set.insert(user_dn.as_str());
 
-    match ldap.modify(&group_dn, vec![Mod::Add("member", member_set)]) {
+    match retry_with_reconnect!(ldap, config, {
+        ldap.modify(&group_dn, vec![Mod::Add("member", member_set.clone())])
+    }) {
         Ok(result) => match result.success() {
             Ok(_) => {
                 println!("[+] Successfully added \"{}\" to \"{}\"", user, group);

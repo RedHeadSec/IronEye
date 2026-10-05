@@ -1,10 +1,49 @@
 # IronEye
 
-IronEye is a Rust-based Active Directory enumeration and security assessment tool designed for use in internal network environments. It enables penetration testers, red teamers, and security researchers to interact with LDAP, Kerberos, and SMB services efficiently.
+**IronEye** is a Rust-based Active Directory enumeration and attack toolkit for internal network assessments. It gives penetration testers, red teamers, and security researchers a single interactive console for LDAP reconnaissance, Kerberos protocol attacks, credential operations, and Active Directory object manipulation.
 
-The tool supports password and Kerberos authentication, allowing for credentialed LDAP queries, Kerberos protocol attacks, password spraying, Shadow Credentials abuse, ACL manipulation, DNS management, and more.
+All functionality is driven through a menu-based terminal UI — no need to memorize dozens of flags — while still supporting scriptable arguments for the authentication and attack modules.
 
-## Install and Compile
+> ⚠️ **Authorized use only.** IronEye is built for sanctioned penetration testing, red-team engagements, and security research. Only use it against systems you own or are explicitly authorized to test.
+
+<!-- SCREENSHOT: Banner / main menu on launch -->
+![IronEye main menu](docs/screenshots/main-menu.png)
+
+---
+
+## Table of Contents
+
+- [Features](#features)
+- [Install & Build](#install--build)
+- [Quick Start](#quick-start)
+- [Modules](#modules)
+  - [Connect — LDAP Reconnaissance](#connect--ldap-reconnaissance)
+  - [Deep Queries](#deep-queries)
+  - [Actions — AD Object Manipulation](#actions--ad-object-manipulation)
+  - [Cerberos — Kerberos Attacks](#cerberos--kerberos-attacks)
+  - [User Enumeration & Password Spray](#user-enumeration--password-spray)
+  - [Supporting Tools](#supporting-tools)
+- [OPSEC Settings](#opsec-settings)
+- [Keyboard Controls](#keyboard-controls)
+- [Disclaimer](#disclaimer)
+
+---
+
+## Features
+
+- **Flexible authentication** — password, NTLM hash, Kerberos (ccache / PtT), and Pass-the-Certificate (Schannel).
+- **LDAP reconnaissance** — SID/GUID lookups, domain controllers, SPNs, ACL/DACL inspection, machine account quota, password policy, and arbitrary custom LDAP queries.
+- **Deep queries** — bulk enumeration of users, computers, groups, trusts, GPOs, OUs, subnets, delegations, PKI (ADCS), SCCM, SCOM, and DNS, plus hunts for fileshares, SQL servers, and WSUS.
+- **Active Directory actions** — create/delete users and computers, group membership changes, UAC flags, password resets, RBCD, DACL ACEs, ownership changes, and ADIDNS management.
+- **Shadow Credentials** — list, add, remove, and clear `msDS-KeyCredentialLink` entries.
+- **Kerberos attacks (Cerberos module)** — request TGT/TGS, S4U2Self / S4U2Proxy, AS-REP roasting, Kerberoasting, ticket renewal, ticket crafting (Golden/Silver), and ccache/kirbi conversion.
+- **Credential attacks** — LDAP password spraying and LDAP-ping user enumeration.
+- **OPSEC controls** — tunable encryption types, clock skew, address flags, DNS lookups, ticket lifetimes, and a background keep-alive.
+- **Quality of life** — persistent command history, tab completion, a KRB5 config generator, and graceful Ctrl-C handling (cancel the current action instead of killing the app).
+
+---
+
+## Install & Build
 
 ### Prerequisites
 
@@ -29,355 +68,116 @@ brew install openssl pkg-config
 cargo build --release
 ```
 
-## Table of Contents
-
-- [Authentication / Connect](#authentication--connect)
-- [Connect Sub-Modules](#connect-sub-modules)
-- [Deep Queries](#deep-queries)
-- [Actions Menu](#actions-menu)
-- [Shadow Credentials](#shadow-credentials)
-- [DNS Management (ADIDNS)](#dns-management-adidns)
-- [ACL / DACL Management](#acl--dacl-management)
-- [Cerberos Module (Kerberos Attacks)](#cerberos-module-kerberos-attacks)
-- [Password Spray](#password-spray)
-- [User Enumeration](#user-enumeration)
-- [History Management](#history-management)
-- [Debug Settings](#debug-settings)
-- [Development Status](#development-status)
+The compiled binary is written to `target/release/ironeye`.
 
 ---
 
-## Authentication / Connect
+## Quick Start
 
-IronEye supports three authentication modes for LDAP connections.
+Launch the interactive console:
 
-**Password authentication:**
+```bash
+./target/release/ironeye
+```
+
+Choose a module from the main menu and follow the prompts. A typical first run connects to a domain over LDAP:
+
 ```
 -u tywin.lannister -p powerkingftw135 -d SEVENKINGDOMS.LOCAL -i 10.2.10.10
 ```
 
-**Kerberos authentication (FQDN):**
-
-Requires krb5.conf configuration. A sample is provided. Use the `Generate KRB5 Conf` option from the main menu to create one interactively.
-```
--u robb.stark -d NORTH.SEVENKINGDOMS.LOCAL -i WINTERFELL.NORTH.SEVENKINGDOMS.LOCAL -k -s
-```
-
-**Kerberos authentication (IP with DC hostname):**
-```
--u robb.stark -d NORTH.SEVENKINGDOMS.LOCAL -i 10.2.10.10 -k -dc-host WINTERFELL.NORTH.SEVENKINGDOMS.LOCAL
-```
-
-**Connection arguments:**
-```
--u <user> -p <password> -d <domain> -i <FQDN/IP> [-s (LDAPS)] [-t (timestamps)] [-k (Kerberos)] [-dc-host <hostname>]
-```
-
-<!-- SCREENSHOT: Main menu after launch -->
-<!-- SCREENSHOT: Successful LDAP connection -->
+<!-- SCREENSHOT: Connect prompt + successful LDAP bind -->
+![LDAP connect](docs/screenshots/connect.png)
 
 ---
 
-## Connect Sub-Modules
+## Modules
 
-After authenticating, the Connect module provides the following enumeration and query commands:
+### Connect — LDAP Reconnaissance
 
-| Command | Description |
-|---------|-------------|
-| Get SID/GUID | Query an object's Security Identifier or GUID |
-| From SID/GUID | Reverse lookup — resolve an object from its SID or GUID |
-| Get Domain Controllers | Enumerate all domain controllers in the domain |
-| Get SPNs | Enumerate Service Principal Names for Kerberoasting |
-| Get ACE/DACL | Analyze access control entries and DACLs on objects |
-| Machine Quota | Query the Machine Account Quota (ms-DS-MachineAccountQuota) |
-| Net Commands | LDAP-based net commands (user, group, computer info) |
-| Password Policy | Retrieve the domain password and lockout policy |
-| Deep-Queries | Complex enumeration queries (see below) |
-| Custom LDAP Query | Execute raw LDAP queries with custom filters and attributes |
-| Whoami | Display current authenticated session info |
-| Actions | Write/modification operations (see below) |
+The **Connect** module authenticates to a domain controller and drops you into a command menu scoped to that session. Supported authentication modes:
 
-<!-- SCREENSHOT: Connect sub-modules menu -->
+- **Password:** `-u <user> -p <pass> -d <domain> -i <dc_ip>`
+- **Kerberos (PtT):** export a ticket to `KRB5CCNAME`, then connect with the Kerberos option.
+- **Pass-the-Certificate:** authenticate with a PFX/PEM client certificate over LDAPS/StartTLS.
 
----
+From the session menu you can run SID/GUID lookups, enumerate domain controllers and SPNs, inspect ACLs/DACLs, check the machine account quota and password policy, run `net`-style queries, issue custom LDAP queries, and open the Deep Queries and Actions sub-menus.
 
-## Deep Queries
+<!-- SCREENSHOT: Connect session command menu -->
+![Connect command menu](docs/screenshots/connect-menu.png)
 
-Predefined complex LDAP queries for comprehensive AD enumeration:
+### Deep Queries
 
-| Query | Description |
-|-------|-------------|
-| Domain Trusts | Enumerate trust relationships between domains |
-| All Users | List all domain user accounts with attributes |
-| All Computers | Enumerate all computer objects |
-| All Groups | List all security and distribution groups |
-| All Subnets | Enumerate Active Directory site subnets |
-| All GPOs | List all Group Policy Objects |
-| All PKI Information | Certificate Services / ADCS discovery |
-| All SCCM Information | System Center Configuration Manager enumeration |
-| All SCOM Information | System Center Operations Manager discovery |
-| All Organization Units | OU structure enumeration |
-| All Delegations | Kerberos delegation enumeration (unconstrained, constrained, RBCD) |
-| All Service Connection Points | SCP enumeration |
-| DNS Dump | Full DNS zone record dump |
+Bulk enumeration across the directory: users, computers, groups, trusts, subnets, GPOs, OUs, delegations, service connection points, and PKI/SCCM/SCOM infrastructure — plus a DNS dump and targeted hunts for fileshares, SQL servers, and WSUS servers.
 
-<!-- SCREENSHOT: Deep queries menu -->
-<!-- SCREENSHOT: Example deep query output (e.g. delegations or trusts) -->
+<!-- SCREENSHOT: Deep Queries menu + sample output -->
+![Deep queries](docs/screenshots/deep-queries.png)
 
----
+### Actions — AD Object Manipulation
 
-## Actions Menu
-
-The Actions menu provides write/modification operations against AD objects. These require appropriate permissions on the target.
-
-### Account Management
-
-| Action | Description |
-|--------|-------------|
-| Add Computer | Create a new computer object with optional random password |
-| Add User | Create a new user account with optional random password |
-| Delete Computer | Remove a computer object from AD |
-| Delete Object | Delete any AD object (requires typing DELETE to confirm) |
-| Enable Account | Re-enable a disabled user or computer account |
-| Disable Account | Disable a user or computer account |
-
-### Credential and Access
-
-| Action | Description |
-|--------|-------------|
-| Set Password | Reset a user's password (admin reset or old-password change) |
-| Set UAC Flags | Modify User Account Control flags (DONT_EXPIRE_PASSWORD, DONT_REQUIRE_PREAUTH, TRUSTED_FOR_DELEGATION, etc.) |
-
-### Group and Membership
-
-| Action | Description |
-|--------|-------------|
-| Add User to Group | Add a user to a security group |
-| Remove User from Group | Remove a user from group membership |
-
-### Delegation
-
-| Action | Description |
-|--------|-------------|
-| Set RBCD | Configure Resource-Based Constrained Delegation on a target computer |
-| Remove RBCD | Remove RBCD delegation permissions |
-
-### ACL / Ownership
-
-| Action | Description |
-|--------|-------------|
-| Add DACL ACE | Grant permissions (GenericAll, DCSync, WriteDACL, WriteOwner) |
-| Remove DACL ACE | Revoke specific DACL permissions |
-| Set Owner | Change the owner of an AD object |
-
-### SPN, DNS, Shadow Credentials
-
-| Action | Description |
-|--------|-------------|
-| SPN Management | List, add, or delete Service Principal Names on objects |
-| DNS Management | AD-Integrated DNS record manipulation (see below) |
-| Shadow Credentials | msDS-KeyCredentialLink abuse (see below) |
-
-### Connection
-
-| Action | Description |
-|--------|-------------|
-| Reconnect with Secure Connection | Upgrade current session to LDAPS or STARTTLS |
+Write operations against the directory (subject to your privileges): add/delete computers and users, manage SPNs and group membership, enable/disable accounts, reset passwords, edit UAC flags, configure RBCD, add/remove DACL ACEs, change object ownership, manage ADIDNS records, and perform Shadow Credentials operations.
 
 <!-- SCREENSHOT: Actions menu -->
+![Actions menu](docs/screenshots/actions.png)
 
----
+### Cerberos — Kerberos Attacks
 
-## Shadow Credentials
-
-The Shadow Credentials module manipulates the `msDS-KeyCredentialLink` attribute to enable PKINIT authentication without a CA-issued certificate. Requires write access to the target's `msDS-KeyCredentialLink` attribute.
-
-| Operation | Description |
-|-----------|-------------|
-| List Key Credentials | Display existing shadow credentials (DeviceId, creation time, key usage, key source, KeyID) |
-| Add Shadow Credential | Generate an RSA 2048 key pair, write the key credential to AD, and export a PFX certificate for PKINIT |
-| Remove Shadow Credential | Remove a specific credential by DeviceId |
-| Clear All Key Credentials | Wipe all key credentials from the target (requires CLEAR confirmation) |
-
-**Adding a shadow credential:**
-```
-Target: darth.vader
-Output PFX: shadow_creds.pfx
-PFX Password: ironeye
-```
-
-The generated PFX can be used with tools like Certipy for PKINIT authentication:
-```bash
-certipy auth -pfx shadow_creds.pfx -password ironeye -domain galactic.empire -dc-ip 10.1.10.10
-```
-
-<!-- SCREENSHOT: Shadow Credentials submenu -->
-<!-- SCREENSHOT: Adding a shadow credential and PFX output -->
-
----
-
-## DNS Management (ADIDNS)
-
-AD-Integrated DNS management for record manipulation. Searches both `DomainDnsZones` and `ForestDnsZones` partitions.
-
-| Operation | Description |
-|-----------|-------------|
-| Query DNS Zones | Enumerate all DNS zones in the domain |
-| Query DNS Record | Search for specific A/AAAA/CNAME records by name |
-| Add A Record | Create a new DNS A record |
-| Modify A Record | Update an existing A record's IP address |
-| Remove (Tombstone) Record | Soft-delete a DNS record (tombstone) |
-| Delete Record (LDAP) | Hard-delete a DNS record via LDAP |
-
-<!-- SCREENSHOT: DNS management menu -->
-<!-- SCREENSHOT: DNS zone query output -->
-
----
-
-## ACL / DACL Management
-
-Add or remove discretionary access control entries on AD objects. Available rights:
-
-| Right | Description |
-|-------|-------------|
-| GenericAll | Full control over the target object |
-| DCSync | Grant DS-Replication-Get-Changes, DS-Replication-Get-Changes-All, and DS-Replication-Get-Changes-In-Filtered-Set on the domain object |
-| WriteDACL | Permission to modify the object's DACL |
-| WriteOwner | Permission to change the object's owner |
-
-Both add and remove operations are supported from the Actions menu.
-
-<!-- SCREENSHOT: DACL ACE add/remove example -->
-
----
-
-## Cerberos Module (Kerberos Attacks)
-
-Built-in Kerberos protocol attack capabilities via the integrated cerbero library.
-
-### Ticket Operations
+A dedicated Kerberos module (a library conversion of [cerbero](https://github.com/zer1t0/cerbero)). Enter commands at the prompt:
 
 | Command | Description |
-|---------|-------------|
-| ask-tgt | Request a Ticket Granting Ticket (TGT) using password or NTLM hash |
-| ask-tgs | Request a Ticket Granting Service ticket for a target SPN |
-| ask-s4u2self | S4U2Self — impersonate a user to yourself |
-| ask-s4u2proxy | S4U2Proxy — forward impersonation to another service |
+| --- | --- |
+| `ask-tgt` | Request a TGT (password or `--hash`) |
+| `ask-tgs` | Request a service ticket |
+| `ask-s4u2self` / `ask-s4u2proxy` | Constrained delegation abuse |
+| `asreproast` | AS-REP roast users without pre-auth |
+| `kerberoast` | Request and extract crackable service-ticket hashes |
+| `renew` | Renew an existing ticket — no credentials needed (`--monitor` auto-renews until renew-till) |
+| `craft` | Forge Golden / Silver tickets |
+| `convert` | Convert between ccache and kirbi formats |
+| `export` / `list` / `hash` | Set `KRB5CCNAME`, list a ccache, compute Kerberos hashes |
 
-### Roasting Attacks
+Example — renew a ticket you captured but have no credentials for, and keep it alive over a long engagement:
 
-| Command | Description |
-|---------|-------------|
-| asreproast | AS-REP roast users with DONT_REQUIRE_PREAUTH set. Supports single user or file input. Output in Hashcat or John format. |
-| kerberoast | Kerberoast SPN accounts. Input as user:spn pairs (single or file). |
+```
+renew -t ticket.ccache -i 192.168.1.10 --monitor
+```
 
-### Ticket Manipulation
+<!-- SCREENSHOT: Cerberos module prompt + ticket request -->
+![Cerberos module](docs/screenshots/cerberos.png)
 
-| Command | Description |
-|---------|-------------|
-| convert | Convert between ccache and .krb ticket formats |
-| craft | Forge golden/silver tickets with full parameter control (SID, RID, groups, key type, SPN) |
+### User Enumeration & Password Spray
 
-### Utility
+- **User Enumeration** uses the LDAP-ping method to validate usernames without authenticating.
+- **Password Spray** tests one or more passwords across a user list over LDAP, with OPSEC-aware pacing.
 
-| Command | Description |
-|---------|-------------|
-| hash | Calculate Kerberos keys (RC4, AES128, AES256) from a password |
-| list | Display tickets stored in a ccache file |
-| export | Set the KRB5CCNAME environment variable to a ccache file path |
+<!-- SCREENSHOT: Password spray results -->
+![Password spray](docs/screenshots/spray.png)
 
-<!-- SCREENSHOT: Cerberos module menu -->
-<!-- SCREENSHOT: ASREPRoast or Kerberoast output -->
+### Supporting Tools
+
+- **Generate KRB5 Conf** — build a working `krb5.conf` for a target realm.
+- **History Management** — view, search, and clear per-module command history.
+- **Debug Settings** — adjust verbosity (including Kerberos library logging).
 
 ---
 
-## Password Spray
+## OPSEC Settings
 
-LDAP-based password spraying with lockout protection and multi-DC support.
+The **OPSEC Settings** menu controls how noisy IronEye is on the wire: encryption-type policy, clock skew, address flags in Kerberos requests, DNS lookups for KDC/realm discovery, ticket lifetimes, and a background LDAP keep-alive that prevents idle-connection drops (and the extra authentication events a reconnect would generate).
 
-**Arguments:**
-```
---users <user_or_file> --passwords <pass_or_file> --domain <domain> --dc-ip <ip>[,<ip2>]
-  [--threads <num>]               Thread count (default: 10)
-  [--delay <seconds>]             Delay between spray rounds
-  [--jitter <ms>]                 Random jitter between attempts
-  [--continue-on-success]         Don't stop on first valid credential
-  [--lockout-threshold <num>]     Stop after N failed attempts per account
-  [--lockout-window <seconds>]    Lockout observation window
-  [--verbose]                     Verbosity (0=successes only, 1=all attempts, 2=full debug)
-  [--timestamp]                   Prefix output with timestamps
-```
-
-**Example:**
-```
---users users.txt --passwords passwords.txt --domain corp.local --dc-ip 192.168.1.10 --jitter 10 --delay 10 --continue-on-success --verbose --timestamp --lockout-threshold 5 --lockout-window 600
-```
-
-<!-- SCREENSHOT: Password spray execution and results -->
+<!-- SCREENSHOT: OPSEC settings menu -->
+![OPSEC settings](docs/screenshots/opsec.png)
 
 ---
 
-## User Enumeration
+## Keyboard Controls
 
-LDAP ping-based username enumeration without full authentication.
-
-**Arguments:**
-```
---userfile <path> --domain <domain> --dc-ip <ip> --output <filename> [--timestamp] [--threads <num>]
-```
-
-**Example:**
-```
---userfile users.txt --domain corp.local --dc-ip 192.168.1.10 --output valid_users.txt --timestamp
-```
-
-<!-- SCREENSHOT: User enumeration output -->
+- **Arrow keys / Enter** — navigate and select menu items.
+- **Tab** — path and command completion where available.
+- **Ctrl-C** — cancels the current action (or a long-running mode such as `renew --monitor`) and returns to the menu. At the main menu it prompts for a deliberate exit. IronEye is only terminated through the **Exit** option.
 
 ---
 
-## History Management
+## Disclaimer
 
-IronEye tracks command usage across sessions in a local SQLite database.
-
-| Option | Description |
-|--------|-------------|
-| View Recent Commands | Display recent commands across all modules |
-| Search History | Pattern search through command history |
-| View Statistics | Per-module command frequency and percentages |
-| Clear Module History | Delete history for a specific module |
-| Cleanup Old Entries | Remove entries older than 30 days |
-| Export History to File | Save command history to a text file |
-| Clear All History | Full database wipe (double confirmation required) |
-
-Tracked modules: connect, cerbero, spray, userenum, ldapquery, adidns, actions
-
----
-
-## Debug Settings
-
-Configurable verbosity levels affecting both IronEye and the cerbero library:
-
-| Level | Description |
-|-------|-------------|
-| 0 | Production mode (disabled) |
-| 1 | Basic — connections, command execution |
-| 2 | Verbose — LDAP queries, authentication attempts |
-| 3 | Full trace — raw responses, thread details |
-
----
-
-## Development Status
-
-| Feature | Description | Status |
-|---------|-------------|--------|
-| Kerberos Auth | Kerberos-based LDAP authentication via GSSAPI | Done |
-| Multi-Platform | Tested on Linux, macOS, Windows | Done |
-| Password Spray | Multi-threaded LDAP spray with lockout protection | Done |
-| Shadow Credentials | msDS-KeyCredentialLink abuse with PFX export | Done |
-| ADIDNS Management | AD-Integrated DNS record manipulation | Done |
-| ACL/DACL Modification | GenericAll, DCSync, WriteDACL, WriteOwner ACE management | Done |
-| RBCD | Resource-Based Constrained Delegation set/remove | Done |
-| Kerberos Attacks | ASREPRoast, Kerberoast, S4U2Self, S4U2Proxy, ticket forging | Done |
-| Deep Queries | Trusts, PKI, SCCM, SCOM, GPO, delegations, SCP enumeration | Done |
-| History Tracking | SQLite-backed command history with search and export | Done |
-| Proxy Support | Native SOCKS support (works with proxychains4 in the meantime) | TBD |
+IronEye is intended for legal, authorized security testing and education only. The authors and contributors accept no liability for misuse or for any damage caused by this tool. You are responsible for complying with all applicable laws and for obtaining proper authorization before testing any system.

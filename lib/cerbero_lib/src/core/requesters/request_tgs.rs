@@ -2,7 +2,9 @@ use super::senders::send_recv_tgs;
 use crate::communication::{KdcComm, KrbChannel};
 use crate::core::forge;
 use crate::core::forge::KrbUser;
-use crate::core::forge::{build_tgs_req, extract_ticket_from_tgs_rep, S4u};
+use crate::core::forge::{
+    build_tgs_renew_req, build_tgs_req, extract_ticket_from_tgs_rep, S4u,
+};
 use crate::core::stringifier::ticket_cred_to_string;
 use crate::core::Cipher;
 use crate::core::TicketCred;
@@ -154,6 +156,47 @@ pub fn request_s4u2self_tgs(
     );
 
     return Ok(s4u2self_tgs);
+}
+
+/// Renew an existing ticket (a TGT or a service ticket) using only the ticket
+/// and its session key - no long-term credentials (password/hash/key) needed.
+///
+/// The client identity (`user`), the service (`sname`) and the server realm
+/// are all taken from the ticket itself, so the caller only needs to supply the
+/// loaded [`TicketCred`]. Returns the renewed ticket, whose endtime the KDC has
+/// extended up to the original `renew-till`.
+pub fn request_tgs_renew(
+    user: KrbUser,
+    ticket: TicketCred,
+    etypes: Option<Vec<i32>>,
+    channel: &dyn KrbChannel,
+) -> Result<TicketCred> {
+    let sname = ticket.cred_info.sname.clone().ok_or(
+        "The ticket has no service name (sname); unable to renew it",
+    )?;
+
+    let server_realm = ticket
+        .cred_info
+        .srealm
+        .clone()
+        .unwrap_or_else(|| user.realm.clone());
+
+    // The renewal is authenticated with the ticket's session key, exactly as a
+    // regular TGS-REQ is - no long-term key is involved.
+    let cipher: Cipher = ticket.cred_info.key.into();
+
+    let tgs_req = build_tgs_renew_req(
+        user,
+        server_realm,
+        ticket.ticket,
+        sname,
+        &cipher,
+        etypes,
+    );
+
+    let tgs_rep = send_recv_tgs(channel, &tgs_req)?;
+
+    return extract_ticket_from_tgs_rep(tgs_rep, &cipher);
 }
 
 /// Use a TGT to request a TGS

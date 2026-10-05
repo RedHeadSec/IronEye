@@ -1,10 +1,12 @@
 use crate::help::add_terminal_spacing;
-use crate::ldap::escape_filter;
+use crate::ldap::{escape_filter, LdapConfig};
+use crate::retry_with_reconnect;
 use ldap3::{LdapConn, Scope};
 
 pub fn del_computer(
     ldap: &mut LdapConn,
     search_base: &str,
+    config: &mut LdapConfig,
     computer_name: &str,
 ) -> Result<(), Box<dyn std::error::Error>> {
     add_terminal_spacing(1);
@@ -18,12 +20,14 @@ pub fn del_computer(
     let escaped_name = escape_filter(&computer_name);
     let search_filter = format!("(sAMAccountName={})", escaped_name);
 
-    let (results, _) = match ldap.search(
-        search_base,
-        Scope::Subtree,
-        &search_filter,
-        vec!["distinguishedName"],
-    ) {
+    let (results, _) = match retry_with_reconnect!(ldap, config, {
+        ldap.search(
+            search_base,
+            Scope::Subtree,
+            &search_filter,
+            vec!["distinguishedName"],
+        )
+    }) {
         Ok(res) => match res.success() {
             Ok(r) => r,
             Err(e) => {
@@ -50,7 +54,7 @@ pub fn del_computer(
 
     println!("[*] Found computer DN: {}", computer_dn);
 
-    match ldap.delete(&computer_dn) {
+    match retry_with_reconnect!(ldap, config, ldap.delete(&computer_dn)) {
         Ok(result) => match result.success() {
             Ok(_) => {
                 println!("[+] Computer {} deleted successfully!", computer_name);

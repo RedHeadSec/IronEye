@@ -1,5 +1,6 @@
 use crate::help::add_terminal_spacing;
 use crate::ldap::{escape_filter, LdapConfig};
+use crate::retry_with_reconnect;
 use crate::utils::{
     encode_password_for_ad, require_secure_connection, validate_password_complexity,
 };
@@ -9,7 +10,7 @@ use std::collections::HashSet;
 pub fn set_password(
     ldap: &mut LdapConn,
     search_base: &str,
-    config: &LdapConfig,
+    config: &mut LdapConfig,
     target: &str,
     new_password: &str,
     old_password: Option<&str>,
@@ -21,12 +22,14 @@ pub fn set_password(
     let escaped_target = escape_filter(target);
     let search_filter = format!("(sAMAccountName={})", escaped_target);
 
-    let (results, _) = match ldap.search(
-        search_base,
-        Scope::Subtree,
-        &search_filter,
-        vec!["distinguishedName"],
-    ) {
+    let (results, _) = match retry_with_reconnect!(ldap, config, {
+        ldap.search(
+            search_base,
+            Scope::Subtree,
+            &search_filter,
+            vec!["distinguishedName"],
+        )
+    }) {
         Ok(res) => match res.success() {
             Ok(r) => r,
             Err(e) => {
@@ -99,7 +102,7 @@ pub fn set_password(
         vec![Mod::Replace(attr_name, pwd_set)]
     };
 
-    match ldap.modify(&target_dn, modifications) {
+    match retry_with_reconnect!(ldap, config, ldap.modify(&target_dn, modifications.clone())) {
         Ok(result) => match result.success() {
             Ok(_) => {
                 println!(

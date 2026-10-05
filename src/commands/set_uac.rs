@@ -1,5 +1,6 @@
 use crate::help::add_terminal_spacing;
-use crate::ldap::escape_filter;
+use crate::ldap::{escape_filter, LdapConfig};
+use crate::retry_with_reconnect;
 use dialoguer::{theme::ColorfulTheme, Select};
 use ldap3::{LdapConn, Mod, Scope};
 use std::collections::HashSet;
@@ -22,6 +23,7 @@ const UAC_FLAGS: &[(&str, i32)] = &[
 pub fn set_uac(
     ldap: &mut LdapConn,
     search_base: &str,
+    config: &mut LdapConfig,
     target: &str,
 ) -> Result<(), Box<dyn std::error::Error>> {
     add_terminal_spacing(1);
@@ -63,12 +65,14 @@ pub fn set_uac(
     let escaped_target = escape_filter(target);
     let search_filter = format!("(sAMAccountName={})", escaped_target);
 
-    let (results, _) = match ldap.search(
-        search_base,
-        Scope::Subtree,
-        &search_filter,
-        vec!["distinguishedName", "userAccountControl"],
-    ) {
+    let (results, _) = match retry_with_reconnect!(ldap, config, {
+        ldap.search(
+            search_base,
+            Scope::Subtree,
+            &search_filter,
+            vec!["distinguishedName", "userAccountControl"],
+        )
+    }) {
         Ok(res) => match res.success() {
             Ok(r) => r,
             Err(e) => {
@@ -133,10 +137,12 @@ pub fn set_uac(
     let mut uac_set = HashSet::new();
     uac_set.insert(new_uac_str.as_str());
 
-    match ldap.modify(
-        &target_dn,
-        vec![Mod::Replace("userAccountControl", uac_set)],
-    ) {
+    match retry_with_reconnect!(ldap, config, {
+        ldap.modify(
+            &target_dn,
+            vec![Mod::Replace("userAccountControl", uac_set.clone())],
+        )
+    }) {
         Ok(result) => match result.success() {
             Ok(_) => {
                 println!(

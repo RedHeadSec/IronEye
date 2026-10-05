@@ -1,6 +1,7 @@
 use crate::debug;
 use crate::help::add_terminal_spacing;
 use crate::ldap::LdapConfig;
+use crate::retry_with_reconnect;
 use ldap3::adapters::{Adapter, EntriesOnly, PagedResults};
 use ldap3::{LdapConn, Scope, SearchEntry};
 use std::error::Error;
@@ -8,11 +9,11 @@ use std::error::Error;
 pub fn get_password_policy(
     ldap: &mut LdapConn,
     search_base: &str,
-    config: &LdapConfig,
+    config: &mut LdapConfig,
 ) -> Result<(), Box<dyn Error>> {
     debug::debug_log(1, "Querying password policies...");
-    let domain_policy_entries = query_password_policy(ldap, search_base)?;
-    let fgpp_entries = query_fine_grained_policies(ldap, search_base)?;
+    let domain_policy_entries = query_password_policy(ldap, search_base, config)?;
+    let fgpp_entries = query_fine_grained_policies(ldap, search_base, config)?;
     debug::debug_log(
         2,
         format!(
@@ -48,6 +49,7 @@ pub fn get_password_policy(
 fn query_password_policy(
     ldap: &mut LdapConn,
     search_base: &str,
+    config: &mut LdapConfig,
 ) -> Result<Vec<SearchEntry>, Box<dyn Error>> {
     let search_filter = "(&(objectClass=domainDNS)(objectCategory=domain))";
     debug::debug_log(
@@ -58,21 +60,23 @@ fn query_password_policy(
         ),
     );
 
-    let result = ldap.search(
-        search_base,
-        Scope::Subtree,
-        search_filter,
-        vec![
-            "minPwdLength",
-            "pwdHistoryLength",
-            "pwdProperties",
-            "maxPwdAge",
-            "minPwdAge",
-            "lockoutThreshold",
-            "lockoutDuration",
-            "lockOutObservationWindow",
-        ],
-    )?;
+    let result = retry_with_reconnect!(ldap, config, {
+        ldap.search(
+            search_base,
+            Scope::Subtree,
+            search_filter,
+            vec![
+                "minPwdLength",
+                "pwdHistoryLength",
+                "pwdProperties",
+                "maxPwdAge",
+                "minPwdAge",
+                "lockoutThreshold",
+                "lockoutDuration",
+                "lockOutObservationWindow",
+            ],
+        )
+    })?;
 
     let (entries, _) = result.success()?;
 
@@ -82,36 +86,38 @@ fn query_password_policy(
 fn query_fine_grained_policies(
     ldap: &mut LdapConn,
     search_base: &str,
+    config: &mut LdapConfig,
 ) -> Result<Vec<SearchEntry>, Box<dyn Error>> {
     let fgpp_dn = format!("CN=Password Settings Container,CN=System,{}", search_base);
     let search_filter = "(objectClass=msDS-PasswordSettings)";
     debug::debug_log(2, format!("Querying fine-grained policies at: {}", fgpp_dn));
     debug::debug_log(3, format!("FGPP filter: {}", search_filter));
 
-    let adapters: Vec<Box<dyn Adapter<_, _>>> = vec![
-        Box::new(EntriesOnly::new()),
-        Box::new(PagedResults::new(500)),
-    ];
-
-    let mut search = ldap.streaming_search_with(
-        adapters,
-        &fgpp_dn,
-        Scope::OneLevel,
-        &search_filter,
-        vec![
-            "cn",
-            "msDS-MinimumPasswordLength",
-            "msDS-PasswordHistoryLength",
-            "msDS-MaximumPasswordAge",
-            "msDS-MinimumPasswordAge",
-            "msDS-LockoutThreshold",
-            "msDS-LockoutObservationWindow",
-            "msDS-LockoutDuration",
-            "msDS-PasswordComplexityEnabled",
-            "msDS-PasswordReversibleEncryptionAllowed",
-            "msDS-PasswordSettingsPrecedence",
-        ],
-    )?;
+    let mut search = retry_with_reconnect!(ldap, config, {
+        let adapters: Vec<Box<dyn Adapter<_, _>>> = vec![
+            Box::new(EntriesOnly::new()),
+            Box::new(PagedResults::new(500)),
+        ];
+        ldap.streaming_search_with(
+            adapters,
+            &fgpp_dn,
+            Scope::OneLevel,
+            &search_filter,
+            vec![
+                "cn",
+                "msDS-MinimumPasswordLength",
+                "msDS-PasswordHistoryLength",
+                "msDS-MaximumPasswordAge",
+                "msDS-MinimumPasswordAge",
+                "msDS-LockoutThreshold",
+                "msDS-LockoutObservationWindow",
+                "msDS-LockoutDuration",
+                "msDS-PasswordComplexityEnabled",
+                "msDS-PasswordReversibleEncryptionAllowed",
+                "msDS-PasswordSettingsPrecedence",
+            ],
+        )
+    })?;
 
     let mut entries = Vec::new();
     while let Some(entry) = search.next()? {

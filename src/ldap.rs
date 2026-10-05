@@ -1,3 +1,4 @@
+use crate::cert_auth;
 use crate::debug;
 use crate::help::get_timestamp;
 #[cfg(any(target_os = "linux", target_os = "windows"))]
@@ -33,40 +34,63 @@ pub struct LdapConfig {
     pub timestamp_format: bool,
     pub kerberos: bool,
     pub ccache_path: Option<String>,
+    /// Pass-the-Certificate: authenticate via a client certificate presented
+    /// at the TLS layer (Schannel mapping) instead of password/hash/Kerberos.
+    pub cert_auth: bool,
+    pub cert_path: Option<String>,
+    pub key_path: Option<String>,
+    pub pfx_path: Option<String>,
+    pub pfx_password: Option<String>,
 }
 
+/// Ensures `config` has a usable Kerberos target hostname. If only an IP was
+/// given, tries to auto-resolve the DC's FQDN via an unauthenticated LDAP
+/// ping (see `kerberos::netlogon`) before falling back to asking the
+/// operator for `-dc-host`.
 #[cfg(any(target_os = "linux", target_os = "windows"))]
-fn validate_kerberos_hostname(
-    dc_ip: &str,
-    dc_host: Option<&str>,
-    domain: &str,
-) -> Result<(), LdapError> {
-    if dc_ip.parse::<std::net::IpAddr>().is_ok() && dc_host.is_none() {
-        eprintln!(
-            "[!] Error: Kerberos authentication \
-             requires a hostname/FQDN, not an \
-             IP address."
+fn validate_kerberos_hostname(config: &mut LdapConfig) -> Result<(), LdapError> {
+    if config.dc_ip.parse::<std::net::IpAddr>().is_ok() && config.dc_host.is_none() {
+        println!(
+            "\x1b[33m[*] Kerberos needs a hostname/FQDN - attempting to resolve it via LDAP ping...\x1b[0m"
         );
-        eprintln!("[!] Current value: {}", dc_ip);
-        eprintln!(
-            "[!] Use -dc-host <fqdn> to specify \
-             the DC hostname separately."
-        );
-        eprintln!(
-            "[!] Example: -i {} -dc-host \
-             dc01.{} -k -d {}",
-            dc_ip, domain, domain
-        );
-        return Err(LdapError::Io {
-            source: std::io::Error::new(
-                std::io::ErrorKind::InvalidInput,
-                "Kerberos requires hostname/FQDN. \
-                 Use -dc-host to specify it.",
-            ),
-        });
+
+        match crate::kerberos::netlogon::query_dc_hostname(&config.dc_ip) {
+            Some(resolved) => {
+                println!("\x1b[32m[+] Auto-resolved DC hostname: {}\x1b[0m", resolved);
+                config.dc_host = Some(resolved);
+            }
+            None => {
+                eprintln!(
+                    "\x1b[31m[!] Error: Kerberos authentication \
+                     requires a hostname/FQDN, not an \
+                     IP address.\x1b[0m"
+                );
+                eprintln!("\x1b[31m[!] Current value: {}\x1b[0m", config.dc_ip);
+                eprintln!(
+                    "\x1b[31m[!] Automatic resolution via LDAP ping \
+                     failed (DC unreachable on 389, or blocked).\x1b[0m"
+                );
+                eprintln!(
+                    "\x1b[31m[!] Use -dc-host <fqdn> to specify \
+                     the DC hostname separately.\x1b[0m"
+                );
+                eprintln!(
+                    "\x1b[31m[!] Example: -i {} -dc-host \
+                     dc01.{} -k -d {}\x1b[0m",
+                    config.dc_ip, config.domain, config.domain
+                );
+                return Err(LdapError::Io {
+                    source: std::io::Error::new(
+                        std::io::ErrorKind::InvalidInput,
+                        "Kerberos requires hostname/FQDN. \
+                         Use -dc-host to specify it.",
+                    ),
+                });
+            }
+        }
     }
 
-    let effective_host = dc_host.unwrap_or(dc_ip);
+    let effective_host = config.dc_host.as_deref().unwrap_or(&config.dc_ip);
     if !effective_host.contains('.') {
         debug::debug_log(
             2,
@@ -81,7 +105,7 @@ fn validate_kerberos_hostname(
             format!(
                 "If connection fails, use the full \
                  domain name. Example: {}.{}",
-                effective_host, domain
+                effective_host, config.domain
             ),
         );
     }
@@ -89,10 +113,15 @@ fn validate_kerberos_hostname(
     Ok(())
 }
 
+/// `spn_host` is the hostname/FQDN used to build the GSSAPI service
+/// principal name (e.g. to pick the matching cached LDAP service ticket).
+/// It is deliberately NOT used as the krb5.conf `kdc=` address: that must
+/// stay the address we actually connected over (`config.dc_ip`, which may
+/// be an IP the attacker's resolver can't turn `spn_host` back into).
 #[cfg(any(target_os = "linux", target_os = "windows"))]
 fn validate_and_prepare_ccache(
     config: &mut LdapConfig,
-    normalized_dc: &str,
+    spn_host: &str,
 ) -> Result<(String, String, Option<String>), LdapError> {
     let ccache_to_use =
         determine_ccache_path(config.ccache_path.as_ref()).map_err(|e| LdapError::Io {
@@ -100,10 +129,10 @@ fn validate_and_prepare_ccache(
         })?;
 
     debug::debug_log(2, format!("Ccache path: {}", ccache_to_use));
-    println!("[*] Ccache file: {}", ccache_to_use);
+    println!("\x1b[33m[*] Ccache file: {}\x1b[0m", ccache_to_use);
 
     let ccache = parse_ccache_file(&ccache_to_use).map_err(|e| {
-        eprintln!("[!] Failed to parse ccache file: {}", e);
+        eprintln!("\x1b[31m[!] Failed to parse ccache file: {}\x1b[0m", e);
         LdapError::Io {
             source: std::io::Error::new(
                 std::io::ErrorKind::InvalidData,
@@ -115,13 +144,13 @@ fn validate_and_prepare_ccache(
     let ccache_info = match validate_ccache(&ccache) {
         Ok(info) => {
             if let Some(ref impersonated) = info.impersonated_user {
-                println!("[+] Impersonated ticket for {}", impersonated);
-                println!("[+] Requested by: {}", info.principal);
+                println!("\x1b[32m[+] Impersonated ticket for {}\x1b[0m", impersonated);
+                println!("\x1b[32m[+] Requested by: {}\x1b[0m", info.principal);
             } else {
-                println!("[+] Valid TGT found for {}", info.principal);
+                println!("\x1b[32m[+] Valid TGT found for {}\x1b[0m", info.principal);
             }
             println!(
-                "[+] Ticket expires: {} ({} remaining)",
+                "\x1b[32m[+] Ticket expires: {} ({} remaining)\x1b[0m",
                 info.end_time, info.time_remaining
             );
 
@@ -133,13 +162,13 @@ fn validate_and_prepare_ccache(
             if let Some(cred) = valid_cred {
                 let minutes_remaining = cred.expires_in_minutes();
                 if minutes_remaining < 60 {
-                    println!("[!] Warning: Ticket expires in less than 1 hour!");
+                    println!("\x1b[31m[!] Warning: Ticket expires in less than 1 hour!\x1b[0m");
                 }
             }
             info
         }
         Err(e) => {
-            eprintln!("[!] Ccache validation failed: {}", e);
+            eprintln!("\x1b[31m[!] Ccache validation failed: {}\x1b[0m", e);
             return Err(LdapError::Io {
                 source: std::io::Error::new(
                     std::io::ErrorKind::InvalidData,
@@ -178,7 +207,7 @@ fn validate_and_prepare_ccache(
         // Priority: LDAP ticket for this host > any LDAP ticket > any ticket
         let impersonated_cred = impersonated_creds
             .iter()
-            .find(|c| c.is_ldap_service() && c.matches_service_host(normalized_dc))
+            .find(|c| c.is_ldap_service() && c.matches_service_host(spn_host))
             .or_else(|| impersonated_creds.iter().find(|c| c.is_ldap_service()))
             .or_else(|| impersonated_creds.first())
             .copied();
@@ -226,13 +255,17 @@ fn validate_and_prepare_ccache(
         (ccache_to_use.clone(), None)
     };
 
-    let krb5_conf =
-        generate_krb5_conf_from_ccache(&ccache, normalized_dc).map_err(|e| LdapError::Io {
+    // Use the address we actually connected over for the KDC contact point,
+    // not spn_host - the latter may be an FQDN the attacker's resolver
+    // can't look up, which is the whole reason -dc-host/auto-resolve exist.
+    let krb5_conf = generate_krb5_conf_from_ccache(&ccache, &config.dc_ip).map_err(|e| {
+        LdapError::Io {
             source: std::io::Error::new(
                 std::io::ErrorKind::Other,
                 format!("Failed to generate krb5.conf: {}", e),
             ),
-        })?;
+        }
+    })?;
 
     let krb5_conf_path =
         create_temp_krb5_conf(&krb5_conf).map_err(|e| LdapError::Io { source: e })?;
@@ -248,7 +281,7 @@ fn perform_kerberos_bind(
 ) -> Result<(), LdapError> {
     debug::debug_log(1, "Using Kerberos authentication");
 
-    validate_kerberos_hostname(&config.dc_ip, config.dc_host.as_deref(), &config.domain)?;
+    validate_kerberos_hostname(config)?;
 
     let gssapi_target = config
         .dc_host
@@ -313,7 +346,7 @@ fn validate_connection(
         .success()?;
 
     if results.is_empty() {
-        println!("[!] Warning: No results returned from the base search.");
+        println!("\x1b[31m[!] Warning: No results returned from the base search.\x1b[0m");
     }
     debug::debug_log(1, "LDAP connection ready");
 
@@ -334,7 +367,7 @@ fn try_connect_starttls(
     debug::debug_log(1, format!("Connecting with STARTTLS: {}", ldap_url));
     let mut ldap = LdapConn::with_settings(settings, &ldap_url)?;
     debug::debug_log(1, "STARTTLS connection established");
-    println!("[+] Connected with STARTTLS");
+    println!("\x1b[32m[+] Connected with STARTTLS\x1b[0m");
 
     #[cfg(any(target_os = "linux", target_os = "windows"))]
     if config.kerberos {
@@ -374,8 +407,8 @@ fn try_secure_connect(
     host: &str,
 ) -> Result<(LdapConn, String), LdapError> {
     println!(
-        "[*] Secure mode: trying LDAPS \
-         on port 636..."
+        "\x1b[33m[*] Secure mode: trying LDAPS \
+         on port 636...\x1b[0m"
     );
 
     let ldaps_settings = LdapConnSettings::new()
@@ -396,7 +429,7 @@ fn try_secure_connect(
 
             match bind_result {
                 Ok(()) => {
-                    println!("[+] Connected with LDAPS");
+                    println!("\x1b[32m[+] Connected with LDAPS\x1b[0m");
                     if config.timestamp_format {
                         println!("[{}]\n", get_timestamp());
                     }
@@ -421,17 +454,17 @@ fn try_secure_connect(
             // LDAPS connection failed (not auth) -
             // safe to try StartTLS
             println!(
-                "[!] LDAPS connection failed: {}",
+                "\x1b[31m[!] LDAPS connection failed: {}\x1b[0m",
                 e
             );
         }
     }
 
-    println!("[*] Trying STARTTLS on port 389...");
+    println!("\x1b[33m[*] Trying STARTTLS on port 389...\x1b[0m");
     match try_connect_starttls(config, host) {
         Ok(result) => return Ok(result),
         Err(e) => {
-            println!("[!] STARTTLS failed: {}", e);
+            println!("\x1b[31m[!] STARTTLS failed: {}\x1b[0m", e);
         }
     }
 
@@ -568,10 +601,10 @@ pub fn ldap_connect(config: &mut LdapConfig) -> Result<(LdapConn, String), LdapE
 
     if config.kerberos {
         println!(
-            "[!] Kerberos GSSAPI is not \
-             supported on macOS with Heimdal."
+            "\x1b[31m[!] Kerberos GSSAPI is not \
+             supported on macOS with Heimdal.\x1b[0m"
         );
-        println!("[!] Options:");
+        println!("\x1b[31m[!] Options:\x1b[0m");
         println!("    1. Use password auth (-u -p)");
         println!("    2. Run IronEye on Linux/Windows");
         println!("    3. Install MIT Kerberos on macOS:");
@@ -611,6 +644,103 @@ pub fn ldap_connect(config: &mut LdapConfig) -> Result<(LdapConn, String), LdapE
     validate_connection(&mut ldap, &search_base, vec!["distinguishedName"])?;
 
     Ok((ldap, search_base))
+}
+
+/// Connect and authenticate via Pass-the-Certificate (Schannel): the client
+/// certificate is presented during the TLS handshake itself, so (unlike
+/// password/Kerberos) the TLS config must be built *before* the connection
+/// is established, not bound afterward. Two transports, since DCs accept the
+/// certificate differently depending on the channel:
+///
+///   * StartTLS/389 -> SASL EXTERNAL bind (classic path, works on most DCs;
+///     some refuse it with authMethodNotSupported).
+///   * LDAPS/636 (`-s`) -> implicit Schannel mapping, no explicit bind -
+///     the DC maps the certificate to an account at the TLS layer itself.
+///
+/// Either way, a RFC 4532 whoami confirms the mapped identity before
+/// treating the connection as ready.
+pub fn ldap_connect_cert(config: &mut LdapConfig) -> Result<(LdapConn, String), LdapError> {
+    let host = config.dc_ip.clone();
+
+    let client_config = cert_auth::build_client_config(
+        config.pfx_path.as_deref(),
+        config.pfx_password.as_deref(),
+        config.cert_path.as_deref(),
+        config.key_path.as_deref(),
+    )
+    .map_err(|e| LdapError::Io {
+        source: std::io::Error::new(std::io::ErrorKind::InvalidInput, e),
+    })?;
+
+    let use_starttls = !config.secure_ldaps;
+    let url = if config.secure_ldaps {
+        format!("ldaps://{}:636", host)
+    } else {
+        format!("ldap://{}:389", host)
+    };
+
+    let settings = LdapConnSettings::new()
+        .set_conn_timeout(Duration::from_secs(CONNECTION_TIMEOUT_SECS))
+        .set_config(client_config)
+        .set_starttls(use_starttls);
+
+    debug::debug_log(1, format!("Connecting with client certificate: {}", url));
+    let mut ldap = LdapConn::with_settings(settings, &url)?;
+    println!(
+        "\x1b[32m[+] TLS established (client certificate presented) via {}\x1b[0m",
+        if use_starttls { "StartTLS" } else { "LDAPS" }
+    );
+
+    if use_starttls {
+        debug::debug_log(1, "Binding with SASL EXTERNAL (Schannel over StartTLS)");
+        if let Err(e) = ldap.sasl_external_bind().and_then(|r| r.success()) {
+            eprintln!("\x1b[31m[!] SASL EXTERNAL bind failed: {}\x1b[0m", e);
+            eprintln!(
+                "\x1b[31m[!] Some DCs refuse SASL EXTERNAL over StartTLS; retry with -s (LDAPS/636).\x1b[0m"
+            );
+            return Err(e);
+        }
+        println!("\x1b[32m[+] SASL EXTERNAL bind OK\x1b[0m");
+    } else {
+        println!(
+            "\x1b[33m[*] LDAPS: relying on implicit Schannel certificate mapping (no bind)\x1b[0m"
+        );
+    }
+
+    let authzid = whoami_cert_identity(&mut ldap)?;
+    println!(
+        "\x1b[32m[+] Pass-the-Certificate OK - Schannel identity: {}\x1b[0m",
+        authzid
+    );
+
+    if config.timestamp_format {
+        println!("[{}]\n", get_timestamp());
+    }
+
+    let search_base = build_search_base(&config.domain);
+    validate_connection(&mut ldap, &search_base, vec!["defaultNamingContext"])?;
+
+    Ok((ldap, search_base))
+}
+
+/// Runs the RFC 4532 whoami extended op and returns the authzId, parsed
+/// defensively so an empty response yields a clean error (usually meaning
+/// the DC never mapped the certificate to an account).
+fn whoami_cert_identity(ldap: &mut LdapConn) -> Result<String, LdapError> {
+    use ldap3::exop::WhoAmI;
+
+    let (exop, _) = ldap.extended(WhoAmI)?.success()?;
+
+    match exop.val {
+        Some(v) if !v.is_empty() => Ok(String::from_utf8_lossy(&v).to_string()),
+        _ => Err(LdapError::Io {
+            source: std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                "certificate not mapped by the DC (empty whoami). Check the cert's SID \
+                 matches the target account, and try -s if StartTLS did not map it.",
+            ),
+        }),
+    }
 }
 
 pub fn escape_filter(input: &str) -> String {
@@ -772,19 +902,25 @@ pub fn reconnect_if_needed(
     }
 
     debug::debug_log(1, "Connection lost, attempting reconnect");
-    println!("[*] Connection lost, reconnecting...");
+    println!("\x1b[33m[*] Connection lost, reconnecting...\x1b[0m");
 
     let _ = ldap.unbind();
 
-    match ldap_connect(config) {
+    let reconnect_result = if config.cert_auth {
+        ldap_connect_cert(config)
+    } else {
+        ldap_connect(config)
+    };
+
+    match reconnect_result {
         Ok((new_ldap, _)) => {
             *ldap = new_ldap;
-            println!("[+] Successfully reconnected");
+            println!("\x1b[32m[+] Successfully reconnected\x1b[0m");
             debug::debug_log(1, "Reconnection successful");
             Ok(())
         }
         Err(e) => {
-            eprintln!("[!] Failed to reconnect: {}", e);
+            eprintln!("\x1b[31m[!] Failed to reconnect: {}\x1b[0m", e);
             debug::debug_log(1, format!("Reconnection failed: {:?}", e));
             Err(e.into())
         }

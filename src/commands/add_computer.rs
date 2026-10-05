@@ -1,5 +1,6 @@
 use crate::help::add_terminal_spacing;
 use crate::ldap::{escape_filter, LdapConfig};
+use crate::retry_with_reconnect;
 use crate::utils::{
     encode_password_for_ad, generate_password, get_domain_name, require_secure_connection,
     validate_password_complexity,
@@ -10,7 +11,7 @@ use std::collections::HashSet;
 pub fn add_computer(
     ldap: &mut LdapConn,
     search_base: &str,
-    config: &LdapConfig,
+    config: &mut LdapConfig,
     computer_name: &str,
     password: Option<&str>,
     target_dn: Option<&str>,
@@ -28,12 +29,14 @@ pub fn add_computer(
     let escaped_name = escape_filter(&computer_name);
     let search_filter = format!("(sAMAccountName={})", escaped_name);
 
-    let (results, _) = match ldap.search(
-        search_base,
-        Scope::Subtree,
-        &search_filter,
-        vec!["distinguishedName"],
-    ) {
+    let (results, _) = match retry_with_reconnect!(ldap, config, {
+        ldap.search(
+            search_base,
+            Scope::Subtree,
+            &search_filter,
+            vec!["distinguishedName"],
+        )
+    }) {
         Ok(res) => match res.success() {
             Ok(r) => r,
             Err(e) => {
@@ -105,19 +108,21 @@ pub fn add_computer(
     let mut name_set = HashSet::new();
     name_set.insert(computer_hostname);
 
-    let result = match ldap.add(
-        &computer_dn,
-        vec![
-            ("objectClass", object_classes),
-            ("sAMAccountName", sam_set),
-            ("userAccountControl", uac_set),
-            ("servicePrincipalName", spn_set),
-            ("dnsHostName", dns_set),
-            ("name", name_set.clone()),
-            ("cn", name_set.clone()),
-            ("displayName", name_set),
-        ],
-    ) {
+    let result = match retry_with_reconnect!(ldap, config, {
+        ldap.add(
+            &computer_dn,
+            vec![
+                ("objectClass", object_classes.clone()),
+                ("sAMAccountName", sam_set.clone()),
+                ("userAccountControl", uac_set.clone()),
+                ("servicePrincipalName", spn_set.clone()),
+                ("dnsHostName", dns_set.clone()),
+                ("name", name_set.clone()),
+                ("cn", name_set.clone()),
+                ("displayName", name_set.clone()),
+            ],
+        )
+    }) {
         Ok(r) => r,
         Err(e) => {
             eprintln!("[!] Failed to create computer account: {}", e);
@@ -149,7 +154,9 @@ pub fn add_computer(
             let mut pwd_set = HashSet::new();
             pwd_set.insert(encoded_pwd);
 
-            match ldap.modify(&computer_dn, vec![Mod::Replace(attr_name, pwd_set)]) {
+            match retry_with_reconnect!(ldap, config, {
+                ldap.modify(&computer_dn, vec![Mod::Replace(attr_name.clone(), pwd_set.clone())])
+            }) {
                 Ok(mod_result) => match mod_result.success() {
                     Ok(_) => {
                         println!("[+] Password set successfully");

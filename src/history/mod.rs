@@ -180,6 +180,20 @@ impl HistoryManager {
     }
 }
 
+/// Bracketed paste (on by default in rustyline) inserts a clipboard's
+/// embedded or trailing newline as a literal character in the line buffer -
+/// rustyline normalizes CRLF to LF but never strips it. Since almost every
+/// copy from a code block or terminal output carries a trailing newline,
+/// pasting a command glues that newline directly onto the last token (e.g.
+/// `-k` becomes `-k\n`), which then fails to match any flag during parsing
+/// and gets written to the history DB verbatim, embedded newline and all.
+/// Collapse newlines to spaces (not delete them outright) so pasted
+/// multi-line input doesn't silently fuse adjacent tokens together, then
+/// trim the ends.
+fn sanitize_pasted_line(line: &str) -> String {
+    line.replace(['\r', '\n'], " ").trim().to_string()
+}
+
 pub struct HistoryEditor {
     manager: HistoryManager,
     module: String,
@@ -208,6 +222,7 @@ impl HistoryEditor {
             .editor
             .readline(prompt)
             .map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?;
+        let line = sanitize_pasted_line(&line);
 
         self.manager.add(&self.module, &line)?;
         self.editor.add_history_entry(&line).ok();
@@ -250,10 +265,38 @@ where
             .editor
             .readline(prompt)
             .map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?;
+        let line = sanitize_pasted_line(&line);
 
         self.manager.add(&self.module, &line)?;
         self.editor.add_history_entry(&line).ok();
 
         Ok(line)
+    }
+}
+
+#[cfg(test)]
+mod sanitize_tests {
+    use super::*;
+
+    #[test]
+    fn strips_trailing_newline_from_pasted_clipboard() {
+        let sanitized =
+            sanitize_pasted_line("-u redheadsecadmin -i 10.3.50.2 -d redheadsec.dev -k\n");
+        assert_eq!(
+            sanitized,
+            "-u redheadsecadmin -i 10.3.50.2 -d redheadsec.dev -k"
+        );
+    }
+
+    #[test]
+    fn collapses_embedded_newline_to_a_space_instead_of_fusing_tokens() {
+        let sanitized = sanitize_pasted_line("-d redheadsec.dev\n-k");
+        assert_eq!(sanitized, "-d redheadsec.dev -k");
+    }
+
+    #[test]
+    fn handles_windows_style_crlf() {
+        let sanitized = sanitize_pasted_line("-k -d redheadsec.dev\r\n");
+        assert_eq!(sanitized, "-k -d redheadsec.dev");
     }
 }

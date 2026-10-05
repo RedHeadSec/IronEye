@@ -1,5 +1,6 @@
 use crate::help::add_terminal_spacing;
-use crate::ldap::escape_filter;
+use crate::ldap::{escape_filter, LdapConfig};
+use crate::retry_with_reconnect;
 use ldap3::{LdapConn, Mod, Scope};
 use std::collections::HashSet;
 
@@ -8,6 +9,7 @@ const UF_ACCOUNT_DISABLE: i32 = 0x0002;
 pub fn disable_account(
     ldap: &mut LdapConn,
     search_base: &str,
+    config: &mut LdapConfig,
     username: &str,
 ) -> Result<(), Box<dyn std::error::Error>> {
     add_terminal_spacing(1);
@@ -15,12 +17,14 @@ pub fn disable_account(
     let escaped_username = escape_filter(username);
     let search_filter = format!("(sAMAccountName={})", escaped_username);
 
-    let (results, _) = match ldap.search(
-        search_base,
-        Scope::Subtree,
-        &search_filter,
-        vec!["distinguishedName", "userAccountControl"],
-    ) {
+    let (results, _) = match retry_with_reconnect!(ldap, config, {
+        ldap.search(
+            search_base,
+            Scope::Subtree,
+            &search_filter,
+            vec!["distinguishedName", "userAccountControl"],
+        )
+    }) {
         Ok(res) => match res.success() {
             Ok(r) => r,
             Err(e) => {
@@ -61,7 +65,9 @@ pub fn disable_account(
     let mut uac_set = HashSet::new();
     uac_set.insert(new_uac_str.as_str());
 
-    match ldap.modify(&user_dn, vec![Mod::Replace("userAccountControl", uac_set)]) {
+    match retry_with_reconnect!(ldap, config, {
+        ldap.modify(&user_dn, vec![Mod::Replace("userAccountControl", uac_set.clone())])
+    }) {
         Ok(result) => match result.success() {
             Ok(_) => {
                 println!("[+] User {} disabled successfully!", username);

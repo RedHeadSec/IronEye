@@ -24,7 +24,7 @@ pub use provider::{get_impersonation_ticket, get_user_tgt};
 mod requesters;
 pub use requesters::{
     request_as_rep, request_regular_tgs, request_s4u2self_tgs, request_tgs,
-    request_tgt,
+    request_tgs_renew, request_tgt,
 };
 
 pub mod stringifier;

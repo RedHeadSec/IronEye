@@ -3,6 +3,8 @@ use crate::commands::ldap_utils::{
     resolve_object_sid,
 };
 use crate::help::add_terminal_spacing;
+use crate::ldap::LdapConfig;
+use crate::retry_with_reconnect;
 use dialoguer::{theme::ColorfulTheme, Select};
 use ldap3::{LdapConn, Mod, Scope};
 use std::collections::HashSet;
@@ -20,6 +22,7 @@ const ACL_REVISION_OBJECT: u8 = 0x04;
 pub fn set_dacl(
     ldap: &mut LdapConn,
     search_base: &str,
+    config: &mut LdapConfig,
     target: &str,
     trustee: &str,
     remove: bool,
@@ -38,21 +41,22 @@ pub fn set_dacl(
 
     let right_name = DACL_OPTIONS[right_idx];
 
-    let trustee_sid = resolve_object_sid(ldap, search_base, trustee)?;
+    let trustee_sid = resolve_object_sid(ldap, search_base, config, trustee)?;
     println!("[*] Trustee SID: {}", crate::ldap::format_sid(&trustee_sid));
 
-    let target_dn = resolve_object_dn(ldap, search_base, target)?;
+    let target_dn = resolve_object_dn(ldap, search_base, config, target)?;
     println!("[*] Target DN: {}", target_dn);
 
-    let (results, _) = ldap
-        .search(
+    let (results, _) = retry_with_reconnect!(ldap, config, {
+        ldap.search(
             &target_dn,
             Scope::Base,
             "(objectClass=*)",
             vec!["nTSecurityDescriptor"],
-        )?
-        .success()
-        .map_err(|e| format!("Failed to query nTSecurityDescriptor: {}", e))?;
+        )
+    })?
+    .success()
+    .map_err(|e| format!("Failed to query nTSecurityDescriptor: {}", e))?;
 
     if results.is_empty() {
         return Err("Target object not found".into());
@@ -92,7 +96,9 @@ pub fn set_dacl(
     let mut sd_set = HashSet::new();
     sd_set.insert(new_sd);
 
-    match ldap.modify(&target_dn, vec![Mod::Replace(attr, sd_set)]) {
+    match retry_with_reconnect!(ldap, config, {
+        ldap.modify(&target_dn, vec![Mod::Replace(attr.clone(), sd_set.clone())])
+    }) {
         Ok(result) => match result.success() {
             Ok(_) => {
                 let action = if remove { "Removed" } else { "Added" };

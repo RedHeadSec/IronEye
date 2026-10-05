@@ -1,12 +1,15 @@
 pub mod acl;
 pub mod args;
 pub mod bofhound;
+pub mod cert_auth;
 pub mod commands;
 pub mod completion;
 pub mod debug;
 pub mod deep_queries;
 pub mod help;
 pub mod history;
+pub mod interrupt;
+pub mod keepalive;
 pub mod kerberos;
 pub mod ldap;
 pub mod ldapping;

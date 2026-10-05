@@ -1,22 +1,25 @@
-use crate::ldap::escape_filter;
+use crate::ldap::{escape_filter, LdapConfig};
+use crate::retry_with_reconnect;
 use ldap3::{LdapConn, Scope};
 
 pub fn resolve_object_dn(
     ldap: &mut LdapConn,
     search_base: &str,
+    config: &mut LdapConfig,
     name: &str,
 ) -> Result<String, Box<dyn std::error::Error>> {
     let escaped = escape_filter(name);
     let filter = format!("(sAMAccountName={})", escaped);
 
-    let (results, _) = ldap
-        .search(
+    let (results, _) = retry_with_reconnect!(ldap, config, {
+        ldap.search(
             search_base,
             Scope::Subtree,
             &filter,
             vec!["distinguishedName"],
-        )?
-        .success()?;
+        )
+    })?
+    .success()?;
 
     if results.is_empty() {
         return Err(format!("Object {} not found", name).into());
@@ -29,14 +32,16 @@ pub fn resolve_object_dn(
 pub fn resolve_object_sid(
     ldap: &mut LdapConn,
     search_base: &str,
+    config: &mut LdapConfig,
     name: &str,
 ) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
     let escaped = escape_filter(name);
     let filter = format!("(sAMAccountName={})", escaped);
 
-    let (results, _) = ldap
-        .search(search_base, Scope::Subtree, &filter, vec!["objectSid"])?
-        .success()?;
+    let (results, _) = retry_with_reconnect!(ldap, config, {
+        ldap.search(search_base, Scope::Subtree, &filter, vec!["objectSid"])
+    })?
+    .success()?;
 
     if results.is_empty() {
         return Err(format!("Object {} not found", name).into());

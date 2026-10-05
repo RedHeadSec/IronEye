@@ -11,7 +11,10 @@ Native Cerberos library for Kerberos protocol attacks
 
 use cerbero_lib;
 use dialoguer::{theme::ColorfulTheme, Confirm, Select};
-use ironeye::{args, commands, debug, help, kerberos, ldap, ldapping, spray};
+use ironeye::{
+    args, commands, debug, help, interrupt, keepalive, kerberos, ldap, ldapping,
+    spray,
+};
 use std::net::IpAddr;
 
 use args::{calculate_kerberos_hash, get_cerbero_args, CerberoCommand};
@@ -19,13 +22,8 @@ use args::{
     get_connect_arguments, get_spray_arguments, get_userenum_arguments, run_nested_query_menu,
 };
 use help::*;
+use ironeye::track_history;
 use spray::*;
-
-pub fn track_history(module: &str, command: &str) {
-    if let Ok(manager) = ironeye::history::HistoryManager::new() {
-        let _ = manager.add(module, command);
-    }
-}
 
 const MAIN_OPTIONS: &[&str] = &[
     "Connect (LDAP Reconissance)",
@@ -33,6 +31,7 @@ const MAIN_OPTIONS: &[&str] = &[
     "User Enumeration (LDAP Ping Method)",
     "Password Spray (LDAP)",
     "Generate KRB5 Conf",
+    "OPSEC Settings",
     "History Management",
     "Debug Settings",
     "Version",
@@ -57,8 +56,30 @@ const CMD_OPTIONS: &[&str] = &[
     "Back",
 ];
 
+/// Resolve a menu `interact()` result into an optional choice.
+///
+/// A Ctrl-C arrives here as an `Interrupted` error (dialoguer re-raises SIGINT,
+/// which our handler catches instead of terminating). We map that - and any
+/// other menu error - to `None`, meaning "no selection / go back", so Ctrl-C at
+/// a menu returns to the parent menu rather than panicking the process.
+fn menu_choice<T>(result: std::io::Result<T>) -> Option<T> {
+    match result {
+        Ok(value) => Some(value),
+        Err(ref e) if e.kind() == std::io::ErrorKind::Interrupted => None,
+        Err(e) => {
+            eprintln!("[!] Menu error: {}", e);
+            None
+        }
+    }
+}
+
 fn main() {
     println!("{}", LOGO);
+
+    // Install the SIGINT handler so Ctrl-C cancels the current action and
+    // returns to the menu instead of killing IronEye. Termination is then a
+    // deliberate choice via the "Exit" menu option.
+    interrupt::init();
 
     let debug_level = debug::get_debug_level();
     if debug_level > 0 {
@@ -67,12 +88,24 @@ fn main() {
 
     loop {
         add_terminal_spacing(1);
-        let selection = Select::with_theme(&ColorfulTheme::default())
-            .with_prompt("Choose an option")
-            .default(0)
-            .items(MAIN_OPTIONS)
-            .interact()
-            .expect("Failed to display menu");
+        let selection = match menu_choice(
+            Select::with_theme(&ColorfulTheme::default())
+                .with_prompt("Choose an option")
+                .default(0)
+                .items(MAIN_OPTIONS)
+                .interact(),
+        ) {
+            Some(s) => s,
+            // Ctrl-C at the top-level menu: offer a deliberate exit, otherwise
+            // redraw the menu.
+            None => {
+                interrupt::reset();
+                if confirm_exit() {
+                    break;
+                }
+                continue;
+            }
+        };
 
         match selection {
             0 => handle_connect(),
@@ -80,11 +113,12 @@ fn main() {
             2 => handle_user_enumeration(),
             3 => handle_password_spray(),
             4 => handle_krb5_config(),
-            5 => handle_history_management(),
-            6 => handle_debug_settings(),
-            7 => println!("v{}", env!("CARGO_PKG_VERSION")),
-            8 => show_help_main(),
-            9 => {
+            5 => handle_opsec_settings(),
+            6 => handle_history_management(),
+            7 => handle_debug_settings(),
+            8 => println!("v{}", env!("CARGO_PKG_VERSION")),
+            9 => show_help_main(),
+            10 => {
                 if confirm_exit() {
                     break;
                 }
@@ -100,7 +134,13 @@ fn handle_connect() {
         return;
     };
 
-    let (ldap, search_base) = match ldap::ldap_connect(&mut ldap_config) {
+    let connect_result = if ldap_config.cert_auth {
+        ldap::ldap_connect_cert(&mut ldap_config)
+    } else {
+        ldap::ldap_connect(&mut ldap_config)
+    };
+
+    let (ldap, search_base) = match connect_result {
         Ok(conn) => conn,
         Err(e) => {
             eprintln!("[!] Failed to connect: {}", e);
@@ -112,6 +152,11 @@ fn handle_connect() {
                      -d {} -i <dc>",
                     ldap_config.domain
                 );
+            } else if ldap_config.cert_auth {
+                eprintln!(
+                    "[!] Some DCs refuse SASL EXTERNAL over StartTLS; \
+                     retry with -s to use LDAPS/636 instead."
+                );
             }
             return;
         }
@@ -121,53 +166,98 @@ fn handle_connect() {
     run_command_menu(&mut ldap_config, ldap, search_base);
 }
 
+fn dispatch_command(
+    cmd_selection: usize,
+    ldap: &mut ldap3::LdapConn,
+    search_base: &str,
+    ldap_config: &mut ldap::LdapConfig,
+) -> Result<(), Box<dyn std::error::Error>> {
+    match cmd_selection {
+        0 => handle_get_sid_guid(ldap, search_base, ldap_config),
+        1 => handle_from_sid_guid(ldap, search_base, ldap_config),
+        2 => commands::get_dcs::get_domain_controllers(ldap, search_base, ldap_config),
+        3 => commands::getspns::get_service_principal_names(ldap, search_base, ldap_config),
+        4 => handle_get_acedacl(ldap, search_base, ldap_config),
+        5 => commands::maq::get_machine_account_quota(ldap, search_base, ldap_config),
+        6 => handle_net_commands(ldap, search_base, ldap_config),
+        7 => commands::getpasspol::get_password_policy(ldap, search_base, ldap_config),
+        8 => run_nested_query_menu(ldap, search_base, ldap_config).map_err(|e| e.into()),
+        9 => commands::customldap::custom_ldap_query(ldap, search_base, ldap_config),
+        10 => commands::whoami::whoami(ldap, search_base, ldap_config),
+        11 => commands::actions::run_actions_menu(ldap, search_base, ldap_config),
+        12 => {
+            show_help_connect();
+            Ok(())
+        }
+        _ => Ok(()),
+    }
+}
+
 fn run_command_menu(
     ldap_config: &mut ldap::LdapConfig,
-    mut ldap: ldap3::LdapConn,
+    ldap: ldap3::LdapConn,
     search_base: String,
 ) {
-    loop {
-        let prompt = help::get_prompt_string(
-            &ldap_config.username,
-            &ldap_config.domain,
-            ldap_config.secure_ldaps,
-            ldap_config.kerberos,
-            &ldap_config.dc_ip,
-        );
+    // Shared with the background keep-alive thread (see `keepalive::spawn`):
+    // it only ever `try_lock`s, so it never blocks or interleaves with a
+    // command dispatched below. Held for the whole dispatch call, released
+    // before the next blocking `Select::interact()`, which is exactly the
+    // idle window the keep-alive exists to cover.
+    let ldap = std::sync::Arc::new(std::sync::Mutex::new(ldap));
+    let _keepalive = keepalive::spawn(std::sync::Arc::clone(&ldap));
 
-        let cmd_selection = Select::with_theme(&ColorfulTheme::default())
-            .with_prompt(prompt)
-            .items(CMD_OPTIONS)
-            .default(0)
-            .interact()
-            .expect("Failed to display command menu");
+    loop {
+        let prompt = if ldap_config.cert_auth {
+            help::get_cert_prompt_string(
+                &ldap_config.domain,
+                ldap_config.secure_ldaps,
+                &ldap_config.dc_ip,
+            )
+        } else {
+            help::get_prompt_string(
+                &ldap_config.username,
+                &ldap_config.domain,
+                ldap_config.secure_ldaps,
+                ldap_config.kerberos,
+                &ldap_config.dc_ip,
+            )
+        };
+
+        let cmd_selection = match menu_choice(
+            Select::with_theme(&ColorfulTheme::default())
+                .with_prompt(prompt)
+                .items(CMD_OPTIONS)
+                .default(0)
+                .interact(),
+        ) {
+            Some(s) => s,
+            // Ctrl-C: leave the session and return to the main menu.
+            None => {
+                interrupt::reset();
+                break;
+            }
+        };
 
         add_terminal_spacing(2);
 
-        let result = match cmd_selection {
-            0 => handle_get_sid_guid(&mut ldap, &search_base, ldap_config),
-            1 => handle_from_sid_guid(&mut ldap, &search_base, ldap_config),
-            2 => commands::get_dcs::get_domain_controllers(&mut ldap, &search_base, ldap_config),
-            3 => {
-                commands::getspns::get_service_principal_names(&mut ldap, &search_base, ldap_config)
-            }
-            4 => handle_get_acedacl(&mut ldap, &search_base, ldap_config),
-            5 => commands::maq::get_machine_account_quota(&mut ldap, &search_base, ldap_config),
-            6 => handle_net_commands(&mut ldap, &search_base, ldap_config),
-            7 => commands::getpasspol::get_password_policy(&mut ldap, &search_base, ldap_config),
-            8 => run_nested_query_menu(&mut ldap, &search_base, ldap_config).map_err(|e| e.into()),
-            9 => commands::customldap::custom_ldap_query(&mut ldap, &search_base, ldap_config),
-            10 => commands::whoami::whoami(&mut ldap, &search_base, ldap_config),
-            11 => commands::actions::run_actions_menu(&mut ldap, &search_base, ldap_config),
-            12 => {
-                show_help_connect();
-                Ok(())
-            }
-            13 => break,
-            _ => unreachable!(),
+        if cmd_selection == 13 {
+            break;
+        }
+
+        let result = {
+            let mut guard = ldap.lock().expect("ldap mutex poisoned");
+            dispatch_command(cmd_selection, &mut guard, &search_base, ldap_config)
         };
 
         if let Err(e) = result {
+            // A Ctrl-C in one of the command's prompts: treat it as cancelling
+            // that command and quietly return to the menu, not as an error.
+            if interrupt::is_cancellation(e.as_ref()) {
+                interrupt::reset();
+                println!("[*] Cancelled; returning to menu.");
+                continue;
+            }
+
             let error_msg = e.to_string();
             eprintln!("Error: {}", e);
 
@@ -184,7 +274,7 @@ fn run_command_menu(
                     match attempt_reconnect(ldap_config) {
                         Ok(new_ldap) => {
                             println!("[+] Successfully reconnected to LDAP server.\n");
-                            ldap = new_ldap;
+                            *ldap.lock().expect("ldap mutex poisoned") = new_ldap;
 
                             let retry = Confirm::with_theme(&ColorfulTheme::default())
                                 .with_prompt("Retry last command?")
@@ -193,51 +283,14 @@ fn run_command_menu(
                                 .unwrap_or(false);
 
                             if retry {
-                                let retry_result = match cmd_selection {
-                                    0 => handle_get_sid_guid(&mut ldap, &search_base, ldap_config),
-                                    1 => handle_from_sid_guid(&mut ldap, &search_base, ldap_config),
-                                    2 => commands::get_dcs::get_domain_controllers(
-                                        &mut ldap,
+                                let retry_result = {
+                                    let mut guard = ldap.lock().expect("ldap mutex poisoned");
+                                    dispatch_command(
+                                        cmd_selection,
+                                        &mut guard,
                                         &search_base,
                                         ldap_config,
-                                    ),
-                                    3 => commands::getspns::get_service_principal_names(
-                                        &mut ldap,
-                                        &search_base,
-                                        ldap_config,
-                                    ),
-                                    4 => handle_get_acedacl(&mut ldap, &search_base, ldap_config),
-                                    5 => commands::maq::get_machine_account_quota(
-                                        &mut ldap,
-                                        &search_base,
-                                        ldap_config,
-                                    ),
-                                    6 => handle_net_commands(&mut ldap, &search_base, ldap_config),
-                                    7 => commands::getpasspol::get_password_policy(
-                                        &mut ldap,
-                                        &search_base,
-                                        ldap_config,
-                                    ),
-                                    8 => {
-                                        run_nested_query_menu(&mut ldap, &search_base, ldap_config)
-                                            .map_err(|e| e.into())
-                                    }
-                                    9 => commands::customldap::custom_ldap_query(
-                                        &mut ldap,
-                                        &search_base,
-                                        ldap_config,
-                                    ),
-                                    10 => commands::whoami::whoami(
-                                        &mut ldap,
-                                        &search_base,
-                                        ldap_config,
-                                    ),
-                                    11 => commands::actions::run_actions_menu(
-                                        &mut ldap,
-                                        &search_base,
-                                        ldap_config,
-                                    ),
-                                    _ => Ok(()),
+                                    )
                                 };
 
                                 if let Err(e) = retry_result {
@@ -340,6 +393,47 @@ fn handle_net_commands(
     Ok(())
 }
 
+fn parse_dc_ip(dc_ip: &str) -> Option<IpAddr> {
+    match dc_ip.parse() {
+        Ok(ip) => Some(ip),
+        Err(_) => {
+            eprintln!("[!] Invalid IP address: {}", dc_ip);
+            None
+        }
+    }
+}
+
+fn report_cerbero_result(result: cerbero_lib::Result<()>) {
+    match result {
+        Ok(_) => println!("\x1b[32m[+] Success\x1b[0m"),
+        Err(e) => {
+            eprintln!("\x1b[31m[!] Error: {}\x1b[0m", e);
+            kerberos::clock_skew::check_and_offer_fix(&e);
+        }
+    }
+}
+
+fn output_hashes(hashes: &[String], output: Option<String>) {
+    if let Some(output_file) = output {
+        use std::fs::File;
+        use std::io::Write;
+
+        match File::create(&output_file) {
+            Ok(mut file) => {
+                for hash in hashes {
+                    writeln!(file, "{}", hash).ok();
+                }
+                println!("\x1b[32m[+] Hashes saved to: {}\x1b[0m", output_file);
+            }
+            Err(e) => eprintln!("\x1b[31m[!] Failed to write output: {}\x1b[0m", e),
+        }
+    } else {
+        for hash in hashes {
+            println!("{}", hash);
+        }
+    }
+}
+
 fn handle_cerbero() {
     let debug_level = debug::get_debug_level();
     kerberos::set_cerbero_verbosity(debug_level);
@@ -360,12 +454,8 @@ fn handle_cerbero() {
             hash,
         } => {
             track_history("ask-tgt", &format!("{}@{}", username, domain));
-            let ip: IpAddr = match dc_ip.parse() {
-                Ok(ip) => ip,
-                Err(_) => {
-                    eprintln!("[!] Invalid IP address: {}", dc_ip);
-                    return;
-                }
+            let Some(ip) = parse_dc_ip(&dc_ip) else {
+                return;
             };
 
             let mut ops = kerberos::KerberosOps::new(&domain, ip);
@@ -376,10 +466,7 @@ fn handle_cerbero() {
                 ops.ask_tgt(&username, &password, &output)
             };
 
-            match result {
-                Ok(_) => println!("\x1b[32m[+] Success\x1b[0m"),
-                Err(e) => eprintln!("\x1b[31m[!] Error: {}\x1b[0m", e),
-            }
+            report_cerbero_result(result);
         }
         CerberoCommand::AskTgs {
             username,
@@ -393,20 +480,13 @@ fn handle_cerbero() {
                 "ask-tgs",
                 &format!("{}@{} -> {}", username, domain, service),
             );
-            let ip: IpAddr = match dc_ip.parse() {
-                Ok(ip) => ip,
-                Err(_) => {
-                    eprintln!("[!] Invalid IP address: {}", dc_ip);
-                    return;
-                }
+            let Some(ip) = parse_dc_ip(&dc_ip) else {
+                return;
             };
 
             let mut ops = kerberos::KerberosOps::new(&domain, ip);
 
-            match ops.ask_tgs(&username, &password, &service, &output) {
-                Ok(_) => println!("\x1b[32m[+] Success\x1b[0m"),
-                Err(e) => eprintln!("\x1b[31m[!] Error: {}\x1b[0m", e),
-            }
+            report_cerbero_result(ops.ask_tgs(&username, &password, &service, &output));
         }
         CerberoCommand::AskS4u2self {
             username,
@@ -416,20 +496,13 @@ fn handle_cerbero() {
             impersonate,
             output,
         } => {
-            let ip: IpAddr = match dc_ip.parse() {
-                Ok(ip) => ip,
-                Err(_) => {
-                    eprintln!("[!] Invalid IP address: {}", dc_ip);
-                    return;
-                }
+            let Some(ip) = parse_dc_ip(&dc_ip) else {
+                return;
             };
 
             let mut ops = kerberos::KerberosOps::new(&domain, ip);
 
-            match ops.ask_s4u2self(&username, &password, &impersonate, &output) {
-                Ok(_) => println!("\x1b[32m[+] Success\x1b[0m"),
-                Err(e) => eprintln!("\x1b[31m[!] Error: {}\x1b[0m", e),
-            }
+            report_cerbero_result(ops.ask_s4u2self(&username, &password, &impersonate, &output));
         }
         CerberoCommand::AskS4u2proxy {
             username,
@@ -440,20 +513,19 @@ fn handle_cerbero() {
             service,
             output,
         } => {
-            let ip: IpAddr = match dc_ip.parse() {
-                Ok(ip) => ip,
-                Err(_) => {
-                    eprintln!("[!] Invalid IP address: {}", dc_ip);
-                    return;
-                }
+            let Some(ip) = parse_dc_ip(&dc_ip) else {
+                return;
             };
 
             let mut ops = kerberos::KerberosOps::new(&domain, ip);
 
-            match ops.ask_s4u2proxy(&username, &password, &impersonate, &service, &output) {
-                Ok(_) => println!("\x1b[32m[+] Success\x1b[0m"),
-                Err(e) => eprintln!("\x1b[31m[!] Error: {}\x1b[0m", e),
-            }
+            report_cerbero_result(ops.ask_s4u2proxy(
+                &username,
+                &password,
+                &impersonate,
+                &service,
+                &output,
+            ));
         }
         CerberoCommand::AsrepRoast {
             domain,
@@ -465,12 +537,8 @@ fn handle_cerbero() {
             track_history("asrep-roast", &format!("{}", target));
             use std::path::Path;
 
-            let ip: IpAddr = match dc_ip.parse() {
-                Ok(ip) => ip,
-                Err(_) => {
-                    eprintln!("[!] Invalid IP address: {}", dc_ip);
-                    return;
-                }
+            let Some(ip) = parse_dc_ip(&dc_ip) else {
+                return;
             };
 
             let ops = kerberos::KerberosOps::new(&domain, ip);
@@ -486,6 +554,7 @@ fn handle_cerbero() {
                     Ok(h) => h,
                     Err(e) => {
                         eprintln!("\x1b[31m[!] Error: {}\x1b[0m", e);
+                        kerberos::clock_skew::check_and_offer_fix(&e);
                         return;
                     }
                 }
@@ -494,29 +563,13 @@ fn handle_cerbero() {
                     Ok(h) => vec![h],
                     Err(e) => {
                         eprintln!("\x1b[31m[!] Error: {}\x1b[0m", e);
+                        kerberos::clock_skew::check_and_offer_fix(&e);
                         return;
                     }
                 }
             };
 
-            if let Some(output_file) = output {
-                use std::fs::File;
-                use std::io::Write;
-
-                match File::create(&output_file) {
-                    Ok(mut file) => {
-                        for hash in &hashes {
-                            writeln!(file, "{}", hash).ok();
-                        }
-                        println!("\x1b[32m[+] Hashes saved to: {}\x1b[0m", output_file);
-                    }
-                    Err(e) => eprintln!("\x1b[31m[!] Failed to write output: {}\x1b[0m", e),
-                }
-            } else {
-                for hash in &hashes {
-                    println!("{}", hash);
-                }
-            }
+            output_hashes(&hashes, output);
 
             if !hashes.is_empty() {
                 println!("\x1b[32m[+] AS-REP roasting complete\x1b[0m");
@@ -534,12 +587,8 @@ fn handle_cerbero() {
             track_history("kerberoast", &format!("{}", target));
             use std::path::Path;
 
-            let ip: IpAddr = match dc_ip.parse() {
-                Ok(ip) => ip,
-                Err(_) => {
-                    eprintln!("[!] Invalid IP address: {}", dc_ip);
-                    return;
-                }
+            let Some(ip) = parse_dc_ip(&dc_ip) else {
+                return;
             };
 
             let mut ops = kerberos::KerberosOps::new(&domain, ip);
@@ -555,6 +604,7 @@ fn handle_cerbero() {
                     Ok(h) => h,
                     Err(e) => {
                         eprintln!("\x1b[31m[!] Error: {}\x1b[0m", e);
+                        kerberos::clock_skew::check_and_offer_fix(&e);
                         return;
                     }
                 }
@@ -570,29 +620,13 @@ fn handle_cerbero() {
                     Ok(h) => vec![h],
                     Err(e) => {
                         eprintln!("\x1b[31m[!] Error: {}\x1b[0m", e);
+                        kerberos::clock_skew::check_and_offer_fix(&e);
                         return;
                     }
                 }
             };
 
-            if let Some(output_file) = output {
-                use std::fs::File;
-                use std::io::Write;
-
-                match File::create(&output_file) {
-                    Ok(mut file) => {
-                        for hash in &hashes {
-                            writeln!(file, "{}", hash).ok();
-                        }
-                        println!("\x1b[32m[+] Hashes saved to: {}\x1b[0m", output_file);
-                    }
-                    Err(e) => eprintln!("\x1b[31m[!] Failed to write output: {}\x1b[0m", e),
-                }
-            } else {
-                for hash in &hashes {
-                    println!("{}", hash);
-                }
-            }
+            output_hashes(&hashes, output);
 
             if !hashes.is_empty() {
                 println!(
@@ -600,6 +634,29 @@ fn handle_cerbero() {
                     hashes.len()
                 );
             }
+        }
+        CerberoCommand::Renew {
+            input,
+            output,
+            domain,
+            dc_ip,
+            monitor,
+        } => {
+            track_history("renew", &format!("{} (monitor={})", input, monitor));
+
+            let Some(ip) = parse_dc_ip(&dc_ip) else {
+                return;
+            };
+
+            let mut ops = kerberos::KerberosOps::new(&domain, ip);
+
+            let result = if monitor {
+                ops.monitor_renew(&input, &output)
+            } else {
+                ops.renew_ticket(&input, &output)
+            };
+
+            report_cerbero_result(result);
         }
         CerberoCommand::Convert {
             input,
@@ -903,6 +960,211 @@ fn handle_krb5_config() {
     }
 }
 
+fn handle_opsec_settings() {
+    const OPSEC_MENU_OPTIONS: &[&str] = &[
+        "Set clock skew tolerance",
+        "Toggle noaddresses (ticket stealth)",
+        "Set encryption types",
+        "Toggle DNS lookups (kdc/realm)",
+        "Set ticket/renew lifetime",
+        "Toggle connection keep-alive",
+        "Set keep-alive interval",
+        "Reset to defaults",
+        "Back to Main Menu",
+    ];
+
+    loop {
+        add_terminal_spacing(1);
+        println!("=== Current OPSEC Profile ===");
+        print_opsec_profile(&kerberos::opsec::get());
+        add_terminal_spacing(1);
+
+        let selection = match menu_choice(
+            Select::with_theme(&ColorfulTheme::default())
+                .with_prompt("OPSEC Settings")
+                .items(OPSEC_MENU_OPTIONS)
+                .default(0)
+                .interact(),
+        ) {
+            Some(s) => s,
+            // Ctrl-C: back to the main menu.
+            None => {
+                interrupt::reset();
+                break;
+            }
+        };
+
+        match selection {
+            0 => set_opsec_clock_skew(),
+            1 => toggle_opsec_noaddresses(),
+            2 => set_opsec_enctypes(),
+            3 => toggle_opsec_dns_lookups(),
+            4 => set_opsec_lifetimes(),
+            5 => toggle_opsec_keep_alive(),
+            6 => set_opsec_keep_alive_interval(),
+            7 => {
+                kerberos::opsec::reset_to_defaults();
+                println!("[+] OPSEC profile reset to defaults");
+            }
+            8 => break,
+            _ => unreachable!(),
+        }
+    }
+}
+
+fn print_opsec_profile(profile: &kerberos::opsec::OpsecProfile) {
+    println!("  [Kerberos / krb5.conf]");
+    println!("  Clock skew tolerance : {}s", profile.clock_skew_secs);
+    println!("  noaddresses          : {}", profile.noaddresses);
+    println!("  Encryption types     : {}", profile.enctypes.label());
+    println!(
+        "  DNS lookups          : kdc={}, realm={}",
+        profile.dns_lookup_kdc, profile.dns_lookup_realm
+    );
+    println!("  Ticket lifetime      : {}h", profile.ticket_lifetime_hours);
+    println!("  Renew lifetime       : {}d", profile.renew_lifetime_days);
+
+    println!();
+    println!("  [LDAP session]");
+    println!(
+        "  Connection keep-alive: {}{}",
+        if profile.keep_alive_enabled {
+            "enabled"
+        } else {
+            "disabled"
+        },
+        if profile.keep_alive_enabled {
+            format!(" (every {}s)", profile.keep_alive_interval_secs)
+        } else {
+            String::new()
+        }
+    );
+}
+
+fn toggle_opsec_keep_alive() {
+    let mut profile = kerberos::opsec::get();
+    profile.keep_alive_enabled = !profile.keep_alive_enabled;
+    println!(
+        "[+] Connection keep-alive {}",
+        if profile.keep_alive_enabled {
+            "enabled"
+        } else {
+            "disabled"
+        }
+    );
+    kerberos::opsec::set(profile);
+}
+
+fn set_opsec_keep_alive_interval() {
+    let input = read_input("Enter keep-alive interval in seconds (default 240): ");
+    match input.parse::<u32>() {
+        Ok(secs) if secs > 0 => {
+            let mut profile = kerberos::opsec::get();
+            profile.keep_alive_interval_secs = secs;
+            kerberos::opsec::set(profile);
+            println!("[+] Keep-alive interval set to {}s", secs);
+        }
+        _ => eprintln!("[!] Invalid number, no change made"),
+    }
+}
+
+fn set_opsec_clock_skew() {
+    let input = read_input("Enter clock skew tolerance in seconds (default 300): ");
+    match input.parse::<u32>() {
+        Ok(secs) => {
+            let mut profile = kerberos::opsec::get();
+            profile.clock_skew_secs = secs;
+            kerberos::opsec::set(profile);
+            println!("[+] Clock skew tolerance set to {}s", secs);
+        }
+        Err(_) => eprintln!("[!] Invalid number, no change made"),
+    }
+}
+
+fn toggle_opsec_noaddresses() {
+    let mut profile = kerberos::opsec::get();
+    profile.noaddresses = !profile.noaddresses;
+    println!("[+] noaddresses set to {}", profile.noaddresses);
+    kerberos::opsec::set(profile);
+}
+
+fn set_opsec_enctypes() {
+    use kerberos::opsec::EncTypes;
+
+    const ENCTYPE_OPTIONS: &[&str] = &[
+        "Negotiate (library default)",
+        "AES only",
+        "AES + RC4",
+        "RC4 only (legacy/roasting)",
+    ];
+
+    let selection = match menu_choice(
+        Select::with_theme(&ColorfulTheme::default())
+            .with_prompt("Select encryption type policy")
+            .items(ENCTYPE_OPTIONS)
+            .default(0)
+            .interact(),
+    ) {
+        Some(s) => s,
+        // Ctrl-C: cancel without changing the policy.
+        None => {
+            interrupt::reset();
+            println!("[*] Cancelled; encryption type unchanged.");
+            return;
+        }
+    };
+
+    let enctypes = match selection {
+        0 => EncTypes::Negotiate,
+        1 => EncTypes::AesOnly,
+        2 => EncTypes::AesAndRc4,
+        3 => EncTypes::Rc4Only,
+        _ => unreachable!(),
+    };
+
+    let mut profile = kerberos::opsec::get();
+    profile.enctypes = enctypes;
+    kerberos::opsec::set(profile);
+    println!("[+] Encryption type policy updated: {}", enctypes.label());
+}
+
+fn toggle_opsec_dns_lookups() {
+    let mut profile = kerberos::opsec::get();
+    let enable = Confirm::with_theme(&ColorfulTheme::default())
+        .with_prompt("Allow DNS lookups for KDC/realm discovery? (adds DNS SRV queries)")
+        .default(profile.dns_lookup_kdc)
+        .interact()
+        .unwrap_or(profile.dns_lookup_kdc);
+
+    profile.dns_lookup_kdc = enable;
+    profile.dns_lookup_realm = enable;
+    kerberos::opsec::set(profile);
+    println!("[+] DNS lookups set to {}", enable);
+}
+
+fn set_opsec_lifetimes() {
+    let mut profile = kerberos::opsec::get();
+
+    let ticket_input = read_input("Ticket lifetime in hours (blank to keep current): ");
+    if !ticket_input.is_empty() {
+        match ticket_input.parse::<u32>() {
+            Ok(hours) => profile.ticket_lifetime_hours = hours,
+            Err(_) => eprintln!("[!] Invalid ticket lifetime, keeping current value"),
+        }
+    }
+
+    let renew_input = read_input("Renew lifetime in days (blank to keep current): ");
+    if !renew_input.is_empty() {
+        match renew_input.parse::<u32>() {
+            Ok(days) => profile.renew_lifetime_days = days,
+            Err(_) => eprintln!("[!] Invalid renew lifetime, keeping current value"),
+        }
+    }
+
+    kerberos::opsec::set(profile);
+    println!("[+] Ticket lifetimes updated");
+}
+
 fn handle_history_management() {
     use ironeye::history::HistoryManager;
 
@@ -919,12 +1181,20 @@ fn handle_history_management() {
 
     loop {
         add_terminal_spacing(1);
-        let selection = Select::with_theme(&ColorfulTheme::default())
-            .with_prompt("History Management")
-            .items(HISTORY_OPTIONS)
-            .default(0)
-            .interact()
-            .expect("Failed to display history menu");
+        let selection = match menu_choice(
+            Select::with_theme(&ColorfulTheme::default())
+                .with_prompt("History Management")
+                .items(HISTORY_OPTIONS)
+                .default(0)
+                .interact(),
+        ) {
+            Some(s) => s,
+            // Ctrl-C: back to the main menu.
+            None => {
+                interrupt::reset();
+                break;
+            }
+        };
 
         let manager = match HistoryManager::new() {
             Ok(m) => m,
@@ -1094,12 +1364,20 @@ fn handle_debug_settings() {
         let current = debug::get_debug_level();
         let prompt = format!("Debug Settings (Current Level: {})", current);
 
-        let selection = Select::with_theme(&ColorfulTheme::default())
-            .with_prompt(prompt)
-            .items(DEBUG_OPTIONS)
-            .default(0)
-            .interact()
-            .expect("Failed to display debug menu");
+        let selection = match menu_choice(
+            Select::with_theme(&ColorfulTheme::default())
+                .with_prompt(prompt)
+                .items(DEBUG_OPTIONS)
+                .default(0)
+                .interact(),
+        ) {
+            Some(s) => s,
+            // Ctrl-C: back to the main menu.
+            None => {
+                interrupt::reset();
+                break;
+            }
+        };
 
         match selection {
             0 => {
@@ -1175,7 +1453,13 @@ fn attempt_reconnect(
             std::thread::sleep(std::time::Duration::from_secs(2));
         }
 
-        match ldap::ldap_connect(ldap_config) {
+        let reconnect_result = if ldap_config.cert_auth {
+            ldap::ldap_connect_cert(ldap_config)
+        } else {
+            ldap::ldap_connect(ldap_config)
+        };
+
+        match reconnect_result {
             Ok((conn, _)) => return Ok(conn),
             Err(e) => {
                 if attempts < max_attempts {

@@ -1,4 +1,5 @@
 use crate::history::HistoryEditor;
+use crate::kerberos::krb5conf::render_libdefaults;
 use chrono::Local;
 use std::error::Error;
 use std::fs::File;
@@ -10,10 +11,13 @@ pub fn show_help_main() {
     println!("2. 'Cerberos' - Kerberos Attacks using a library conversion of https://github.com/zer1t0/cerbero");
     println!("3. 'User Enumeration' - Enumerate valid users via ldap ping in an internal domain.");
     println!("4. 'Password Spray' - Perform Password Spraying against the internal domain.");
-    println!("5. 'Generate KRB Conf' -  Generate a KRB5 configuration file.");
-    println!("6. 'Version' - Shows Version.");
-    println!("7. 'Help' - Shows this help message.");
-    println!("8. 'Exit' - Exits the program.");
+    println!("5. 'Generate KRB5 Conf' - Generate a KRB5 configuration file.");
+    println!("6. 'OPSEC Settings' - Configure clock skew, enctypes, DNS lookups, and ticket lifetimes applied to every krb5.conf IronEye generates.");
+    println!("7. 'History Management' - View, search, and manage command history.");
+    println!("8. 'Debug Settings' - Adjust IronEye/Kerberos logging verbosity.");
+    println!("9. 'Version' - Shows Version.");
+    println!("10. 'Help' - Shows this help message.");
+    println!("11. 'Exit' - Exits the program.");
 }
 
 pub fn show_help_connect() {
@@ -89,6 +93,11 @@ pub fn get_prompt_string(
     format!("{}@{}\n({}:{})", username, domain, server, protocol)
 }
 
+pub fn get_cert_prompt_string(domain: &str, secure_ldaps: bool, server: &str) -> String {
+    let protocol = if secure_ldaps { "ldaps+cert" } else { "ldap+cert" };
+    format!("{}@{}\n({}:{})", "cert", domain, server, protocol)
+}
+
 pub fn read_file_lines(filename: &str) -> Result<Vec<String>, Box<dyn Error>> {
     let file = File::open(filename)?;
     let reader = BufReader::new(file);
@@ -154,11 +163,9 @@ pub fn generate_conf_files(args: &ConfGenArgs) -> std::io::Result<()> {
     println!("{}", line.trim_end());
 
     if args.is_dc {
+        let realm = args.domain.to_uppercase();
         let data = format!(
-            r#"[libdefaults]
-    dns_lookup_kdc = false
-    dns_lookup_realm = false
-    default_realm = {realm}
+            r#"{libdefaults}
 
 [realms]
     {realm} = {{
@@ -171,7 +178,8 @@ pub fn generate_conf_files(args: &ConfGenArgs) -> std::io::Result<()> {
     .{domain} = {realm}
     {domain} = {realm}
 "#,
-            realm = args.domain.to_uppercase(),
+            libdefaults = render_libdefaults(&realm),
+            realm = realm,
             hostname = args.hostname.to_lowercase(),
             domain = args.domain
         );

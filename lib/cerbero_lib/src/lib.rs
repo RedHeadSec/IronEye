@@ -36,6 +36,7 @@ pub use core::{
     request_regular_tgs,
     request_s4u2self_tgs,
     request_tgs,
+    request_tgs_renew,
     request_tgt,
     save_file_creds,
     save_file_krb_cred,
