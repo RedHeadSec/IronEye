@@ -83,9 +83,21 @@ Choose a module from the main menu and follow the prompts. A typical first run c
 ```
 -u tywin.lannister -p powerkingftw135 -d SEVENKINGDOMS.LOCAL -i 10.2.10.10
 ```
+**Password:**
 
-<img width="824" height="265" alt="image" src="https://github.com/user-attachments/assets/235fe1a6-2510-49b3-b34f-9e7a5c8b4d97" />
+<img width="806" height="641" alt="image" src="https://github.com/user-attachments/assets/a08e90ca-4ec3-4478-be22-77ead8a5bf24" />
 
+**Kerberos:**
+
+<img width="829" height="770" alt="image" src="https://github.com/user-attachments/assets/1e9fcff1-a5ad-4eb1-8d83-f09ee416d361" />
+
+**PFX:**
+
+<img width="819" height="710" alt="image" src="https://github.com/user-attachments/assets/33860c90-0481-4934-847b-4203f409ab59" />
+
+**Certificate (Schannel):**
+
+<img width="840" height="713" alt="image" src="https://github.com/user-attachments/assets/b5212e5b-d515-4274-9c18-302368ddbc75" />
 
 ---
 
@@ -102,6 +114,7 @@ The **Connect** module authenticates to a domain controller and drops you into a
 From the session menu you can run SID/GUID lookups, enumerate domain controllers and SPNs, inspect ACLs/DACLs, check the machine account quota and password policy, run `net`-style queries, issue custom LDAP queries, and open the Deep Queries and Actions sub-menus.
 
 <img width="468" height="413" alt="image" src="https://github.com/user-attachments/assets/2f046b5b-94f9-4e3c-bdbb-56a2bf3b9143" />
+
 
 
 ### Deep Queries
