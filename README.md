@@ -2,8 +2,6 @@
 
 **IronEye** is a Rust-based Active Directory enumeration and attack toolkit for internal network assessments. It gives penetration testers, red teamers, and security researchers a single interactive console for LDAP reconnaissance, Kerberos protocol attacks, credential operations, and Active Directory object manipulation.
 
-All functionality is driven through a menu-based terminal UI — no need to memorize dozens of flags — while still supporting scriptable arguments for the authentication and attack modules.
-
 > ⚠️ **Authorized use only.** IronEye is built for sanctioned penetration testing, red-team engagements, and security research. Only use it against systems you own or are explicitly authorized to test.
 
 <img width="1071" height="536" alt="image" src="https://github.com/user-attachments/assets/db3d3e30-6f04-4fec-bd17-67af39b065ba" />
