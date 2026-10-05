@@ -183,7 +183,7 @@ The **OPSEC Settings** menu controls how noisy IronEye is on the wire: encryptio
 IronEye is intended for legal, authorized security testing and education only. The authors and contributors accept no liability for misuse or for any damage caused by this tool. You are responsible for complying with all applicable laws and for obtaining proper authorization before testing any system.
 
 ## Credits
-https://gitlab.com/Zer1i0/cerbero
+[https://gitlab.com/Zer1i0/cerbero](https://github.com/zer1t0/cerbero)
 
 https://github.com/g0h4n/PassTheCert-rs
 
