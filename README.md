@@ -6,8 +6,8 @@ All functionality is driven through a menu-based terminal UI — no need to memo
 
 > ⚠️ **Authorized use only.** IronEye is built for sanctioned penetration testing, red-team engagements, and security research. Only use it against systems you own or are explicitly authorized to test.
 
-<!-- SCREENSHOT: Banner / main menu on launch -->
-![IronEye main menu](docs/screenshots/main-menu.png)
+<img width="1071" height="536" alt="image" src="https://github.com/user-attachments/assets/db3d3e30-6f04-4fec-bd17-67af39b065ba" />
+
 
 ---
 
@@ -31,7 +31,7 @@ All functionality is driven through a menu-based terminal UI — no need to memo
 
 ## Features
 
-- **Flexible authentication** — password, NTLM hash, Kerberos (ccache / PtT), and Pass-the-Certificate (Schannel).
+- **Flexible authentication** — password, Kerberos (ccache / PtT), and Pass-the-Certificate (Schannel).
 - **LDAP reconnaissance** — SID/GUID lookups, domain controllers, SPNs, ACL/DACL inspection, machine account quota, password policy, and arbitrary custom LDAP queries.
 - **Deep queries** — bulk enumeration of users, computers, groups, trusts, GPOs, OUs, subnets, delegations, PKI (ADCS), SCCM, SCOM, and DNS, plus hunts for fileshares, SQL servers, and WSUS.
 - **Active Directory actions** — create/delete users and computers, group membership changes, UAC flags, password resets, RBCD, DACL ACEs, ownership changes, and ADIDNS management.
@@ -86,8 +86,8 @@ Choose a module from the main menu and follow the prompts. A typical first run c
 -u tywin.lannister -p powerkingftw135 -d SEVENKINGDOMS.LOCAL -i 10.2.10.10
 ```
 
-<!-- SCREENSHOT: Connect prompt + successful LDAP bind -->
-![LDAP connect](docs/screenshots/connect.png)
+<img width="824" height="265" alt="image" src="https://github.com/user-attachments/assets/235fe1a6-2510-49b3-b34f-9e7a5c8b4d97" />
+
 
 ---
 
@@ -103,22 +103,22 @@ The **Connect** module authenticates to a domain controller and drops you into a
 
 From the session menu you can run SID/GUID lookups, enumerate domain controllers and SPNs, inspect ACLs/DACLs, check the machine account quota and password policy, run `net`-style queries, issue custom LDAP queries, and open the Deep Queries and Actions sub-menus.
 
-<!-- SCREENSHOT: Connect session command menu -->
-![Connect command menu](docs/screenshots/connect-menu.png)
+<img width="468" height="413" alt="image" src="https://github.com/user-attachments/assets/2f046b5b-94f9-4e3c-bdbb-56a2bf3b9143" />
+
 
 ### Deep Queries
 
 Bulk enumeration across the directory: users, computers, groups, trusts, subnets, GPOs, OUs, delegations, service connection points, and PKI/SCCM/SCOM infrastructure — plus a DNS dump and targeted hunts for fileshares, SQL servers, and WSUS servers.
 
-<!-- SCREENSHOT: Deep Queries menu + sample output -->
-![Deep queries](docs/screenshots/deep-queries.png)
+<img width="388" height="546" alt="image" src="https://github.com/user-attachments/assets/97f2a17f-5211-41f1-ad87-e3fd1e19fb9a" />
+
 
 ### Actions — AD Object Manipulation
 
 Write operations against the directory (subject to your privileges): add/delete computers and users, manage SPNs and group membership, enable/disable accounts, reset passwords, edit UAC flags, configure RBCD, add/remove DACL ACEs, change object ownership, manage ADIDNS records, and perform Shadow Credentials operations.
 
-<!-- SCREENSHOT: Actions menu -->
-![Actions menu](docs/screenshots/actions.png)
+<img width="469" height="638" alt="image" src="https://github.com/user-attachments/assets/e735401b-97c4-4d2c-abd3-2c2f28683b7c" />
+
 
 ### Cerberos — Kerberos Attacks
 
@@ -141,17 +141,19 @@ Example — renew a ticket you captured but have no credentials for, and keep it
 ```
 renew -t ticket.ccache -i 192.168.1.10 --monitor
 ```
+<img width="1596" height="681" alt="image" src="https://github.com/user-attachments/assets/3b6790be-d8a5-45d9-bc3d-08fc60de51c2" />
 
-<!-- SCREENSHOT: Cerberos module prompt + ticket request -->
-![Cerberos module](docs/screenshots/cerberos.png)
 
 ### User Enumeration & Password Spray
 
 - **User Enumeration** uses the LDAP-ping method to validate usernames without authenticating.
 - **Password Spray** tests one or more passwords across a user list over LDAP, with OPSEC-aware pacing.
 
-<!-- SCREENSHOT: Password spray results -->
-![Password spray](docs/screenshots/spray.png)
+<img width="1249" height="253" alt="image" src="https://github.com/user-attachments/assets/b5beeddc-5fb1-4f91-8d83-8be49410af91" />
+
+
+<img width="1211" height="394" alt="image" src="https://github.com/user-attachments/assets/bacfc759-b85a-4564-a17b-e119d3aa473c" />
+
 
 ### Supporting Tools
 
@@ -165,8 +167,8 @@ renew -t ticket.ccache -i 192.168.1.10 --monitor
 
 The **OPSEC Settings** menu controls how noisy IronEye is on the wire: encryption-type policy, clock skew, address flags in Kerberos requests, DNS lookups for KDC/realm discovery, ticket lifetimes, and a background LDAP keep-alive that prevents idle-connection drops (and the extra authentication events a reconnect would generate).
 
-<!-- SCREENSHOT: OPSEC settings menu -->
-![OPSEC settings](docs/screenshots/opsec.png)
+<img width="607" height="590" alt="image" src="https://github.com/user-attachments/assets/cef1a9df-165f-4755-94f6-30ed02f9bef8" />
+
 
 ---
 
@@ -181,3 +183,8 @@ The **OPSEC Settings** menu controls how noisy IronEye is on the wire: encryptio
 ## Disclaimer
 
 IronEye is intended for legal, authorized security testing and education only. The authors and contributors accept no liability for misuse or for any damage caused by this tool. You are responsible for complying with all applicable laws and for obtaining proper authorization before testing any system.
+
+## Credits
+https://gitlab.com/Zer1i0/cerbero
+https://github.com/g0h4n/PassTheCert-rs
+
