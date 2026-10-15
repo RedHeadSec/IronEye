@@ -1,0 +1,76 @@
+name: release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Tag to release (e.g. v3.2.0). Must already exist in the repo.'
+        required: true
+
+permissions:
+  contents: write  # needed to create the release and upload assets
+
+jobs:
+  release:
+    name: Build and publish Linux x86_64
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # libgssapi-sys needs an MIT Kerberos install (libkrb5-dev) and libclang
+      # for its bindgen-based build.rs.
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libkrb5-dev libclang-dev clang pkg-config
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo registry and target
+        uses: Swatinem/rust-cache@v2
+
+      - name: Resolve release tag
+        id: tag
+        run: |
+          if [ -n "${{ inputs.tag }}" ]; then
+            echo "tag=${{ inputs.tag }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "tag=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
+          fi
+
+      # Add --locked once you commit Cargo.lock (recommended for release builds).
+      - name: Build
+        env:
+          LIBGSSAPI_IMPL: mit
+        run: cargo build --release --verbose
+
+      - name: Package
+        run: |
+          STAGE="ironeye-${{ steps.tag.outputs.tag }}-x86_64-linux-gnu"
+          mkdir -p "$STAGE"
+          cp target/release/ironeye "$STAGE/"
+          [ -f README.md ] && cp README.md "$STAGE/"
+          for f in LICENSE LICENSE.md LICENSE.txt; do
+            [ -f "$f" ] && cp "$f" "$STAGE/"
+          done
+          tar -czf "$STAGE.tar.gz" "$STAGE"
+          sha256sum "$STAGE.tar.gz" > "$STAGE.tar.gz.sha256"
+          echo "ARCHIVE=$STAGE.tar.gz" >> "$GITHUB_ENV"
+          echo "SHA256=$STAGE.tar.gz.sha256" >> "$GITHUB_ENV"
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.tag.outputs.tag }}
+          name: IronEye ${{ steps.tag.outputs.tag }}
+          generate_release_notes: true
+          draft: false
+          prerelease: ${{ contains(steps.tag.outputs.tag, '-') }}
+          files: |
+            ${{ env.ARCHIVE }}
+            ${{ env.SHA256 }}
