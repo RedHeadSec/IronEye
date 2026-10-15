@@ -1,0 +1,44 @@
+name: build
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # libgssapi-sys needs:
+      #   - a Kerberos GSSAPI implementation (MIT via libkrb5-dev, or Heimdal)
+      #   - libclang for its bindgen-based build.rs
+      # pkg-config is pre-installed on ubuntu-latest but we assert it anyway.
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libkrb5-dev \
+            libclang-dev \
+            clang \
+            pkg-config
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo registry and target
+        uses: Swatinem/rust-cache@v2
+
+      - name: Build
+        env:
+          LIBGSSAPI_IMPL: mit
+        run: cargo build --release --verbose
+
+      - name: Upload binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: ironeye-linux-x86_64
+          path: target/release/ironeye
+          if-no-files-found: error
