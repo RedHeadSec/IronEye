@@ -105,9 +105,6 @@ pub fn add_computer(
     let mut dns_set = HashSet::new();
     dns_set.insert(dns_hostname.as_str());
 
-    let mut name_set = HashSet::new();
-    name_set.insert(computer_hostname);
-
     let result = match retry_with_reconnect!(ldap, config, {
         ldap.add(
             &computer_dn,
@@ -117,9 +114,6 @@ pub fn add_computer(
                 ("userAccountControl", uac_set.clone()),
                 ("servicePrincipalName", spn_set.clone()),
                 ("dnsHostName", dns_set.clone()),
-                ("name", name_set.clone()),
-                ("cn", name_set.clone()),
-                ("displayName", name_set.clone()),
             ],
         )
     }) {
