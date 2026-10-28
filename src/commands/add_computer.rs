@@ -5,7 +5,7 @@ use crate::utils::{
     encode_password_for_ad, generate_password, get_domain_name, require_secure_connection,
     validate_password_complexity,
 };
-use ldap3::{LdapConn, Mod, Scope};
+use ldap3::{LdapConn, Scope};
 use std::collections::HashSet;
 
 pub fn add_computer(
@@ -83,37 +83,47 @@ pub fn add_computer(
     let spn4 = format!("RestrictedKrbHost/{}.{}", computer_hostname, domain);
     let dns_hostname = format!("{}.{}", computer_hostname, domain);
 
-    let mut object_classes = HashSet::new();
-    object_classes.insert("top");
-    object_classes.insert("person");
-    object_classes.insert("organizationalPerson");
-    object_classes.insert("user");
-    object_classes.insert("computer");
+    if !validate_password_complexity(&password) {
+        println!("[!] Warning: Password may not meet AD complexity requirements");
+        println!("[!] AD typically requires: 8+ chars, uppercase, lowercase, number, special char");
+    }
+    let encoded_pwd = encode_password_for_ad(&password);
 
-    let mut sam_set = HashSet::new();
-    sam_set.insert(computer_name.as_str());
+    let mut object_classes: HashSet<Vec<u8>> = HashSet::new();
+    object_classes.insert(b"top".to_vec());
+    object_classes.insert(b"person".to_vec());
+    object_classes.insert(b"organizationalPerson".to_vec());
+    object_classes.insert(b"user".to_vec());
+    object_classes.insert(b"computer".to_vec());
 
-    let mut uac_set = HashSet::new();
-    uac_set.insert("4096");
+    let mut sam_set: HashSet<Vec<u8>> = HashSet::new();
+    sam_set.insert(computer_name.as_bytes().to_vec());
 
-    let mut spn_set = HashSet::new();
-    spn_set.insert(spn1.as_str());
-    spn_set.insert(spn2.as_str());
-    spn_set.insert(spn3.as_str());
-    spn_set.insert(spn4.as_str());
+    let mut uac_set: HashSet<Vec<u8>> = HashSet::new();
+    uac_set.insert(b"4096".to_vec());
 
-    let mut dns_set = HashSet::new();
-    dns_set.insert(dns_hostname.as_str());
+    let mut spn_set: HashSet<Vec<u8>> = HashSet::new();
+    spn_set.insert(spn1.as_bytes().to_vec());
+    spn_set.insert(spn2.as_bytes().to_vec());
+    spn_set.insert(spn3.as_bytes().to_vec());
+    spn_set.insert(spn4.as_bytes().to_vec());
+
+    let mut dns_set: HashSet<Vec<u8>> = HashSet::new();
+    dns_set.insert(dns_hostname.as_bytes().to_vec());
+
+    let mut pwd_set: HashSet<Vec<u8>> = HashSet::new();
+    pwd_set.insert(encoded_pwd);
 
     let result = match retry_with_reconnect!(ldap, config, {
         ldap.add(
             &computer_dn,
             vec![
-                ("objectClass", object_classes.clone()),
-                ("sAMAccountName", sam_set.clone()),
-                ("userAccountControl", uac_set.clone()),
-                ("servicePrincipalName", spn_set.clone()),
-                ("dnsHostName", dns_set.clone()),
+                (b"objectClass".to_vec(), object_classes.clone()),
+                (b"sAMAccountName".to_vec(), sam_set.clone()),
+                (b"userAccountControl".to_vec(), uac_set.clone()),
+                (b"servicePrincipalName".to_vec(), spn_set.clone()),
+                (b"dnsHostName".to_vec(), dns_set.clone()),
+                (b"unicodePwd".to_vec(), pwd_set.clone()),
             ],
         )
     }) {
@@ -136,63 +146,9 @@ pub fn add_computer(
                 "[+] Computer {} added successfully to {}",
                 computer_name, computer_dn
             );
-
-            if !validate_password_complexity(&password) {
-                println!("[!] Warning: Password may not meet AD complexity requirements");
-                println!("[!] AD typically requires: 8+ chars, uppercase, lowercase, number, special char");
-                println!("[*] Attempting to set password anyway...");
-            }
-
-            let encoded_pwd = encode_password_for_ad(&password);
-            let attr_name = b"unicodePwd".to_vec();
-            let mut pwd_set = HashSet::new();
-            pwd_set.insert(encoded_pwd);
-
-            match retry_with_reconnect!(ldap, config, {
-                ldap.modify(&computer_dn, vec![Mod::Replace(attr_name.clone(), pwd_set.clone())])
-            }) {
-                Ok(mod_result) => match mod_result.success() {
-                    Ok(_) => {
-                        println!("[+] Password set successfully");
-                        println!("[*] Password: \"{}\"", password);
-                        add_terminal_spacing(1);
-                        Ok(())
-                    }
-                    Err(e) => {
-                        eprintln!("[!] Failed to set password: {}", e);
-                        let error_string = format!("{:?}", e);
-                        if error_string.contains("unwillingToPerform")
-                            || error_string.contains("53")
-                        {
-                            eprintln!("[!] Server unwilling to perform password operation");
-                            eprintln!("[!] Common causes:");
-                            eprintln!("    - Password doesn't meet complexity requirements");
-                            eprintln!("    - Requires: 8+ chars, uppercase, lowercase, number, special char");
-                            eprintln!("    - Connection may not be properly secured");
-                        } else if error_string.contains("constraintViolation")
-                            || error_string.contains("19")
-                        {
-                            eprintln!(
-                                "[!] Password doesn't meet complexity requirements or policy"
-                            );
-                            eprintln!("[!] AD requires: 8+ chars, uppercase, lowercase, number, special char");
-                        } else if error_string.contains("insufficientAccessRights")
-                            || error_string.contains("50")
-                        {
-                            eprintln!("[!] Insufficient permissions to set password");
-                        }
-                        println!("[*] Generated password: \"{}\"", password);
-                        add_terminal_spacing(1);
-                        Ok(())
-                    }
-                },
-                Err(e) => {
-                    eprintln!("[!] Failed to execute password modify operation: {}", e);
-                    println!("[*] Generated password: \"{}\"", password);
-                    add_terminal_spacing(1);
-                    Ok(())
-                }
-            }
+            println!("[*] Password: \"{}\"", password);
+            add_terminal_spacing(1);
+            Ok(())
         }
         Err(e) => {
             eprintln!("[!] Failed to add computer account: {}", e);
@@ -203,7 +159,11 @@ pub fn add_computer(
             } else if error_string.contains("entryAlreadyExists") || error_string.contains("68") {
                 eprintln!("[!] Computer account already exists");
             } else if error_string.contains("unwillingToPerform") || error_string.contains("53") {
-                eprintln!("[!] Server unwilling to perform - check machine account quota");
+                eprintln!("[!] Server unwilling to perform");
+                eprintln!("[!] Common causes:");
+                eprintln!("    - Machine account quota exceeded (default is 10 per user)");
+                eprintln!("    - Domain policy restricts computer account creation");
+                eprintln!("    - Password doesn't meet complexity requirements");
             } else if error_string.contains("invalidDNSyntax") || error_string.contains("34") {
                 eprintln!("[!] Invalid DN syntax - check the target DN path");
             } else if error_string.contains("constraintViolation") || error_string.contains("19") {
