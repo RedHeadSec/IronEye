@@ -33,7 +33,8 @@ output_*
 # Rust specific
 /target/
 **/*.rs.bk
-Cargo.lock
+# Cargo.lock is committed for binary crates (reproducible builds).
+# Keep it out of .gitignore - a cargo-lib convention leaked here previously.
 
 # IDE specific
 .idea/

@@ -179,6 +179,34 @@ impl AclParser {
                 });
             }
 
+            // Targeted servicePrincipalName write - the SPN-flipping primitive
+            // used for targeted-Kerberoasting a privileged user. Previously
+            // the GUID wasn't in the mapping table so the "Principals that can
+            // modify the SPN attribute" category always printed "No entries".
+            if (object_type == "user" || object_type == "computer")
+                && self.can_write_property(ace, &self.guids.service_principal_name)
+                && !sid.ends_with("-512")
+            {
+                relations.push(AclRelation {
+                    sid: sid.to_string(),
+                    right_name: "WriteSPN".to_string(),
+                    inherited: is_inherited,
+                });
+            }
+
+            // Targeted msDS-KeyCredentialLink write - the shadow-credentials
+            // primitive. Same story: without the GUID mapping, operators
+            // couldn't see pre-attack reachability for this attack.
+            if (object_type == "user" || object_type == "computer")
+                && self.can_write_property(ace, &self.guids.key_credential_link)
+            {
+                relations.push(AclRelation {
+                    sid: sid.to_string(),
+                    right_name: "WriteKeyCredentialLink".to_string(),
+                    inherited: is_inherited,
+                });
+            }
+
             if object_type == "organizational-unit"
                 && self.can_write_property(ace, &self.guids.write_gp_link)
             {

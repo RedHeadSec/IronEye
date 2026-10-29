@@ -8,6 +8,7 @@ use std::fs::File;
 use std::io::{self, BufRead, Write};
 use std::net::TcpStream;
 use std::path::Path;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::{Duration, Instant};
@@ -124,45 +125,48 @@ impl RateLimiter {
     }
 
     fn wait_if_needed(&self) {
+        // Reserve this thread's slot *before* dropping the lock. The old
+        // code noted the required sleep, released the lock, slept, then took
+        // the lock again - so N threads would all read the same `last_time`,
+        // release, sleep in parallel, and fire in a burst. By stamping
+        // "last" to the future target wake time while still holding the lock,
+        // the next thread computes its target against ours and serializes.
         let mut last = self
             .last_attempt
             .lock()
             .expect("Rate limiter mutex poisoned");
 
-        if let Some(last_time) = *last {
-            let elapsed = last_time.elapsed();
-            let base_delay = Duration::from_millis(self.delay_ms);
-            let jitter = if self.jitter_ms > 0 {
-                Duration::from_millis(fastrand::u32(0..=self.jitter_ms) as u64)
-            } else {
-                Duration::from_millis(0)
-            };
-
-            let total_delay = base_delay + jitter;
-
-            if elapsed < total_delay {
-                let sleep_time = total_delay - elapsed;
-                debug::debug_log(
-                    2,
-                    format!(
-                        "Rate limiting: sleeping for {:?} ({}s base + {}ms jitter)",
-                        sleep_time,
-                        self.delay_ms / 1000,
-                        jitter.as_millis()
-                    ),
-                );
-                drop(last);
-                thread::sleep(sleep_time);
-                let mut last = self
-                    .last_attempt
-                    .lock()
-                    .expect("Rate limiter mutex poisoned");
-                *last = Some(Instant::now());
-            } else {
-                *last = Some(Instant::now());
-            }
+        let now = Instant::now();
+        let base_delay = Duration::from_millis(self.delay_ms);
+        let jitter = if self.jitter_ms > 0 {
+            Duration::from_millis(fastrand::u32(0..=self.jitter_ms) as u64)
         } else {
-            *last = Some(Instant::now());
+            Duration::from_millis(0)
+        };
+        let total_delay = base_delay + jitter;
+
+        let (sleep_for, target) = match *last {
+            Some(prev) if prev + total_delay > now => {
+                let target = prev + total_delay;
+                (target - now, target)
+            }
+            _ => (Duration::from_millis(0), now),
+        };
+
+        *last = Some(target);
+        drop(last);
+
+        if !sleep_for.is_zero() {
+            debug::debug_log(
+                2,
+                format!(
+                    "Rate limiting: sleeping for {:?} ({}s base + {}ms jitter)",
+                    sleep_for,
+                    self.delay_ms / 1000,
+                    jitter.as_millis()
+                ),
+            );
+            thread::sleep(sleep_for);
         }
     }
 }
@@ -447,6 +451,13 @@ fn process_password_batch_realtime(
     }
     drop(work_tx);
 
+    // Shared stop flag so EVERY worker halts on success / signing-required /
+    // user "n" at the lockout prompt. The old code just broke out of the
+    // consumer loop, which left the pool draining the entire remaining queue
+    // (and continuing to attempt against the already-flagged user) before
+    // the function returned.
+    let stop_flag = Arc::new(AtomicBool::new(false));
+
     let work_rx = Arc::new(Mutex::new(work_rx));
     let mut handles = Vec::new();
     let actual_threads = std::cmp::min(config.threads as usize, 50);
@@ -464,6 +475,7 @@ fn process_password_batch_realtime(
         let result_tx_clone = result_tx.clone();
         let config_clone = config.clone();
         let rate_limiter_clone = Arc::clone(&rate_limiter);
+        let stop_flag_clone = Arc::clone(&stop_flag);
 
         let handle = thread::spawn(move || {
             debug::debug_log(2, format!("Worker thread {} started", thread_id));
@@ -472,7 +484,13 @@ fn process_password_batch_realtime(
                 let rx = work_rx_clone.lock().expect("Work receiver mutex poisoned");
                 rx.recv()
             } {
+                if stop_flag_clone.load(Ordering::SeqCst) {
+                    break;
+                }
                 rate_limiter_clone.wait_if_needed();
+                if stop_flag_clone.load(Ordering::SeqCst) {
+                    break;
+                }
 
                 debug::debug_log(
                     2,
@@ -517,15 +535,31 @@ fn process_password_batch_realtime(
         if let Err(e) = process_attempt_result_realtime(config, &result, state.clone()) {
             eprintln!("[!] Error processing result: {}", e);
             early_stop = true;
+            stop_flag.store(true, Ordering::SeqCst);
             break;
         }
 
         if matches!(result.result, LoginResult::Success) && !config.continue_on_success {
             early_stop = true;
+            stop_flag.store(true, Ordering::SeqCst);
+            break;
+        }
+
+        if matches!(result.result, LoginResult::LdapSigningRequired) {
+            early_stop = true;
+            stop_flag.store(true, Ordering::SeqCst);
             break;
         }
 
         results_processed += 1;
+    }
+
+    // Make sure workers aren't blocked waiting on an empty queue once we've
+    // decided to stop - drain the receiver so recv() returns an error.
+    if early_stop {
+        if let Ok(rx) = work_rx.lock() {
+            while rx.try_recv().is_ok() {}
+        }
     }
 
     for handle in handles {
@@ -663,9 +697,24 @@ fn parse_ldap_error(error: &dyn Error) -> LoginResult {
     }
 
     if let Some(sub_error_code) = extract_ldap_sub_error(&error_str) {
+        // AD sub-error reference (NTSTATUS -> AcceptSecurityContext text):
+        //   525 user not found
+        //   52e invalid credentials
+        //   530 not permitted to logon at this time        -> password OK
+        //   531 not permitted to logon at this workstation -> password OK
+        //   532 password expired                           -> password OK
+        //   533 account disabled                           -> password OK
+        //   701 account expired                            -> password OK
+        //   773 user must reset password                   -> password OK
+        //   775 account locked
+        // All of 530/531/532/533/701/773 require a valid password to be
+        // reported in the first place - the DC only emits them once auth
+        // succeeded and policy still blocked the logon. Treating them as
+        // InvalidCredentials makes real finds disappear from the output and
+        // counts them toward the lockout threshold.
         match sub_error_code.as_str() {
             "775" => LoginResult::AccountLocked,
-            "533" => LoginResult::AccountDisabled,
+            "533" | "530" | "531" | "532" | "701" | "773" => LoginResult::Success,
             _ => LoginResult::InvalidCredentials,
         }
     } else {

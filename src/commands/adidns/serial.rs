@@ -60,6 +60,61 @@ fn build_soa_query(zone: &str) -> Vec<u8> {
     packet
 }
 
+/// Decode an SOA record starting at `offset` which points at TYPE. Shared
+/// between the two compression-pointer branches in parse_soa_serial so the
+/// recovery path doesn't have to re-walk the same byte stream.
+fn parse_soa_after_type(
+    response: &[u8],
+    mut offset: usize,
+) -> Result<u32, Box<dyn std::error::Error>> {
+    offset += 8;
+    let rdlength = u16::from_be_bytes([response[offset], response[offset + 1]]) as usize;
+    offset += 2;
+
+    if offset + rdlength > response.len() {
+        return Err("Invalid RDATA length".into());
+    }
+
+    let rdata_start = offset;
+    while offset < response.len() && offset < rdata_start + rdlength {
+        let len = response[offset] as usize;
+        if len == 0 {
+            offset += 1;
+            break;
+        }
+        if len >= 192 {
+            offset += 2;
+            break;
+        }
+        offset += len + 1;
+    }
+
+    while offset < response.len() && offset < rdata_start + rdlength {
+        let len = response[offset] as usize;
+        if len == 0 {
+            offset += 1;
+            break;
+        }
+        if len >= 192 {
+            offset += 2;
+            break;
+        }
+        offset += len + 1;
+    }
+
+    if offset + 4 > response.len() {
+        return Err("Cannot read serial number from SOA record".into());
+    }
+
+    let serial = u32::from_be_bytes([
+        response[offset],
+        response[offset + 1],
+        response[offset + 2],
+        response[offset + 3],
+    ]);
+    Ok(serial)
+}
+
 fn parse_soa_serial(response: &[u8]) -> Result<u32, Box<dyn std::error::Error>> {
     if response.len() < 12 {
         return Err("Invalid DNS response: too short".into());
@@ -90,7 +145,14 @@ fn parse_soa_serial(response: &[u8]) -> Result<u32, Box<dyn std::error::Error>> 
     while offset < response.len() && response[offset] != 0 {
         let len = response[offset] as usize;
         if len >= 192 {
+            // Compression pointer is a 2-byte field; after consuming it the
+            // cursor must be left AFTER those 2 bytes - the previous code
+            // added +2 then fell through to the final `offset += 1` that
+            // follows the "if response[offset] == 0" branch, double-counting
+            // and eating the first TYPE byte so the SOA path always failed.
             offset += 2;
+            // No zero terminator follows a compression pointer, so skip
+            // the "trailing zero" step for this name.
             break;
         }
         offset += len + 1;
@@ -103,8 +165,23 @@ fn parse_soa_serial(response: &[u8]) -> Result<u32, Box<dyn std::error::Error>> 
     while offset < response.len() && response[offset] != 0 {
         let len = response[offset] as usize;
         if len >= 192 {
+            // Same compression-pointer fix as above: don't fall through to
+            // the "zero terminator" branch after advancing past the pointer.
             offset += 2;
-            break;
+            if offset + 10 > response.len() {
+                return Err("Invalid SOA record format".into());
+            }
+            let record_type_here =
+                u16::from_be_bytes([response[offset], response[offset + 1]]);
+            if record_type_here != 6 {
+                return Err(format!(
+                    "Response is not an SOA record (got type {}, expected 6 SOA)",
+                    record_type_here
+                )
+                .into());
+            }
+            // Jump straight to post-TYPE parsing further down.
+            return parse_soa_after_type(response, offset);
         }
         offset += len + 1;
     }

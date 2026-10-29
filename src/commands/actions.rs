@@ -2,7 +2,7 @@ use crate::commands::{
     add_computer, add_user, add_user_to_group, adidns,
     del_computer, del_object, del_user,
     del_user_from_group, disable_account,
-    enable_account, set_dacl, set_owner, set_password,
+    enable_account, set_dacl, set_dontreqpreauth, set_owner, set_password,
     set_rbcd, set_spn, set_uac, shadow_creds,
 };
 use crate::help::{add_terminal_spacing, read_input, read_input_with_history};
@@ -22,6 +22,8 @@ const ACTIONS_OPTIONS: &[&str] = &[
     "Disable Account",
     "Set Password",
     "Set UAC Flags",
+    "Set DONT_REQ_PREAUTH (AS-REP Roast)",
+    "Clear DONT_REQ_PREAUTH",
     "Delete Object",
     "Set RBCD",
     "Remove RBCD",
@@ -60,18 +62,20 @@ pub fn run_actions_menu(
             8 => handle_disable_account(ldap, search_base, ldap_config)?,
             9 => handle_set_password(ldap, search_base, ldap_config)?,
             10 => handle_set_uac(ldap, search_base, ldap_config)?,
-            11 => handle_del_object(ldap, search_base, ldap_config)?,
-            12 => handle_set_rbcd(ldap, search_base, ldap_config, false)?,
-            13 => handle_set_rbcd(ldap, search_base, ldap_config, true)?,
-            14 => handle_set_dacl(ldap, search_base, ldap_config, false)?,
-            15 => handle_set_dacl(ldap, search_base, ldap_config, true)?,
-            16 => handle_set_owner(ldap, search_base, ldap_config)?,
-            17 => handle_dns_management(ldap, search_base, ldap_config)?,
-            18 => handle_shadow_credentials(ldap, search_base, ldap_config)?,
-            19 => {
+            11 => handle_set_dontreqpreauth(ldap, search_base, true)?,
+            12 => handle_set_dontreqpreauth(ldap, search_base, false)?,
+            13 => handle_del_object(ldap, search_base, ldap_config)?,
+            14 => handle_set_rbcd(ldap, search_base, ldap_config, false)?,
+            15 => handle_set_rbcd(ldap, search_base, ldap_config, true)?,
+            16 => handle_set_dacl(ldap, search_base, ldap_config, false)?,
+            17 => handle_set_dacl(ldap, search_base, ldap_config, true)?,
+            18 => handle_set_owner(ldap, search_base, ldap_config)?,
+            19 => handle_dns_management(ldap, search_base, ldap_config)?,
+            20 => handle_shadow_credentials(ldap, search_base, ldap_config)?,
+            21 => {
                 handle_reconnect_starttls(ldap, ldap_config)?;
             }
-            20 => break,
+            22 => break,
             _ => unreachable!(),
         }
     }
@@ -377,6 +381,27 @@ fn handle_set_uac(
     crate::track_history("actions", &format!("set-uac {}", target));
 
     set_uac::set_uac(ldap, search_base, ldap_config, &target)
+}
+
+fn handle_set_dontreqpreauth(
+    ldap: &mut LdapConn,
+    search_base: &str,
+    enable: bool,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let verb = if enable { "set" } else { "clear" };
+    let Some(target) = read_input_with_history(
+        &format!("Enter target to {} DONT_REQ_PREAUTH on (sAMAccountName): ", verb),
+        "actions",
+    ) else {
+        return Ok(());
+    };
+    if target.is_empty() {
+        println!("[!] Target is required");
+        return Ok(());
+    }
+    crate::track_history("actions", &format!("set-dontreqpreauth {} {}", verb, target));
+
+    set_dontreqpreauth::set_dontreqpreauth(ldap, search_base, &target, enable)
 }
 
 fn handle_del_object(

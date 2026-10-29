@@ -54,19 +54,29 @@ fn calculate_rc4_hash(password: &str) -> String {
     bytes_to_hex(&key)
 }
 
+/// AD's Kerberos salt (MS-KILE 3.1.1.2) is uppercase REALM concatenated
+/// with the case-preserved sAMAccountName - e.g. `CONTOSO.LOCALadministrator`,
+/// NOT `CONTOSO.LOCALadministrator` lowercased. kerberos_crypto's helper
+/// lowercases the user portion, so for any mixed-case account (every modern
+/// corporate convention like `Jane.Doe`) the AES keys we produced here were
+/// wrong while the printed salt string was still the correct one.
+fn ad_salt(realm: &str, name: &str) -> String {
+    format!("{}{}", realm.to_uppercase(), name)
+}
+
 fn calculate_aes128_hash(password: &str, user: &KrbUser) -> String {
     use kerberos_crypto::{aes_hmac_sha1, AesSizes};
 
-    let salt = aes_hmac_sha1::generate_salt(&user.realm, &user.name);
-    let key = aes_hmac_sha1::generate_key_from_string(password, &salt, &AesSizes::Aes128);
+    let salt = ad_salt(&user.realm, &user.name);
+    let key = aes_hmac_sha1::generate_key_from_string(password, salt.as_bytes(), &AesSizes::Aes128);
     bytes_to_hex(&key)
 }
 
 fn calculate_aes256_hash(password: &str, user: &KrbUser) -> String {
     use kerberos_crypto::{aes_hmac_sha1, AesSizes};
 
-    let salt = aes_hmac_sha1::generate_salt(&user.realm, &user.name);
-    let key = aes_hmac_sha1::generate_key_from_string(password, &salt, &AesSizes::Aes256);
+    let salt = ad_salt(&user.realm, &user.name);
+    let key = aes_hmac_sha1::generate_key_from_string(password, salt.as_bytes(), &AesSizes::Aes256);
     bytes_to_hex(&key)
 }
 

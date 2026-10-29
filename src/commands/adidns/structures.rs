@@ -68,7 +68,11 @@ impl DnsRecord {
         buf.write_u8(self.rank).unwrap();
         buf.write_u16::<LittleEndian>(self.flags).unwrap();
         buf.write_u32::<LittleEndian>(self.serial).unwrap();
-        buf.write_u32::<LittleEndian>(self.ttl_seconds).unwrap();
+        // TTL in the DNS_RECORD struct is the one big-endian field in an
+        // otherwise little-endian header (dns.h / MS-DNSP 2.3.2.2). Writing
+        // it as LE here stored 180s as 0xB4000000 (3,019,898,880) on the DC;
+        // reads from Windows DNS Manager would show that back as the TTL.
+        buf.extend_from_slice(&self.ttl_seconds.to_be_bytes());
         buf.write_u32::<LittleEndian>(self.reserved).unwrap();
         buf.write_u32::<LittleEndian>(self.timestamp).unwrap();
         buf.extend_from_slice(&self.data);
@@ -85,7 +89,11 @@ impl DnsRecord {
         let rank = cursor.read_u8()?;
         let flags = cursor.read_u16::<LittleEndian>()?;
         let serial = cursor.read_u32::<LittleEndian>()?;
-        let ttl_seconds = cursor.read_u32::<LittleEndian>()?;
+        // TTL is big-endian in the DNS_RECORD header - see to_bytes().
+        let ttl_seconds = {
+            use byteorder::BigEndian;
+            cursor.read_u32::<BigEndian>()?
+        };
         let reserved = cursor.read_u32::<LittleEndian>()?;
         let timestamp = cursor.read_u32::<LittleEndian>()?;
 

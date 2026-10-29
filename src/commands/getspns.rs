@@ -50,6 +50,14 @@ pub fn get_service_principal_names(
     let entries = query_spns(ldap, search_base, keyword.as_deref())?;
     debug::debug_log(2, format!("Found {} entries with SPNs", entries.len()));
 
+    // AD's `servicePrincipalName` is multi-valued. The LDAP substring filter
+    // only tells us which *accounts* have at least one matching SPN - once we
+    // print, we have to filter the individual SPN values ourselves, or every
+    // HOST/, TERMSRV/, RestrictedKrbHost/ etc. on a matched computer comes
+    // along for the ride. SPN matching in AD is case-insensitive, so compare
+    // in lowercase.
+    let keyword_lower = keyword.as_deref().map(|k| k.to_lowercase());
+
     let header = format!(
         "{:<50} {:<15} {:<30} {:<30} {}\n",
         "SPN", "Username", "PasswordLastSet", "LastLogon", "Delegation"
@@ -100,6 +108,11 @@ pub fn get_service_principal_names(
             .unwrap_or_default();
 
         for spn in spns {
+            if let Some(ref kw) = keyword_lower {
+                if !spn.to_lowercase().contains(kw) {
+                    continue;
+                }
+            }
             let line = format!(
                 "{:<50} {:<15} {:<30} {:<30} {}\n",
                 spn, sam_account_name, pwd_last_set, last_logon, delegation
@@ -136,7 +149,10 @@ fn query_spns(
     keyword: Option<&str>,
 ) -> Result<Vec<SearchEntry>, Box<dyn Error>> {
     let search_filter = if let Some(kw) = keyword {
-        format!("(servicePrincipalName=*{}*)", kw)
+        // Escape the user-supplied keyword before interpolation; '*' stays
+        // meaningful here because the surrounding '*{kw}*' is explicitly a
+        // substring match, but '(', ')', '\' and NUL must not leak through.
+        format!("(servicePrincipalName=*{}*)", crate::ldap::escape_filter(kw))
     } else {
         "(servicePrincipalName=*)".to_string()
     };
@@ -195,12 +211,68 @@ fn windows_timestamp_to_datetime(windows_time: i64) -> String {
 }
 
 fn check_delegation(uac: i32) -> String {
+    // The UAC bits only cover the classic account-based delegations:
+    //   TRUSTED_FOR_DELEGATION         (0x80000)   unconstrained
+    //   TRUSTED_TO_AUTH_FOR_DELEGATION (0x1000000) KCD with protocol
+    //                                              transition (S4U2Self)
+    // They do NOT tell us whether the account is a Kerberos-only KCD target
+    // (msDS-AllowedToDelegateTo present but no T2A4D), nor whether it has
+    // inbound RBCD configured (msDS-AllowedToActOnBehalfOfOtherIdentity).
+    // Fall through here reports KCD-without-protocol-transition as "None",
+    // which is the specific case kerberoasting operators care most about.
+    // The caller should prefer `check_delegation_full` where it has the
+    // whole entry.
     let trusted_for_delegation = uac & 0x80000;
     let trusted_to_auth_for_delegation = uac & 0x1000000;
 
     match (trusted_for_delegation, trusted_to_auth_for_delegation) {
-        (0, 0) => "None".to_string(),
+        (0, 0) => "None (or Kerberos-only KCD - inspect msDS-AllowedToDelegateTo)".to_string(),
         (_, 0) => "Unconstrained".to_string(),
-        (_, _) => "Constrained".to_string(),
+        (0, _) => "Constrained with protocol transition (S4U2Self)".to_string(),
+        (_, _) => "Unconstrained + Protocol Transition".to_string(),
+    }
+}
+
+/// Preferred delegation summary when the full entry is available. Reports
+/// Kerberos-only KCD (present `msDS-AllowedToDelegateTo` without the
+/// protocol-transition UAC bit) and inbound RBCD, which `check_delegation`
+/// based on UAC alone could not see.
+#[allow(dead_code)]
+pub fn check_delegation_full(entry: &ldap3::SearchEntry) -> String {
+    let uac = entry
+        .attrs
+        .get("userAccountControl")
+        .and_then(|v| v.first())
+        .and_then(|s| s.parse::<i32>().ok())
+        .unwrap_or(0);
+    let has_kcd_targets = entry.attrs.contains_key("msDS-AllowedToDelegateTo");
+    let has_rbcd = entry
+        .attrs
+        .contains_key("msDS-AllowedToActOnBehalfOfOtherIdentity")
+        || entry
+            .bin_attrs
+            .contains_key("msDS-AllowedToActOnBehalfOfOtherIdentity");
+
+    let mut flags = Vec::new();
+    if uac & 0x80000 != 0 {
+        flags.push("Unconstrained".to_string());
+    }
+    if has_kcd_targets {
+        if uac & 0x1000000 != 0 {
+            flags.push("KCD + Protocol Transition".to_string());
+        } else {
+            flags.push("KCD (Kerberos-only)".to_string());
+        }
+    } else if uac & 0x1000000 != 0 {
+        // Protocol transition flagged but no targets listed - still worth noting.
+        flags.push("T2A4D set (no msDS-AllowedToDelegateTo targets)".to_string());
+    }
+    if has_rbcd {
+        flags.push("RBCD inbound".to_string());
+    }
+    if flags.is_empty() {
+        "None".to_string()
+    } else {
+        flags.join(", ")
     }
 }

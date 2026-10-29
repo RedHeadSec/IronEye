@@ -553,10 +553,21 @@ fn verify_credential(
                         if let Some(ref kid) = cred.key_id {
                             let kid_hex = hex::encode(kid);
                             let matches = kid_hex == expected_key_id;
+                            // Guard against KeyIDs shorter than 16 hex
+                            // chars so this verify path can't panic AFTER
+                            // we've already written the credential (and
+                            // BEFORE the PFX is saved) and leave the
+                            // operator with no artefact and a modified AD
+                            // object they can't walk back.
+                            let kid_short: &str = if kid_hex.len() >= 16 {
+                                &kid_hex[..16]
+                            } else {
+                                kid_hex.as_str()
+                            };
                             println!(
                                 "[*] Verify cred {}: KeyID={} match={}",
                                 i + 1,
-                                &kid_hex[..16],
+                                kid_short,
                                 matches
                             );
                             if matches {

@@ -138,17 +138,29 @@ fn query_trusts(
     let system_base = format!("CN=System,{}", search_base);
 
     let mut entries = Vec::new();
+    let mut primary_err: Option<Box<dyn Error>> = None;
 
     // Search CN=System first (where trust
     // objects live)
-    if let Ok(results) = search_trust_base(ldap, &system_base, filter, &attrs, config) {
-        entries.extend(results);
+    match search_trust_base(ldap, &system_base, filter, &attrs, config) {
+        Ok(results) => entries.extend(results),
+        Err(e) => {
+            // Hold onto the error - if the subtree fallback also fails we
+            // want to surface it instead of silently reporting "zero trusts
+            // in this domain", which the old code did whenever the DC
+            // returned noSuchObject on CN=System for a bind lacking the
+            // right OU scope.
+            primary_err = Some(e);
+        }
     }
 
     // Fall back to full subtree if nothing found
     if entries.is_empty() {
-        if let Ok(results) = search_trust_base(ldap, search_base, filter, &attrs, config) {
-            entries.extend(results);
+        match search_trust_base(ldap, search_base, filter, &attrs, config) {
+            Ok(results) => entries.extend(results),
+            Err(e) => {
+                return Err(primary_err.unwrap_or(e));
+            }
         }
     }
 
@@ -229,11 +241,24 @@ fn interpret_trust_attributes(trust_attributes: &str) -> String {
 }
 
 fn is_sid_filtering_enabled(attributes: i32) -> bool {
-    // SID filtering is enabled when:
-    // - Quarantined Domain (0x4) is set, OR
-    // - It's a forest trust (0x8) without Within Forest
-    //   (0x20)
-    (attributes & 0x4 != 0) || (attributes & 0x8 != 0 && attributes & 0x20 == 0)
+    // SID filtering is RELAXED (effectively off) when TREAT_AS_EXTERNAL
+    // (0x40) is set on a trust that would otherwise be quarantined - this is
+    // the "I promise this inbound SID history is fine" switch admins flip,
+    // and attackers specifically look for it because it re-enables cross-
+    // forest golden-ticket SID-history attacks that SID filtering was meant
+    // to kill. The old check reported those trusts as "Enabled", hiding the
+    // very configuration operators were looking for.
+    const TRUST_ATTRIBUTE_QUARANTINED_DOMAIN: i32 = 0x4;
+    const TRUST_ATTRIBUTE_FOREST_TRANSITIVE: i32 = 0x8;
+    const TRUST_ATTRIBUTE_WITHIN_FOREST: i32 = 0x20;
+    const TRUST_ATTRIBUTE_TREAT_AS_EXTERNAL: i32 = 0x40;
+
+    if attributes & TRUST_ATTRIBUTE_TREAT_AS_EXTERNAL != 0 {
+        return false;
+    }
+    (attributes & TRUST_ATTRIBUTE_QUARANTINED_DOMAIN != 0)
+        || (attributes & TRUST_ATTRIBUTE_FOREST_TRANSITIVE != 0
+            && attributes & TRUST_ATTRIBUTE_WITHIN_FOREST == 0)
 }
 
 fn is_selective_auth_enabled(attributes: i32) -> bool {

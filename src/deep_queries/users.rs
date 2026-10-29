@@ -64,7 +64,11 @@ fn query_users(
     search_base: &str,
     config: &mut LdapConfig,
 ) -> Result<Vec<SearchEntry>, Box<dyn Error>> {
-    let search_filter = "(objectClass=user)";
+    // The user objectClass is inherited by `computer`, so plain
+    // `(objectClass=user)` matches every machine account too and reports them
+    // alongside human users. Pin the category to user to match only actual
+    // user objects, as `net user` / RSAT do.
+    let search_filter = "(&(objectCategory=person)(objectClass=user))";
     debug::debug_log(
         2,
         format!(

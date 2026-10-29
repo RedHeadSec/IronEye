@@ -17,15 +17,48 @@ impl HistoryManager {
         if let Some(parent) = db_path.parent() {
             std::fs::create_dir_all(parent)
                 .map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?;
+            // Lock the containing dir to the current user; the history DB
+            // ends up persisting secrets typed into connect/krbtgt/spray
+            // prompts, so world-readable isn't acceptable.
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::PermissionsExt;
+                let _ = std::fs::set_permissions(
+                    parent,
+                    std::fs::Permissions::from_mode(0o700),
+                );
+            }
         }
 
-        let conn = Connection::open(db_path)?;
+        let conn = Connection::open(&db_path)?;
         Self::init_schema(&conn)?;
+
+        // Also chmod the file itself. New rusqlite files default to 0644,
+        // which lets everyone on the box harvest previously-typed passwords.
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let _ = std::fs::set_permissions(
+                &db_path,
+                std::fs::Permissions::from_mode(0o600),
+            );
+        }
 
         Ok(Self { conn })
     }
 
     fn get_db_path() -> PathBuf {
+        // Stash the DB in the user's config dir, not the CWD. The CWD is
+        // whatever folder operators cd'd into (often a shared tools dir),
+        // and dropping ironeye_history.db there leaked everybody's typed
+        // credentials to the next person who cd'd in.
+        if let Some(dirs) = directories_next::ProjectDirs::from("com", "ironeye", "ironeye") {
+            return dirs.data_local_dir().join("history.db");
+        }
+        // Last-resort fallback: $HOME/.ironeye/history.db
+        if let Some(home) = std::env::var_os("HOME").or_else(|| std::env::var_os("USERPROFILE")) {
+            return PathBuf::from(home).join(".ironeye").join("history.db");
+        }
         PathBuf::from("ironeye_history.db")
     }
 

@@ -110,9 +110,16 @@ fn format_group_info(group_entry: &SearchEntry) -> String {
             output.push_str(&format!("  Description: {}\n", desc));
         }
 
-        if let Some(members) = group_entry.attrs.get("member") {
-            output.push_str(&format!("  Members ({}):\n", members.len()));
-            for member in members {
+        // Membership of >1500 members comes back as `member;range=0-1499`,
+        // not `member` - AD paginates linked attributes and expects the
+        // caller to re-ask for successive ranges. Pull from either spelling
+        // so large groups aren't silently reported as empty, and label the
+        // output so operators know it's a partial first page.
+        let (members_opt, is_partial) = collect_member_attribute(group_entry);
+        if let Some(members) = members_opt {
+            let label = if is_partial { " (first page)" } else { "" };
+            output.push_str(&format!("  Members ({}){}:\n", members.len(), label));
+            for member in &members {
                 let cn = extract_cn(member);
                 output.push_str(&format!("    - {}\n", cn));
             }
@@ -141,6 +148,25 @@ fn format_group_info(group_entry: &SearchEntry) -> String {
 
 fn print_group_info(group_entry: &SearchEntry) {
     print!("{}", format_group_info(group_entry));
+}
+
+/// Collect a group's `member` attribute, including the ranged form
+/// AD returns once the membership passes `MaxValRange` (default 1500):
+/// `member;range=0-1499`, `member;range=1500-2999`, etc. Returns the
+/// current page plus a flag indicating whether more pages exist on the DC.
+fn collect_member_attribute(entry: &SearchEntry) -> (Option<Vec<String>>, bool) {
+    if let Some(members) = entry.attrs.get("member") {
+        return (Some(members.clone()), false);
+    }
+
+    // Look for ranged variant - any key starting with "member;range=".
+    for (k, v) in entry.attrs.iter() {
+        if let Some(range) = k.strip_prefix("member;range=") {
+            let partial = !range.ends_with("-*");
+            return (Some(v.clone()), partial);
+        }
+    }
+    (None, false)
 }
 
 fn extract_cn(dn: &str) -> String {

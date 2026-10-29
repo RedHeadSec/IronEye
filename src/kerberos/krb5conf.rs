@@ -59,9 +59,31 @@ pub fn render_libdefaults(realm: &str) -> String {
 }
 
 pub fn create_temp_krb5_conf(content: &str) -> Result<String, std::io::Error> {
+    // The old fixed filename `ironeye_krb5.conf` in /tmp was a classic symlink
+    // bomb: an attacker who dropped a symlink from that name to any file the
+    // user could write (e.g. ~/.ssh/authorized_keys) would see IronEye follow
+    // the link and overwrite it. Two mitigations:
+    //   1. Per-pid name so parallel IronEye sessions don't race each other.
+    //   2. O_CREATE | O_EXCL so we never follow a pre-existing symlink.
     let temp_dir = std::env::temp_dir();
-    let temp_path = temp_dir.join("ironeye_krb5.conf");
-    let mut file = fs::File::create(&temp_path)?;
+    let temp_path = temp_dir.join(format!("ironeye_krb5_{}.conf", std::process::id()));
+    let mut opts = fs::OpenOptions::new();
+    opts.write(true).create_new(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        // 0600 so other local users can't read our KDC pointer.
+        opts.mode(0o600);
+    }
+    // If the exclusive-create fails (e.g. our previous session crashed and
+    // left the file behind), remove and retry once.
+    let mut file = match opts.open(&temp_path) {
+        Ok(f) => f,
+        Err(_) => {
+            let _ = fs::remove_file(&temp_path);
+            opts.open(&temp_path)?
+        }
+    };
     file.write_all(content.as_bytes())?;
     file.sync_all()?;
     Ok(temp_path.to_string_lossy().to_string())

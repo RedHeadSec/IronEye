@@ -94,23 +94,44 @@ pub fn get_delegations(
 }
 
 fn determine_delegation_type(entry: &SearchEntry) -> String {
-    if let Some(uac) = entry.attrs.get("userAccountControl").and_then(|v| v.get(0)) {
-        if let Ok(uac_value) = uac.parse::<i64>() {
-            if uac_value & 0x80000 != 0 {
-                return "unconstrained".to_string();
-            }
-        }
-    }
-
-    if entry.attrs.contains_key("msDS-AllowedToDelegateTo") {
-        return "constrained without protocol transition".to_string();
-    }
-
-    if entry
+    let uac = entry
         .attrs
+        .get("userAccountControl")
+        .and_then(|v| v.get(0))
+        .and_then(|s| s.parse::<i64>().ok())
+        .unwrap_or(0);
+
+    // TRUSTED_FOR_DELEGATION (0x80000) == classic unconstrained delegation.
+    if uac & 0x80000 != 0 {
+        return "unconstrained".to_string();
+    }
+
+    // msDS-AllowedToActOnBehalfOfOtherIdentity is a self-relative SD. Its
+    // control word always has SE_SELF_RELATIVE (0x8000) set, so ldap3 ALWAYS
+    // routes it to bin_attrs - checking only `attrs` misses every real RBCD
+    // target, and we silently told the operator the box had no inbound
+    // delegation configured.
+    let has_rbcd = entry
+        .bin_attrs
         .contains_key("msDS-AllowedToActOnBehalfOfOtherIdentity")
-    {
-        return "constrained with protocol transition".to_string();
+        || entry
+            .attrs
+            .contains_key("msDS-AllowedToActOnBehalfOfOtherIdentity");
+
+    if has_rbcd {
+        return "resource-based constrained delegation (RBCD, inbound)".to_string();
+    }
+
+    // Classic KCD. Protocol transition is TRUSTED_TO_AUTH_FOR_DELEGATION
+    // (0x1000000) in UAC - NOT the presence of the RBCD attribute. Previously
+    // every KCD account was mislabelled as "without protocol transition"
+    // even when S4U2Self was configured.
+    if entry.attrs.contains_key("msDS-AllowedToDelegateTo") {
+        return if uac & 0x1000000 != 0 {
+            "constrained with protocol transition (S4U2Self)".to_string()
+        } else {
+            "constrained without protocol transition".to_string()
+        };
     }
 
     "Unknown".to_string()

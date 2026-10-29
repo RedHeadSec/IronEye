@@ -153,25 +153,28 @@ pub fn add_user(
                         );
                     }
                     Err(e) => {
+                        // Previously this returned Ok(()) and printed the
+                        // password as if it had been set. The reality was a
+                        // disabled, passwordless account on the DC that
+                        // we'd just told the operator was ready to use. Roll
+                        // back the half-created user and surface the error.
                         eprintln!(
-                            "[!] Failed to set \
-                                 password: {}",
+                            "[!] Failed to set password: {} - rolling back half-created account",
                             e
                         );
-                        println!("[*] Password: \"{}\"", password);
+                        let _ = ldap.delete(&user_dn);
                         add_terminal_spacing(1);
-                        return Ok(());
+                        return Err(format!("password set failed: {}", e).into());
                     }
                 },
                 Err(e) => {
                     eprintln!(
-                        "[!] Failed to execute password \
-                         modify: {}",
+                        "[!] Failed to execute password modify: {} - rolling back half-created account",
                         e
                     );
-                    println!("[*] Password: \"{}\"", password);
+                    let _ = ldap.delete(&user_dn);
                     add_terminal_spacing(1);
-                    return Ok(());
+                    return Err(e.into());
                 }
             }
 

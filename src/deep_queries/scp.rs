@@ -181,8 +181,15 @@ fn query_scps(ldap: &mut LdapConn, search_base: &str) -> Result<Vec<SearchEntry>
 }
 
 fn truncate(s: &str, max_len: usize) -> String {
-    if s.len() > max_len {
-        format!("{}...", &s[..max_len - 3])
+    // char-aware cutoff to avoid a panic on multi-byte input.
+    if s.chars().count() > max_len {
+        let keep = max_len.saturating_sub(3);
+        let cut = s
+            .char_indices()
+            .nth(keep)
+            .map(|(idx, _)| idx)
+            .unwrap_or(s.len());
+        format!("{}...", &s[..cut])
     } else {
         s.to_string()
     }

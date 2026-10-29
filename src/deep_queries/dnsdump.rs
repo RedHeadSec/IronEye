@@ -10,6 +10,27 @@ use ldap3::adapters::{Adapter, EntriesOnly, PagedResults};
 use ldap3::{LdapConn, Scope, SearchEntry};
 use std::error::Error;
 
+/// Look up `DC=ForestDnsZones,<forest root DN>` by reading the forest root
+/// out of RootDSE (`rootDomainNamingContext`). Returns None if the lookup
+/// fails - the caller falls back to the domain NC form.
+fn resolve_forest_dns_base(ldap: &mut LdapConn, _config: &mut LdapConfig) -> Option<String> {
+    let search = ldap.search(
+        "",
+        Scope::Base,
+        "(objectClass=*)",
+        vec!["rootDomainNamingContext"],
+    ).ok()?;
+    let (entries, _) = search.success().ok()?;
+    let entry = entries.into_iter().next()?;
+    let entry = SearchEntry::construct(entry);
+    let root = entry
+        .attrs
+        .get("rootDomainNamingContext")
+        .and_then(|v| v.first())
+        .cloned()?;
+    Some(format!("DC=ForestDnsZones,{}", root))
+}
+
 pub fn dnsdump(
     ldap: &mut LdapConn,
     search_base: &str,
@@ -19,7 +40,13 @@ pub fn dnsdump(
     println!("[*] Enumerating AD-integrated DNS zones...");
 
     let domain_dns_base = format!("DC=DomainDnsZones,{}", search_base);
-    let forest_dns_base = format!("DC=ForestDnsZones,{}", search_base);
+    // ForestDnsZones is hosted at the FOREST ROOT, not under this domain's
+    // naming context - in a child domain the previous `DC=ForestDnsZones,<dc=child,dc=root>`
+    // DN doesn't exist, the search returned noSuchObject, and we silently
+    // reported "0 forest zones". Pull the real rootDSE pointer when we can;
+    // otherwise fall back to the domain-NC form.
+    let forest_dns_base = resolve_forest_dns_base(ldap, config)
+        .unwrap_or_else(|| format!("DC=ForestDnsZones,{}", search_base));
 
     let zones = enumerate_zones(ldap, &domain_dns_base, config)?;
     let forest_zones = enumerate_zones(ldap, &forest_dns_base, config).unwrap_or_default();

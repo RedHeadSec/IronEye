@@ -5,9 +5,15 @@ use dialoguer::{theme::ColorfulTheme, Select};
 use ldap3::{LdapConn, Mod, Scope};
 use std::collections::HashSet;
 
+// NB: LOCKOUT (0x0010) is intentionally absent. The LOCKOUT bit in
+// userAccountControl is a *computed* attribute - AD derives it from
+// lockoutTime / lockoutDuration and refuses any write (`will_not_perform`
+// or silently ignores it depending on build). Exposing it in the menu
+// just produced a confusing failure for the operator; account unlock is
+// done via the `lockoutTime` attribute, which this tool handles via
+// enable-account.
 const UAC_FLAGS: &[(&str, i32)] = &[
     ("ACCOUNTDISABLE", 0x0002),
-    ("LOCKOUT", 0x0010),
     ("PASSWD_NOTREQD", 0x0020),
     ("PASSWD_CANT_CHANGE", 0x0040),
     ("NORMAL_ACCOUNT", 0x0200),

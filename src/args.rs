@@ -212,6 +212,9 @@ pub fn calculate_kerberos_hash() {
     if show_all {
         println!("\n\x1b[32m[+] All hashes calculated successfully\x1b[0m");
         if let (Some(u), Some(d)) = (user_opt, domain_opt) {
+            // AD salt is uppercase REALM + case-preserved sAMAccountName.
+            // Keep the printed salt in sync with the one the AES code
+            // actually uses (see kerberos::hash::ad_salt).
             println!("\x1b[33m[*] Salt used: {}{}\x1b[0m", d.to_uppercase(), u);
         }
     } else {
@@ -534,8 +537,19 @@ fn parse_connect_args(input: &str) -> Option<LdapConfig> {
             "-d" | "--domain" => config.domain = get_arg_value(&args, &mut i)?,
             "-i" | "--dc-ips" => config.dc_ip = get_arg_value(&args, &mut i)?,
             "-H" | "--hash" => {
-                config.hash = Some(get_arg_value(&args, &mut i)?);
-                eprintln!("Warning: Hash authentication not fully implemented");
+                // Pass-the-hash isn't wired up for LDAP yet. Previously the
+                // flag was accepted with a warning, and (because
+                // perform_simple_bind picks `hash` over `password` when it
+                // exists) the raw hex hash was then sent as the password in
+                // the simple bind - a guaranteed failed-logon event. Fail
+                // the flag outright instead until this path is implemented.
+                let _ = get_arg_value(&args, &mut i);
+                eprintln!(
+                    "Error: -H/--hash is not implemented for LDAP binds. Use Kerberos \
+                     authentication with a ccache (--kerberos -c <ccache>) or an \
+                     ask-tgt --rc4 flow instead."
+                );
+                return None;
             }
             "-s" | "--secure" => set_flag(&mut config.secure_ldaps, &mut i),
             "-t" | "--timestamp" => set_flag(&mut config.timestamp_format, &mut i),
@@ -714,12 +728,26 @@ fn get_arg_value(args: &[String], index: &mut usize) -> Option<String> {
     }
 }
 
-fn get_numeric_arg<T>(args: &[String], index: &mut usize, default: T) -> Option<T>
+fn get_numeric_arg<T>(args: &[String], index: &mut usize, _default: T) -> Option<T>
 where
     T: std::str::FromStr + Copy,
 {
     if *index + 1 < args.len() {
-        let value = args[*index + 1].parse().unwrap_or(default);
+        // Fail loudly on an unparseable numeric. The old behaviour silently
+        // substituted `default`, so e.g. `--delay fast` quietly ran with the
+        // caller-supplied default (which for spray's lockout-threshold is
+        // 3) and operators thought their guard was in effect when it wasn't.
+        let raw = args[*index + 1].clone();
+        let value = match raw.parse::<T>() {
+            Ok(v) => v,
+            Err(_) => {
+                eprintln!(
+                    "Invalid value for {}: '{}' (not a number)",
+                    args[*index], raw
+                );
+                return None;
+            }
+        };
         *index += 2;
         Some(value)
     } else {

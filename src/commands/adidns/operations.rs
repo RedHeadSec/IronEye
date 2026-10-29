@@ -1185,6 +1185,21 @@ fn delete_dns_record(
         format!("Attempting to delete DNS record: {}.{}", record_name, zone),
     );
 
+    // Require an explicit confirmation before touching ForestDnsZones,
+    // which is one of the most sensitive partitions in the forest. The
+    // caller may have landed here from a child-domain record lookup that
+    // referred the search up to the forest root - the operator should
+    // double-check that's really what they intended.
+    if !crate::help::read_input(&format!(
+        "Delete DNS record {} from zone {}? Type 'YES' to confirm: ",
+        record_name, zone
+    ))
+    .eq("YES")
+    {
+        println!("[!] Delete cancelled");
+        return Ok(());
+    }
+
     let zone_dn = format!(
         "DC={},CN=MicrosoftDNS,DC=DomainDnsZones,{}",
         zone, search_base

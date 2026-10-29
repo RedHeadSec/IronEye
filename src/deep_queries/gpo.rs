@@ -296,8 +296,17 @@ fn parse_ad_timestamp(ts: &str) -> String {
 }
 
 fn truncate(s: &str, max_len: usize) -> String {
-    if s.len() > max_len {
-        format!("{}...", &s[..max_len - 3])
+    // Count by chars, cut at char boundary. The old `&s[..max_len - 3]`
+    // panics on multi-byte input: any CN/description containing an accent
+    // or emoji could land mid-codepoint and tear the whole dq row down.
+    if s.chars().count() > max_len {
+        let keep = max_len.saturating_sub(3);
+        let cut = s
+            .char_indices()
+            .nth(keep)
+            .map(|(idx, _)| idx)
+            .unwrap_or(s.len());
+        format!("{}...", &s[..cut])
     } else {
         s.to_string()
     }

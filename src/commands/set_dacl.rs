@@ -1,6 +1,6 @@
 use crate::commands::ldap_utils::{
-    build_sd_with_aces, get_dacl_offset, handle_modify_error, parse_aces, resolve_object_dn,
-    resolve_object_sid,
+    build_sd_with_aces, dacl_only_sd_flags_control, get_dacl_offset, handle_modify_error,
+    parse_aces, resolve_object_dn, resolve_object_sid,
 };
 use crate::help::add_terminal_spacing;
 use crate::ldap::LdapConfig;
@@ -47,7 +47,12 @@ pub fn set_dacl(
     let target_dn = resolve_object_dn(ldap, search_base, config, target)?;
     println!("[*] Target DN: {}", target_dn);
 
+    // Request DACL only via SD-flags control (0x04 = DACL_SECURITY_INFORMATION):
+    // without it, a non-admin without SeSecurityPrivilege gets no SD at all
+    // (server returns empty) and we'd end up overwriting the target with a
+    // fresh SD containing only our ACE.
     let (results, _) = retry_with_reconnect!(ldap, config, {
+        ldap.with_controls(vec![dacl_only_sd_flags_control()]);
         ldap.search(
             &target_dn,
             Scope::Base,
@@ -64,10 +69,18 @@ pub fn set_dacl(
 
     let entry = ldap3::SearchEntry::construct(results[0].clone());
 
+    // Try bin_attrs first; some ldap3 versions put SDs in attrs when the raw
+    // bytes happen to be UTF-8-valid (rare but possible for small SDs).
     let existing_sd = entry
         .bin_attrs
         .get("nTSecurityDescriptor")
-        .and_then(|v| v.first().cloned());
+        .and_then(|v| v.first().cloned())
+        .or_else(|| {
+            entry
+                .attrs
+                .get("nTSecurityDescriptor")
+                .and_then(|v| v.first().map(|s| s.as_bytes().to_vec()))
+        });
 
     let new_sd = match right_idx {
         0 => modify_dacl_generic(
@@ -96,7 +109,11 @@ pub fn set_dacl(
     let mut sd_set = HashSet::new();
     sd_set.insert(new_sd);
 
+    // Same SD-flags control on the modify so the write only touches the
+    // DACL - without it the server treats the SD as a complete replacement
+    // of owner/group/DACL/SACL, blowing away ownership we didn't intend to.
     match retry_with_reconnect!(ldap, config, {
+        ldap.with_controls(vec![dacl_only_sd_flags_control()]);
         ldap.modify(&target_dn, vec![Mod::Replace(attr.clone(), sd_set.clone())])
     }) {
         Ok(result) => match result.success() {
@@ -160,9 +177,13 @@ fn modify_dacl_dcsync(
         guids.get_changes_in_filtered_set,
     ];
 
+    // AD stores object GUIDs in ACEs in Windows mixed-endian layout
+    // (first 4 LE, next 2 LE, next 2 LE, last 8 as-is). Uuid::to_bytes_le()
+    // produces exactly that; Uuid::as_bytes() returns RFC 4122 big-endian,
+    // which the DC's SDDL parser treats as a different GUID entirely.
     let aces: Vec<Vec<u8>> = dcsync_guids
         .iter()
-        .map(|guid| build_object_ace(trustee_sid, DS_CONTROL_ACCESS, guid.as_bytes()))
+        .map(|guid| build_object_ace(trustee_sid, DS_CONTROL_ACCESS, &guid.to_bytes_le()))
         .collect();
 
     if remove {
@@ -174,7 +195,7 @@ fn modify_dacl_dcsync(
             trustee_sid,
             &dcsync_guids
                 .iter()
-                .map(|g| g.as_bytes().to_vec())
+                .map(|g| g.to_bytes_le().to_vec())
                 .collect::<Vec<_>>(),
         )
     } else if let Some(sd) = existing_sd {

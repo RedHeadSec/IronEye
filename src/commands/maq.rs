@@ -1,5 +1,6 @@
 use crate::acl::{AclParser, LdapSid};
 use crate::bofhound::create_output_dir;
+use crate::commands::ldap_utils::parse_paged_results_cookie;
 use crate::debug;
 use crate::help::add_terminal_spacing;
 use crate::ldap::LdapConfig;
@@ -196,7 +197,7 @@ fn analyze_current_user_rights(
 ) -> Result<(bool, Vec<String>), Box<dyn Error>> {
     debug::debug_log(2, format!("Analyzing rights for user: {}", username));
 
-    let user_filter = format!("(sAMAccountName={})", username);
+    let user_filter = format!("(sAMAccountName={})", crate::ldap::escape_filter(username));
     let user_entries = search_with_sd(ldap, search_base, config, &user_filter)?;
 
     if user_entries.is_empty() {
@@ -236,7 +237,13 @@ fn analyze_current_user_rights(
             format!("Processing {} group memberships", member_of.len()),
         );
         for group_dn in member_of {
-            let group_filter = format!("(distinguishedName={})", group_dn);
+            // DNs may contain '(', ')', '*' or '\' - escape them before
+            // interpolation to prevent the LDAP filter parser from erroring
+            // and silently losing that group's rights from the audit.
+            let group_filter = format!(
+                "(distinguishedName={})",
+                crate::ldap::escape_filter(group_dn)
+            );
             if let Ok(groups) = search_with_sd(ldap, search_base, config, &group_filter) {
                 if let Some(group) = groups.first() {
                     if let Some(sid_values) = group.bin_attrs.get("objectSid") {
@@ -436,14 +443,17 @@ fn search_with_sd(
             match ctrl {
                 ldap3::controls::Control(_, raw) => {
                     if raw.ctype == "1.2.840.113556.1.4.319" {
-                        if let Some(val) = raw.val {
-                            if val.len() > 4 {
-                                let cookie_start =
-                                    val.len().saturating_sub(val[val.len() - 2] as usize);
-                                if cookie_start < val.len() {
-                                    cookie = val[cookie_start..].to_vec();
-                                }
-                            }
+                        if let Some(ref val) = raw.val {
+                            // RFC 2696 realSearchControlValue is
+                            //   SEQUENCE { INTEGER size, OCTET STRING cookie }
+                            // Decode it properly instead of indexing from the
+                            // end: with a final page the server replies
+                            // 30 05 02 01 00 04 00 (empty cookie), where
+                            // the old end-indexed read of val[len-2] = 0x04
+                            // mistakenly produced a 4-byte non-empty cookie
+                            // and the loop never terminated / the DC rejected
+                            // the next page.
+                            cookie = parse_paged_results_cookie(val).unwrap_or_default();
                         }
                         break;
                     }

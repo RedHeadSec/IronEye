@@ -192,9 +192,14 @@ fn query_sites(
         .into_iter()
         .filter_map(|entry| {
             let entry = SearchEntry::construct(entry);
+            // AD returns attributes in their schema spelling (mSSMSSiteCode).
+            // ldap3's attrs map is case-sensitive on lookup, so the request
+            // for "msSMSSiteCode" came back fine but the subsequent get()
+            // on that same spelling found nothing. Match both spellings.
             entry
                 .attrs
-                .get("msSMSSiteCode")
+                .get("mSSMSSiteCode")
+                .or_else(|| entry.attrs.get("msSMSSiteCode"))
                 .and_then(|v| v.first())
                 .map(|code| SiteInfo {
                     site_code: code.clone(),

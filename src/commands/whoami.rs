@@ -219,9 +219,16 @@ pub fn whoami(
         }
     }
 
+    // RBCD is a self-relative SD. The SE_SELF_RELATIVE bit (0x8000) always
+    // ends up in the control word, so the raw bytes always fail UTF-8 decoding
+    // and ldap3 routes the attribute to bin_attrs - check both maps so this
+    // isn't silently reported as "no RBCD" when it IS configured.
     if entry
         .attrs
         .contains_key("msDS-AllowedToActOnBehalfOfOtherIdentity")
+        || entry
+            .bin_attrs
+            .contains_key("msDS-AllowedToActOnBehalfOfOtherIdentity")
     {
         println!(
             "\nRBCD: \t\t\tResource-Based \

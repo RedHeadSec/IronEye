@@ -1,4 +1,5 @@
 use crate::acl::{AclParser, AclRelation, LdapSid};
+use crate::commands::ldap_utils::parse_paged_results_cookie;
 use crate::debug::debug_log;
 use crate::help::add_terminal_spacing;
 use crate::ldap::LdapConfig;
@@ -25,7 +26,7 @@ pub fn get_ace_dacl(
     debug_log(1, &format!("Starting ACE/DACL analysis for: {}", username));
     println!("[*] Starting ACE/DACL analysis for: {}", username);
 
-    let user_filter = format!("(sAMAccountName={})", username);
+    let user_filter = format!("(sAMAccountName={})", crate::ldap::escape_filter(username));
     debug_log(
         2,
         &format!("Searching for user with filter: {}", user_filter),
@@ -70,6 +71,57 @@ pub fn get_ace_dacl(
     let mut relevant_sids = HashSet::new();
     relevant_sids.insert(user_sid.clone());
 
+    // Every authenticated principal is also a member of these well-known
+    // SIDs, which commonly appear on DACLs that grant broad read/write to
+    // "everyone that can authenticate". Omitting them (which the first
+    // iteration of this code did) was the single biggest cause of operators
+    // reporting "no interesting ACEs" against targets that actually had
+    // them because the ACE was granted to Authenticated Users or Everyone.
+    relevant_sids.insert("S-1-1-0".to_string()); // Everyone
+    relevant_sids.insert("S-1-5-11".to_string()); // Authenticated Users
+    relevant_sids.insert("S-1-5-10".to_string()); // SELF (ACEs targeting the object itself)
+    relevant_sids.insert("S-1-5-14".to_string()); // Interactive
+    relevant_sids.insert("S-1-5-15".to_string()); // This Organization
+
+    // Primary group SID: RID lives in `primaryGroupID` on the user object,
+    // and the group it points to never shows up in memberOf. Reconstruct
+    // the full SID and add it.
+    if let Some(prim_gid) = user_entry
+        .attrs
+        .get("primaryGroupID")
+        .and_then(|v| v.first())
+    {
+        if !domain_sid.is_empty() {
+            relevant_sids.insert(format!("{}-{}", domain_sid, prim_gid));
+        }
+    }
+
+    // tokenGroups is the DC's authoritative transitive-group list for this
+    // principal (built the same way the PAC-building code does). It covers
+    // nested groups and foreign-security-principals the simple memberOf
+    // walk below never finds. It is a constructed attribute, must be
+    // requested by name, and must be queried with Base scope at the user's
+    // DN - not via a subtree search.
+    if let Ok(tg_result) = ldap.search(
+        &user_dn,
+        ldap3::Scope::Base,
+        "(objectClass=*)",
+        vec!["tokenGroups"],
+    ) {
+        if let Ok((tg_entries, _)) = tg_result.success() {
+            if let Some(raw) = tg_entries.into_iter().next() {
+                let tg_entry = ldap3::SearchEntry::construct(raw);
+                if let Some(groups) = tg_entry.bin_attrs.get("tokenGroups") {
+                    for sid_bytes in groups {
+                        if let Ok(sid) = LdapSid::from_bytes(sid_bytes) {
+                            relevant_sids.insert(sid.to_string());
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     if let Some(member_of) = user_entry.attrs.get("memberOf") {
         debug_log(
             2,
@@ -77,7 +129,10 @@ pub fn get_ace_dacl(
         );
         println!("\n[*] Resolving group memberships...");
         for group_dn in member_of {
-            let group_filter = format!("(distinguishedName={})", group_dn);
+            // DN substrings holding '(', ')', '*' or '\' must be escaped or
+            // the filter parse fails and the if-let swallows it, hiding
+            // group memberships like "Helpdesk (Tier 1)" from the audit.
+            let group_filter = format!("(distinguishedName={})", crate::ldap::escape_filter(group_dn));
             if let Ok(groups) = search_objects(ldap, search_base, &group_filter, ldap_config) {
                 if let Some(group) = groups.first() {
                     if let Some(sid_values) = group.bin_attrs.get("objectSid") {
@@ -114,7 +169,14 @@ pub fn get_ace_dacl(
         ("(&(objectCategory=group)(adminCount=1))", "group"),
         ("(&(objectCategory=group)(groupType:1.2.840.113556.1.4.803:=2147483648)(!(adminCount=1)))", "group"),
         ("(objectCategory=organizationalUnit)", "organizational-unit"),
-        ("(objectCategory=domain)", "domain"),
+        // The domain-root object has `objectCategory=CN=Domain-DNS,CN=Schema,...`
+        // and `objectClass` of {top, domain, domainDNS}. AD does NOT resolve
+        // `(objectCategory=domain)` to the Domain-DNS schema class, so the
+        // previous filter matched zero objects - meaning the DACL on the
+        // domain root (where DCSync ACEs live) was never visited. Use
+        // objectClass=domainDNS, which unambiguously identifies the domain
+        // root irrespective of schema localisation.
+        ("(objectClass=domainDNS)", "domain"),
     ];
 
     let parser = AclParser::new();
@@ -294,6 +356,12 @@ impl PermissionCollector {
             "GenericWrite" => self.generic_write.push(entry),
             "GenericAll" => self.generic_all.push(entry),
             "CreateComputerObject" => self.create_computer_object.push(entry),
+            // The parser now emits dedicated right names for these two
+            // attribute writes; route them into the existing SPN and
+            // KeyCredentialLink buckets so those "Principals that can
+            // modify ..." categories actually populate.
+            "WriteSPN" => self.write_spn.push(entry),
+            "WriteKeyCredentialLink" => self.write_key_credential.push(entry),
             _ => {}
         }
     }
@@ -520,7 +588,7 @@ impl PermissionCollector {
         let mut log_file = File::create(&log_path)?;
         let separator = "--------------------";
         for dn in &affected_objects {
-            let filter = format!("(distinguishedName={})", dn);
+            let filter = format!("(distinguishedName={})", crate::ldap::escape_filter(dn));
             match query_full_object(ldap, search_base, &filter, config) {
                 Ok(entries) => {
                     if let Some(entry) = entries.first() {
@@ -595,9 +663,13 @@ fn search_objects(
             val: Some(paging_val),
         };
 
-        ldap.with_controls(vec![sd_control.clone(), paging_control]);
-
+        let paging_control_clone = paging_control.clone();
         let (results, res) = retry_with_reconnect!(ldap, config, {
+            // Reapply the SD/paging controls inside the retry: a reconnect
+            // hands back a fresh LdapConn with no controls installed, and
+            // without the SD-flags control the next search returns empty
+            // nTSecurityDescriptor attributes for non-admins.
+            ldap.with_controls(vec![sd_control.clone(), paging_control_clone.clone()]);
             ldap.search(
                 search_base,
                 Scope::Subtree,
@@ -622,14 +694,12 @@ fn search_objects(
             match ctrl {
                 ldap3::controls::Control(_, raw) => {
                     if raw.ctype == "1.2.840.113556.1.4.319" {
-                        if let Some(val) = raw.val {
-                            if val.len() > 4 {
-                                let cookie_start =
-                                    val.len().saturating_sub(val[val.len() - 2] as usize);
-                                if cookie_start < val.len() {
-                                    cookie = val[cookie_start..].to_vec();
-                                }
-                            }
+                        if let Some(ref val) = raw.val {
+                            // Properly decode the RFC 2696 cookie SEQUENCE
+                            // rather than reading val[len-2] as the length,
+                            // which flagged the terminating page as having
+                            // a 4-byte cookie and looped forever.
+                            cookie = parse_paged_results_cookie(val).unwrap_or_default();
                         }
                         break;
                     }
@@ -850,13 +920,15 @@ fn query_full_object(
     filter: &str,
     config: &mut LdapConfig,
 ) -> Result<Vec<SearchEntry>, Box<dyn Error>> {
-    ldap.with_controls(vec![RawControl {
-        ctype: String::from("1.2.840.113556.1.4.801"),
-        crit: false,
-        val: Some(vec![0x30, 0x03, 0x02, 0x01, 0x07]),
-    }]);
-
     let mut search = retry_with_reconnect!(ldap, config, {
+        // Reapply the SD-flags control inside the retry block: a reconnect
+        // discards it, and without it the server strips nTSecurityDescriptor
+        // from the response for non-admins.
+        ldap.with_controls(vec![RawControl {
+            ctype: String::from("1.2.840.113556.1.4.801"),
+            crit: false,
+            val: Some(vec![0x30, 0x03, 0x02, 0x01, 0x07]),
+        }]);
         let adapters: Vec<Box<dyn Adapter<_, _>>> = vec![
             Box::new(EntriesOnly::new()),
             Box::new(PagedResults::new(500)),

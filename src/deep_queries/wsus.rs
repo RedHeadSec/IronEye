@@ -283,10 +283,16 @@ fn query_host_details(
     _config: &mut LdapConfig,
 ) -> Result<Option<SearchEntry>, Box<dyn Error>> {
     let short = hostname.split('.').next().unwrap_or(hostname);
+    // Escape ad-hoc hostname input before interpolation into an LDAP filter -
+    // a hostname containing '(' or '*' would otherwise break the filter and
+    // the search's error is caught by the enclosing `?`, dropping the host
+    // from WSUS enumeration silently.
+    let hostname_e = crate::ldap::escape_filter(hostname);
+    let short_e = crate::ldap::escape_filter(short);
     let filter = format!(
         "(&(objectCategory=computer)\
          (|(dNSHostName={})(cn={})(sAMAccountName={}$)))",
-        hostname, short, short
+        hostname_e, short_e, short_e
     );
 
     let entries = query_with_security_descriptor(
@@ -1022,8 +1028,15 @@ fn attr_str<'a>(
 }
 
 fn truncate(s: &str, max_len: usize) -> String {
-    if s.len() > max_len {
-        format!("{}...", &s[..max_len - 3])
+    // char-aware cutoff to avoid a panic on multi-byte input.
+    if s.chars().count() > max_len {
+        let keep = max_len.saturating_sub(3);
+        let cut = s
+            .char_indices()
+            .nth(keep)
+            .map(|(idx, _)| idx)
+            .unwrap_or(s.len());
+        format!("{}...", &s[..cut])
     } else {
         s.to_string()
     }

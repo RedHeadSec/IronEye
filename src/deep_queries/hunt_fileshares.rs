@@ -247,8 +247,16 @@ fn attr_str<'a>(
 }
 
 fn truncate(s: &str, max_len: usize) -> String {
-    if s.len() > max_len {
-        format!("{}...", &s[..max_len - 3])
+    // Count by chars + cut on a char boundary - the old byte-indexed form
+    // panicked on any multi-byte character and brought the whole row down.
+    if s.chars().count() > max_len {
+        let keep = max_len.saturating_sub(3);
+        let cut = s
+            .char_indices()
+            .nth(keep)
+            .map(|(idx, _)| idx)
+            .unwrap_or(s.len());
+        format!("{}...", &s[..cut])
     } else {
         s.to_string()
     }

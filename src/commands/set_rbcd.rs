@@ -7,7 +7,13 @@ use crate::retry_with_reconnect;
 use ldap3::{LdapConn, Mod, Scope};
 use std::collections::HashSet;
 
-const ADS_RIGHT_DS_CONTROL_ACCESS: u32 = 0x00000100;
+// For msDS-AllowedToActOnBehalfOfOtherIdentity, impacket, Rubeus, and
+// Set-ADComputer all write ADS_RIGHT_DS_GENERIC_ALL (0xF01FF). The old
+// value 0x100 (DS_CONTROL_ACCESS) is not what Windows generates for an
+// RBCD ACE, and a Kerberos S4U2Proxy using the resulting SD would not pass
+// the access check on 2019+ DCs - the operator sees the modify "succeed"
+// and then the subsequent abuse silently fails with KRB_AP_ERR_MODIFIED.
+const ADS_RIGHT_DS_CONTROL_ACCESS: u32 = 0x000F01FF;
 const ACL_REVISION_DS: u8 = 0x04;
 // BUILTIN\Administrators (S-1-5-32-544)
 const BUILTIN_ADMINS_SID: [u8; 16] = [

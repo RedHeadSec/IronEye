@@ -2,8 +2,21 @@ use crate::commands::ldap_utils::{handle_modify_error, resolve_object_dn, resolv
 use crate::help::add_terminal_spacing;
 use crate::ldap::LdapConfig;
 use crate::retry_with_reconnect;
+use ldap3::controls::RawControl;
 use ldap3::{LdapConn, Mod};
 use std::collections::HashSet;
+
+/// SD-flags control narrowed to OWNER_SECURITY_INFORMATION (0x01) so the
+/// modify only touches the owner field, leaving DACL/SACL/group as-is.
+/// Without this, the server replaces every section the SD describes - which
+/// here would clobber the DACL to an empty one.
+fn owner_only_sd_flags_control() -> RawControl {
+    RawControl {
+        ctype: "1.2.840.113556.1.4.801".to_string(),
+        crit: true,
+        val: Some(vec![0x30, 0x03, 0x02, 0x01, 0x01]),
+    }
+}
 
 pub fn set_owner(
     ldap: &mut LdapConn,
@@ -27,6 +40,7 @@ pub fn set_owner(
     sd_set.insert(sd);
 
     match retry_with_reconnect!(ldap, config, {
+        ldap.with_controls(vec![owner_only_sd_flags_control()]);
         ldap.modify(&target_dn, vec![Mod::Replace(attr.clone(), sd_set.clone())])
     }) {
         Ok(result) => match result.success() {

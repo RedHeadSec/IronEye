@@ -1,6 +1,7 @@
 use crate::help::add_terminal_spacing;
 use crate::ldap::{escape_filter, LdapConfig};
 use crate::retry_with_reconnect;
+use dialoguer::Confirm;
 use ldap3::{LdapConn, Scope};
 
 pub fn del_user(
@@ -12,8 +13,13 @@ pub fn del_user(
     add_terminal_spacing(1);
 
     let escaped_name = escape_filter(username);
+    // `objectClass=user` is inherited by `computer`, so without pinning
+    // objectCategory the old filter matched machine accounts too and the
+    // next LDAP delete silently removed the computer object. Combine with
+    // `objectCategory=person` so this stays a user-only operation; computer
+    // deletions go through del_computer.
     let search_filter = format!(
-        "(&(objectClass=user)\
+        "(&(objectCategory=person)(objectClass=user)\
          (sAMAccountName={}))",
         escaped_name
     );
@@ -69,6 +75,20 @@ pub fn del_user(
     let user_dn = entry.dn;
 
     println!("[*] Found user DN: {}", user_dn);
+
+    // Deletion is irreversible on prod ADs - require explicit confirmation.
+    // Previously this flow deleted without prompting, which combined with
+    // the computer-matching filter above meant a typo could nuke a host
+    // account on first invocation.
+    let confirmed = Confirm::new()
+        .with_prompt(format!("Delete {} ({}) ? This cannot be undone", username, user_dn))
+        .default(false)
+        .interact()?;
+    if !confirmed {
+        println!("[*] Deletion cancelled by operator");
+        add_terminal_spacing(1);
+        return Ok(());
+    }
 
     match retry_with_reconnect!(ldap, config, ldap.delete(&user_dn)) {
         Ok(result) => match result.success() {

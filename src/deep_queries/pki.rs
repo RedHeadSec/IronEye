@@ -79,6 +79,16 @@ pub fn get_pki_info(
         &format!("Found {} certificate templates", templates.len()),
     );
 
+    // Resolve "enabled" against the set of templates that pKIEnrollmentServices
+    // actually publish. A template with no issuing CA is dormant - ESC1/ESC2
+    // on it is not reachable.
+    let published = published_template_names(&enrollment_entries);
+    if !published.is_empty() {
+        for t in templates.iter_mut() {
+            t.enabled = published.contains(&t.name);
+        }
+    }
+
     let mut domain_sid = String::new();
     for template in &templates {
         for sid in &template.permissions.enrollment_rights {
@@ -182,11 +192,15 @@ fn get_certificate_authorities(
     )?;
     debug_log(3, &format!("Retrieved {} CA entries", ca_entries.len()));
 
+    // Enrollment Services holds the ISSUING CAs (the ones actually online for
+    // enrollment) and advertises `certificateTemplates`. Reading just the CA
+    // container misses the templates/host mapping entirely in a two-tier PKI,
+    // where the root CA is offline and only subordinate CAs issue.
     let enrollment_entries = query_with_security_descriptor(
         ldap,
         &enrollment_base,
         "(objectClass=*)",
-        vec!["cn", "dNSHostName"],
+        vec!["cn", "dNSHostName", "certificateTemplates"],
     )?;
     debug_log(
         3,
@@ -198,7 +212,9 @@ fn get_certificate_authorities(
 
     let mut cas = Vec::new();
     let mut raw_entries = Vec::new();
+    let mut seen_names: std::collections::HashSet<String> = std::collections::HashSet::new();
 
+    // Walk Certification Authorities (NTAuth / root objects) first.
     for entry in ca_entries {
         let ca_cert = entry.bin_attrs.get("cACertificate").and_then(|v| v.get(0));
 
@@ -245,6 +261,7 @@ fn get_certificate_authorities(
                 )
             };
 
+        seen_names.insert(ca_name.clone());
         cas.push(CertificateAuthority {
             name: ca_name,
             dns_name,
@@ -257,7 +274,53 @@ fn get_certificate_authorities(
         raw_entries.push(entry);
     }
 
+    // Also surface every pKIEnrollmentService (the online issuing CAs) that
+    // the Certification Authorities container did not already cover. In a
+    // two-tier PKI the root is offline and only appears under Certification
+    // Authorities, while the subordinate issuing CA (which is what actually
+    // signs ESC1/ESC2-abusable requests) only shows up here.
+    for entry in &enrollment_entries {
+        let name = entry
+            .attrs
+            .get("cn")
+            .and_then(|v| v.get(0))
+            .map_or("Unknown CA".to_string(), |s| s.clone());
+        if seen_names.contains(&name) {
+            continue;
+        }
+        let dns_name = entry
+            .attrs
+            .get("dNSHostName")
+            .and_then(|v| v.get(0))
+            .map_or("Unknown".to_string(), |v| v.clone());
+        cas.push(CertificateAuthority {
+            name,
+            dns_name,
+            cert_subject: "Enrollment Service (no cACertificate on this object)".to_string(),
+            cert_serial: "Unknown".to_string(),
+            validity_start: "Unknown".to_string(),
+            validity_end: "Unknown".to_string(),
+        });
+    }
+
     Ok((cas, raw_entries, enrollment_entries))
+}
+
+/// Collect every template name any pKIEnrollmentService publishes - these
+/// are the templates a CA will actually issue. We can't infer "enabled" from
+/// the template object's own `flags` (bit 0x2 is ADD_EMAIL on
+/// pKICertificateTemplate, not an enabled bit; the default User template has
+/// that set and the old code dropped it as "disabled").
+fn published_template_names(enrollment_entries: &[SearchEntry]) -> std::collections::HashSet<String> {
+    let mut names = std::collections::HashSet::new();
+    for entry in enrollment_entries {
+        if let Some(values) = entry.attrs.get("certificateTemplates") {
+            for v in values {
+                names.insert(v.clone());
+            }
+        }
+    }
+    names
 }
 
 fn get_certificate_templates(
@@ -324,11 +387,16 @@ fn get_certificate_templates(
             .and_then(|s| s.parse::<u32>().ok())
             .unwrap_or(0);
 
+        // msPKI-Certificate-Name-Flag is a signed 32-bit integer in AD. For
+        // templates with bit 31 set (CT_FLAG_SUBJECT_REQUIRE_DIRECTORY_PATH
+        // and friends) parsing as u32 fails and we lose every flag; parse as
+        // i32 and reinterpret the bits.
         let name_flags = template_entry
             .attrs
             .get("msPKI-Certificate-Name-Flag")
             .and_then(|v| v.first())
-            .and_then(|s| s.parse::<u32>().ok())
+            .and_then(|s| s.parse::<i32>().ok())
+            .map(|v| v as u32)
             .unwrap_or(0);
 
         let enrollment_flags = template_entry
@@ -351,7 +419,16 @@ fn get_certificate_templates(
             .attrs
             .get("msPKI-Certificate-Application-Policy");
 
-        let enabled = (flags & 0x2) == 0; // CT_FLAG_PEND_ALL_REQUESTS not set
+        // A template is "enabled" when at least one pKIEnrollmentService
+        // publishes it in `certificateTemplates`. The old check -
+        // `(flags & 0x2) == 0` - was wrong: on pKICertificateTemplate the
+        // `flags` 0x2 bit is CT_FLAG_ADD_EMAIL, which the default User
+        // template sets, so it was incorrectly reported as disabled and
+        // dropped from the report. We'll resolve this after we've read the
+        // enrollment services; for now default to true (the per-entry pass
+        // below adjusts it before display).
+        let _ = flags; // retained for raw export even though we no longer gate on it
+        let enabled = true;
         let requires_approval = (enrollment_flags & 0x2) != 0; // PEND_ALL_REQUESTS
         let allows_san = (name_flags & 0x1) != 0; // ENROLLEE_SUPPLIES_SUBJECT
         let enrollee_supplies_subject = (name_flags & 0x1) != 0;

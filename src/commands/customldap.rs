@@ -228,10 +228,13 @@ fn ldap_query(
     );
     debug::debug_log(3, format!("LDAP search attributes: {:?}", attributes));
 
+    // SD-flags control value must be BER: SEQUENCE { INTEGER 0x07 } ==
+    // 30 03 02 01 07. The previous raw [7,0,0,0] isn't valid BER, so the
+    // DC silently returned no nTSecurityDescriptor to non-admin callers.
     ldap.with_controls(vec![RawControl {
         ctype: String::from("1.2.840.113556.1.4.801"),
         crit: false,
-        val: Some(vec![7, 0, 0, 0]),
+        val: Some(vec![0x30, 0x03, 0x02, 0x01, 0x07]),
     }]);
 
     let adapters: Vec<Box<dyn Adapter<_, _>>> = vec![
@@ -303,8 +306,17 @@ fn generate_output_path(filter: &str, config: &LdapConfig) -> Result<PathBuf, Bo
         .filter(|c| c.is_alphanumeric() || *c == '_')
         .collect::<String>();
 
-    if safe_part.len() > 20 {
-        safe_part = safe_part[..20].to_string();
+    // Char-aware truncation - the old byte-index slice `safe_part[..20]`
+    // panics if the filter contains any multi-byte character. The upstream
+    // filter is pre-filtered to ASCII alphanumeric + '_', so this is defence
+    // in depth, but it's cheap and keeps the whole command from crashing.
+    if safe_part.chars().count() > 20 {
+        let cut = safe_part
+            .char_indices()
+            .nth(20)
+            .map(|(idx, _)| idx)
+            .unwrap_or(safe_part.len());
+        safe_part = safe_part[..cut].to_string();
     }
 
     let filename = format!("ironeye_ldap_query_{}_{}.log", safe_part, timestamp);

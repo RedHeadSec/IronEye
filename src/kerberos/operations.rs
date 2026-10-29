@@ -299,6 +299,10 @@ impl KerberosOps {
         let mut hashes = Vec::new();
         let channel = new_krb_channel(self.dc_ip, self.protocol);
 
+        let mut required_preauth = 0usize;
+        let mut not_found = 0usize;
+        let mut other_errors = 0usize;
+
         for username in usernames {
             let user = KrbUser::new(username.clone(), self.domain.clone());
 
@@ -309,16 +313,39 @@ impl KerberosOps {
                     println!("[+] {} → hash extracted", username);
                     hashes.push(hash);
                 }
-                Err(_) => {
-                    // User requires pre-auth or doesn't exist, skip silently
+                Err(e) => {
+                    // Distinguish the real failure modes instead of printing
+                    // "all require pre-authentication" even for unknown users
+                    // or network errors - that message is why operators thought
+                    // their user list was clean when it was actually full of
+                    // typos.
+                    let msg = format!("{}", e);
+                    let msg_lower = msg.to_lowercase();
+                    if msg_lower.contains("preauth") || msg_lower.contains("pre-authentication") {
+                        required_preauth += 1;
+                    } else if msg_lower.contains("client_not_found")
+                        || msg_lower.contains("c_principal_unknown")
+                        || msg_lower.contains("principal unknown")
+                    {
+                        not_found += 1;
+                    } else {
+                        other_errors += 1;
+                        eprintln!("[!] {} → {}", username, msg);
+                    }
                 }
             }
         }
 
         if hashes.is_empty() {
-            println!("[!] No vulnerable users found (all require pre-authentication)");
+            println!(
+                "[!] No vulnerable users found - preauth-required: {}, unknown principal: {}, other errors: {}",
+                required_preauth, not_found, other_errors
+            );
         } else {
-            println!("[+] Found {} vulnerable user(s)", hashes.len());
+            println!(
+                "[+] Found {} vulnerable user(s) (preauth-required: {}, unknown: {}, other errors: {})",
+                hashes.len(), required_preauth, not_found, other_errors
+            );
         }
 
         Ok(hashes)
@@ -343,11 +370,18 @@ impl KerberosOps {
 
         let service_name = cerbero_lib::core::forge::new_nt_srv_inst(spn);
         let mut kdccomm_mut = kdccomm;
+        // Honor the OPSEC "RC4 only" (or "AES only" / "AES+RC4") choice when
+        // asking the KDC for a TGS - the DC picks the strongest etype in
+        // this list that the SPN's key is encrypted with. Previously this
+        // was always None, so a GMSA/computer with an AES key gave back an
+        // AES-256 hash and the "RC4 only" setting didn't influence roasting
+        // output at all.
+        let etypes = crate::kerberos::opsec::get().enctypes.as_etypes_vec();
         let tgs = cerbero_lib::request_regular_tgs(
             user,
             service_name.clone(),
             tgt,
-            None,
+            etypes,
             &mut kdccomm_mut,
         )?;
 
@@ -408,11 +442,13 @@ impl KerberosOps {
 
             let mut kdccomm = self.create_kdccomm();
 
+            // Honor the OPSEC enctype choice for each target TGS request.
+            let etypes = crate::kerberos::opsec::get().enctypes.as_etypes_vec();
             match cerbero_lib::request_regular_tgs(
                 user.clone(),
                 service_name.clone(),
                 tgt.clone(),
-                None,
+                etypes,
                 &mut kdccomm,
             ) {
                 Ok(tgs) => {
@@ -454,7 +490,17 @@ impl KerberosOps {
     ) -> CerberoResult<()> {
         println!("[*] Renewing ticket(s) from {}", input_file);
 
-        let outcome = self.renew_once(input_file, output_file)?;
+        // Separate real "nothing left to renew" from an outright renewal
+        // failure. The old code called every renew_once failure "at maximum
+        // renewable lifetime", which hid network, KDC and credential errors
+        // and silently exited the monitor instead of reporting them.
+        let outcome = match self.renew_once(input_file, output_file) {
+            Ok(o) => o,
+            Err(e) => {
+                eprintln!("[!] Renewal failed: {}", e);
+                return Err(e);
+            }
+        };
 
         if outcome.renewed == 0 {
             if outcome.renewable_seen == 0 {
@@ -464,7 +510,9 @@ impl KerberosOps {
                 );
             } else {
                 println!(
-                    "[!] No tickets could be renewed (already at maximum renewable lifetime)"
+                    "[!] No tickets could be renewed; at least one renewable ticket \
+                     was present. Likely causes: KDC refused the renewal (clock skew, \
+                     renew-till reached, policy change) - inspect KDC event logs."
                 );
             }
             return Ok(());

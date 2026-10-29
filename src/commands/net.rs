@@ -523,10 +523,13 @@ fn net_computer(
             }
         }
 
+        // Self-relative SD -> always lands in bin_attrs; check both maps.
         if comp_entry
             .attrs
-            .get("msDS-AllowedToActOnBehalfOfOtherIdentity")
-            .is_some()
+            .contains_key("msDS-AllowedToActOnBehalfOfOtherIdentity")
+            || comp_entry
+                .bin_attrs
+                .contains_key("msDS-AllowedToActOnBehalfOfOtherIdentity")
         {
             println!("RBCD: \t\t\tResource-Based Constrained Delegation configured");
         }
@@ -578,6 +581,9 @@ fn net_group(
             &filter,
             vec![
                 "member",
+                // Also request the first ranged page explicitly - AD returns
+                // membership of >1500 members as `member;range=0-1499`.
+                "member;range=0-1499",
                 "description",
                 "memberOf",
                 "objectClass",
@@ -700,7 +706,19 @@ fn net_group(
         println!("\nGroup Members:");
         println!("-------------------------------------------------------------------------------");
 
-        if let Some(members) = group_entry.attrs.get("member") {
+        // AD paginates linked attributes above `MaxValRange` (default 1500);
+        // the attribute then comes back as `member;range=0-1499`. The old
+        // code only looked up `member` and silently reported empty members
+        // for every production group that size. Try both spellings.
+        let member_values: Option<Vec<String>> = group_entry.attrs.get("member").cloned().or_else(|| {
+            group_entry
+                .attrs
+                .iter()
+                .find(|(k, _)| k.starts_with("member;range="))
+                .map(|(_, v)| v.clone())
+        });
+
+        if let Some(members) = member_values.as_ref() {
             debug_log(2, &format!("Enumerating {} group members", members.len()));
             let mut user_count = 0;
             let mut computer_count = 0;
@@ -783,14 +801,48 @@ fn net_group(
     Ok(())
 }
 
-fn decode_group_type(group_type: i64) -> &'static str {
-    match group_type {
-        -2147483646 => "Global Security Group",
-        -2147483644 => "Domain Local Security Group",
-        -2147483640 => "Universal Security Group",
-        2 => "Global Distribution Group",
-        4 => "Domain Local Distribution Group",
-        8 => "Universal Distribution Group",
-        _ => "Unknown Group Type",
-    }
+/// Decode `groupType` as the bit-flag field it actually is (MS-ADTS 2.2.12).
+///
+/// The old implementation exact-matched a handful of signed integers, so
+/// anything with an unexpected flag combination (e.g. `BUILTIN | DOMAIN_LOCAL
+/// | SECURITY = 0x80000005 = -2147483643`, the value every BUILTIN group has)
+/// came back as "Unknown Group Type". groupType in AD is a 32-bit bitmask,
+/// so decode each flag independently.
+fn decode_group_type(group_type: i64) -> String {
+    // groupType is a 32-bit value stored as a signed integer in LDAP.
+    // Reinterpret the low 32 bits as unsigned so SECURITY_ENABLED (0x80000000)
+    // isn't lost to sign-extension.
+    let flags = (group_type as i32) as u32;
+
+    const BUILTIN: u32 = 0x0000_0001;
+    const GLOBAL: u32 = 0x0000_0002;
+    const DOMAIN_LOCAL: u32 = 0x0000_0004;
+    const UNIVERSAL: u32 = 0x0000_0008;
+    const APP_BASIC: u32 = 0x0000_0010;
+    const APP_QUERY: u32 = 0x0000_0020;
+    const SECURITY_ENABLED: u32 = 0x8000_0000;
+
+    let scope = if flags & BUILTIN != 0 {
+        "BUILTIN Local"
+    } else if flags & DOMAIN_LOCAL != 0 {
+        "Domain Local"
+    } else if flags & GLOBAL != 0 {
+        "Global"
+    } else if flags & UNIVERSAL != 0 {
+        "Universal"
+    } else if flags & APP_BASIC != 0 {
+        "App Basic"
+    } else if flags & APP_QUERY != 0 {
+        "App Query"
+    } else {
+        "Unknown Scope"
+    };
+
+    let kind = if flags & SECURITY_ENABLED != 0 {
+        "Security Group"
+    } else {
+        "Distribution Group"
+    };
+
+    format!("{} {}", scope, kind)
 }

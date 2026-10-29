@@ -223,7 +223,16 @@ fn validate_and_prepare_ccache(
                 ),
             );
 
-            let temp_path = format!("/tmp/ironeye_impersonated_{}.ccache", std::process::id());
+            // Keep temp ccaches inside the process-owned temp dir rather
+            // than a world-writable, predictable /tmp path - and on Linux
+            // also chmod 600 so that even if the dir is shared the ticket
+            // isn't readable by other users. Windows doesn't honor POSIX
+            // modes but its default temp dir is per-user already.
+            let temp_dir = std::env::temp_dir();
+            let temp_path = temp_dir
+                .join(format!("ironeye_impersonated_{}.ccache", std::process::id()))
+                .to_string_lossy()
+                .to_string();
             let impersonated_ccache = create_impersonated_ccache(&ccache, cred);
 
             write_ccache_file(&impersonated_ccache, &temp_path).map_err(|e| LdapError::Io {
@@ -232,6 +241,15 @@ fn validate_and_prepare_ccache(
                     format!("Failed to write impersonated ccache: {}", e),
                 ),
             })?;
+
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::PermissionsExt;
+                let _ = std::fs::set_permissions(
+                    &temp_path,
+                    std::fs::Permissions::from_mode(0o600),
+                );
+            }
 
             debug::debug_log(
                 1,
@@ -298,8 +316,18 @@ fn perform_kerberos_bind(
         1,
         format!("Attempting SASL GSSAPI bind to {}", gssapi_target),
     );
-    let bind_result = ldap.sasl_gssapi_bind(&gssapi_target)?.success();
-    debug::debug_log(1, "SASL GSSAPI bind successful");
+
+    // Previously this line used `?` on sasl_gssapi_bind, which short-circuits
+    // on a transport-level error (missing creds, unknown SPN, ...) and skips
+    // the KRB5CCNAME / KRB5_CONFIG restore AND the temp-file cleanup below.
+    // The process ended up still pointed at the impersonated temp ccache,
+    // which the next `-k` connect silently preferred, and the temp .ccache
+    // stayed on disk at a predictable /tmp path.
+    let outer_bind = ldap.sasl_gssapi_bind(&gssapi_target);
+    let bind_result = match outer_bind {
+        Ok(r) => r.success(),
+        Err(e) => Err(e),
+    };
 
     restore_krb5ccname(original_krb5ccname);
     restore_krb5_config_env(original_krb5_config);
@@ -312,6 +340,7 @@ fn perform_kerberos_bind(
     }
 
     bind_result?;
+    debug::debug_log(1, "SASL GSSAPI bind successful");
     Ok(())
 }
 
@@ -393,6 +422,9 @@ fn try_connect_starttls(
         println!("[{}]\n", get_timestamp());
     }
 
+    // Transport is now TLS, even though we're on port 389 - treat as secure
+    // so password-set style operations don't refuse the session and the
+    // connection banner doesn't mislabel it as plain LDAP.
     config.starttls = true;
     config.secure_ldaps = false;
 
@@ -778,11 +810,17 @@ pub fn escape_filter(input: &str) -> String {
 }
 
 pub fn extract_sid(search_entry: &SearchEntry) -> Option<String> {
+    // objectSid can land in either map depending on whether its raw bytes
+    // happen to decode as UTF-8 - every BUILTIN SID does (all bytes < 0x80),
+    // so a check against bin_attrs alone misses S-1-5-32-544 ("Administrators")
+    // and friends.
     if let Some(sid_values) = search_entry.bin_attrs.get("objectSid") {
-        Some(format_sid(&sid_values[0]))
-    } else {
-        None
+        return sid_values.first().map(|b| format_sid(b));
     }
+    if let Some(sid_values) = search_entry.attrs.get("objectSid") {
+        return sid_values.first().map(|s| format_sid(s.as_bytes()));
+    }
+    None
 }
 
 pub fn format_guid(guid: &[u8]) -> String {

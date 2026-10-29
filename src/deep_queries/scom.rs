@@ -231,7 +231,13 @@ fn query_management_groups(
     base: &str,
     config: &mut LdapConfig,
 ) -> Result<Vec<String>, Box<dyn Error>> {
-    let filter = "(&(objectClass=container)(distinguishedName=CN=*,CN=OperationsManager,*))";
+    // AD doesn't evaluate substring matches against DN-syntax attributes
+    // (distinguishedName uses matching rule distinguishedNameMatch, which is
+    // equality-only). The old `distinguishedName=CN=*,CN=OperationsManager,*`
+    // filter is a parse error and the server returned nothing. Walk the
+    // OperationsManager container directly and let the result's parent DN
+    // tell us whether each container is a management group.
+    let filter = "(objectClass=container)";
     let result = retry_with_reconnect!(ldap, config, {
         ldap.search(
             base,
@@ -250,14 +256,15 @@ fn query_management_groups(
                 .attrs
                 .get("distinguishedName")
                 .and_then(|v| v.get(0))
-                .cloned();
+                .cloned()?;
 
-            if let Some(dn_val) = &dn {
-                if dn_val.contains("CN=OperationsManager,")
-                    && !dn_val.starts_with("CN=OperationsManager,")
-                {
-                    return entry.attrs.get("cn").and_then(|v| v.get(0)).cloned();
-                }
+            // Management groups live directly under CN=OperationsManager,
+            // e.g. CN=MG1,CN=OperationsManager,DC=... - keep those and skip
+            // the OperationsManager container itself.
+            if dn.to_ascii_lowercase().contains("cn=operationsmanager,")
+                && !dn.to_ascii_lowercase().starts_with("cn=operationsmanager,")
+            {
+                return entry.attrs.get("cn").and_then(|v| v.get(0)).cloned();
             }
             None
         })
@@ -271,7 +278,10 @@ fn query_scp_objects(
     base: &str,
     config: &mut LdapConfig,
 ) -> Result<Vec<String>, Box<dyn Error>> {
-    let filter = "(&(objectClass=serviceConnectionPoint)(|(cn=HealthServiceSCP)(distinguishedName=*OperationsManager*)))";
+    // DN substring matches don't work in AD (see query_management_groups).
+    // Query every serviceConnectionPoint and filter the DN client-side for
+    // anything under OperationsManager, plus the well-known HealthServiceSCP cn.
+    let filter = "(objectClass=serviceConnectionPoint)";
     let result = retry_with_reconnect!(ldap, config, {
         ldap.search(
             base,
@@ -286,11 +296,25 @@ fn query_scp_objects(
         .into_iter()
         .filter_map(|entry| {
             let entry = SearchEntry::construct(entry);
-            entry
+            let dn = entry
                 .attrs
                 .get("distinguishedName")
                 .and_then(|v| v.get(0))
-                .cloned()
+                .cloned()?;
+            let cn = entry
+                .attrs
+                .get("cn")
+                .and_then(|v| v.get(0))
+                .map(|s| s.as_str())
+                .unwrap_or("");
+
+            if cn.eq_ignore_ascii_case("HealthServiceSCP")
+                || dn.to_ascii_lowercase().contains("operationsmanager")
+            {
+                Some(dn)
+            } else {
+                None
+            }
         })
         .collect();
 
@@ -302,7 +326,10 @@ fn query_scom_security_groups(
     base: &str,
     config: &mut LdapConfig,
 ) -> Result<Vec<String>, Box<dyn Error>> {
-    let filter = "(&(objectClass=group)(distinguishedName=CN=*,CN=*,CN=OperationsManager,*))";
+    // DN substring matches aren't supported for DN syntax (see
+    // query_management_groups). Pull every group and filter DNs that live
+    // inside the OperationsManager container client-side.
+    let filter = "(objectClass=group)";
     let result = retry_with_reconnect!(ldap, config, {
         ldap.search(
             base,
@@ -317,18 +344,21 @@ fn query_scom_security_groups(
         .into_iter()
         .filter_map(|entry| {
             let entry = SearchEntry::construct(entry);
-            let cn = entry.attrs.get("cn").and_then(|v| v.get(0)).cloned();
             let dn = entry
                 .attrs
                 .get("distinguishedName")
                 .and_then(|v| v.get(0))
-                .cloned();
+                .cloned()?;
 
-            match (cn, dn) {
-                (Some(c), Some(d)) => Some(format!("{} ({})", c, d)),
-                (Some(c), None) => Some(c),
-                _ => None,
+            if !dn.to_ascii_lowercase().contains("operationsmanager") {
+                return None;
             }
+
+            let cn = entry.attrs.get("cn").and_then(|v| v.get(0)).cloned();
+            Some(match cn {
+                Some(c) => format!("{} ({})", c, dn),
+                None => dn,
+            })
         })
         .collect();
 

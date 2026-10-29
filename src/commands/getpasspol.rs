@@ -115,6 +115,11 @@ fn query_fine_grained_policies(
                 "msDS-PasswordComplexityEnabled",
                 "msDS-PasswordReversibleEncryptionAllowed",
                 "msDS-PasswordSettingsPrecedence",
+                // Pull the PSO's target set too; without this the operator
+                // never sees who the FGPP actually covers, and PSOs with no
+                // targets (effectively dead) look identical to ones that
+                // apply to the whole org.
+                "msDS-PSOAppliesTo",
             ],
         )
     })?;
@@ -159,6 +164,15 @@ fn display_password_policy(entry: &SearchEntry) {
     }
     if let Some(lockout_threshold) = entry.attrs.get("lockoutThreshold").and_then(|v| v.first()) {
         println!("Account Lockout Threshold: {}", lockout_threshold);
+        // A zero threshold is the single most important field for spray
+        // planning - the domain has no lockout at all - but the old display
+        // treated it like any other integer. Call it out explicitly.
+        if lockout_threshold.trim() == "0" {
+            println!(
+                "  [!] WARNING: Lockout Threshold = 0 means accounts are NEVER locked - \
+                 domain-wide spraying is safe from a lockout standpoint."
+            );
+        }
     }
     if let Some(lockout_duration) = entry.attrs.get("lockoutDuration").and_then(|v| v.first()) {
         if let Ok(duration) = lockout_duration.parse::<i64>() {
@@ -222,6 +236,65 @@ fn display_fine_grained_policy(entry: &SearchEntry) {
             println!("Minimum Password Age: {}", format_time_interval(age));
         }
     }
+
+    // The remaining FGPP fields the first version omitted entirely. They are
+    // what you have to look at to tell whether the policy is reachable
+    // (`msDS-PSOAppliesTo`), whether brute-forcing an account is safe
+    // (`msDS-LockoutThreshold`), and how long the lockout holds
+    // (`msDS-LockoutDuration` / `-ObservationWindow`).
+    if let Some(threshold) = entry
+        .attrs
+        .get("msDS-LockoutThreshold")
+        .and_then(|v| v.first())
+    {
+        println!("Lockout Threshold: {}", threshold);
+        if threshold.trim() == "0" {
+            println!(
+                "  [!] WARNING: Lockout Threshold is 0 (no lockout) - safe for password \
+                 spraying against accounts covered by this PSO."
+            );
+        }
+    }
+    if let Some(duration) = entry
+        .attrs
+        .get("msDS-LockoutDuration")
+        .and_then(|v| v.first())
+    {
+        if let Ok(interval) = duration.parse::<i64>() {
+            println!("Lockout Duration: {}", format_time_interval(interval));
+        }
+    }
+    if let Some(window) = entry
+        .attrs
+        .get("msDS-LockoutObservationWindow")
+        .and_then(|v| v.first())
+    {
+        if let Ok(interval) = window.parse::<i64>() {
+            println!("Lockout Observation Window: {}", format_time_interval(interval));
+        }
+    }
+    if let Some(complex) = entry
+        .attrs
+        .get("msDS-PasswordComplexityEnabled")
+        .and_then(|v| v.first())
+    {
+        println!("Complexity Enabled: {}", complex);
+    }
+    if let Some(reversible) = entry
+        .attrs
+        .get("msDS-PasswordReversibleEncryptionAllowed")
+        .and_then(|v| v.first())
+    {
+        println!("Reversible Encryption Allowed: {}", reversible);
+    }
+    if let Some(applies_to) = entry.attrs.get("msDS-PSOAppliesTo") {
+        println!("Applies to:");
+        for dn in applies_to {
+            println!("  - {}", dn);
+        }
+    } else {
+        println!("Applies to: (no msDS-PSOAppliesTo entries - PSO is unlinked)");
+    }
 }
 
 fn format_time_interval(interval: i64) -> String {
@@ -237,7 +310,11 @@ fn format_time_interval(interval: i64) -> String {
     format!("{}d {}h {}m", days, hours, minutes)
 }
 
-// Interprets `pwdProperties` bitmask into human-readable flags
+// Interprets `pwdProperties` bitmask into human-readable flags. See
+// MS-SAMR 2.2.1.1 (DOMAIN_PASSWORD_INFORMATION): previously we only
+// decoded the first two bits, so operators never saw whether the domain
+// was storing cleartext/reversible, requiring the admin lockout, or
+// forcing complex passwords - the whole point of the summary.
 fn interpret_pwd_properties(pwd_properties: &str) -> Vec<String> {
     let properties = pwd_properties.parse::<i32>().unwrap_or(0);
     let mut policies = Vec::new();
@@ -247,6 +324,18 @@ fn interpret_pwd_properties(pwd_properties: &str) -> Vec<String> {
     }
     if properties & 0x2 != 0 {
         policies.push("DOMAIN_PASSWORD_NO_ANON_CHANGE".to_string());
+    }
+    if properties & 0x4 != 0 {
+        policies.push("DOMAIN_PASSWORD_NO_CLEAR_CHANGE".to_string());
+    }
+    if properties & 0x8 != 0 {
+        policies.push("DOMAIN_LOCKOUT_ADMINS".to_string());
+    }
+    if properties & 0x10 != 0 {
+        policies.push("DOMAIN_PASSWORD_STORE_CLEARTEXT (!)".to_string());
+    }
+    if properties & 0x20 != 0 {
+        policies.push("DOMAIN_REFUSE_PASSWORD_CHANGE".to_string());
     }
 
     policies

@@ -65,7 +65,31 @@ pub fn spawn(ldap: Arc<Mutex<LdapConn>>) -> KeepAliveHandle {
                 continue;
             }
 
-            if let Ok(mut conn) = ldap.try_lock() {
+            // Try the lock first - a successful try means no command is in
+            // flight and we can ping right away.
+            //
+            // On a miss, fall back to a BLOCKING `lock()`. The main thread
+            // holds the LdapConn mutex for the whole dispatch_command
+            // call, including nested menus like Deep Queries and Actions
+            // where the operator can sit on a dialog for minutes. The old
+            // try_lock-only path meant the ping literally never fired
+            // during the menus where idle disconnects were most likely.
+            // Blocking here is fine: an actual LDAP I/O command releases
+            // the lock between individual searches, so the main thread
+            // can still make forward progress, and dispatch's dialog
+            // prompts don't need the lock for anything else.
+            let maybe_conn = ldap.try_lock().ok().or_else(|| {
+                // Only block when the ping is overdue by at least one full
+                // configured interval - a quiet lock-contention tick is
+                // not worth stealing a slot from the main thread.
+                if last_ping.elapsed() >= interval + Duration::from_secs(1) {
+                    ldap.lock().ok()
+                } else {
+                    None
+                }
+            });
+
+            if let Some(mut conn) = maybe_conn {
                 let ping = conn
                     .search("", Scope::Base, "(objectClass=*)", vec!["1.1"])
                     .and_then(|r| r.success());
@@ -76,8 +100,6 @@ pub fn spawn(ldap: Arc<Mutex<LdapConn>>) -> KeepAliveHandle {
                 }
                 last_ping = Instant::now();
             }
-            // Lock held by the main thread: connection is in active use,
-            // skip this tick rather than waiting for it.
         }
     });
 

@@ -21,6 +21,26 @@ pub enum EncTypes {
 }
 
 impl EncTypes {
+    /// Numeric etype list to pass directly to cerbero's `request_regular_tgs`
+    /// / `request_tgs`. Keeps the OPSEC-selected enctype choice consistent
+    /// between the krb5.conf we generate and the TGS-REQ etypes field.
+    /// Previously kerberoasting always sent `None`, so AES-capable services
+    /// returned AES-256 TGS hashes and the "RC4 only" OPSEC setting had no
+    /// effect on roasting output.
+    pub fn as_etypes_vec(&self) -> Option<Vec<i32>> {
+        use kerberos_constants::etypes::*;
+        match self {
+            EncTypes::Negotiate => None,
+            EncTypes::AesOnly => Some(vec![AES256_CTS_HMAC_SHA1_96, AES128_CTS_HMAC_SHA1_96]),
+            EncTypes::AesAndRc4 => Some(vec![
+                AES256_CTS_HMAC_SHA1_96,
+                AES128_CTS_HMAC_SHA1_96,
+                RC4_HMAC,
+            ]),
+            EncTypes::Rc4Only => Some(vec![RC4_HMAC]),
+        }
+    }
+
     pub fn as_krb5_value(&self) -> Option<&'static str> {
         match self {
             EncTypes::Negotiate => None,

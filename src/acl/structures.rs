@@ -78,7 +78,12 @@ impl SecurityDescriptor {
     }
 
     pub fn is_acl_protected(&self) -> bool {
-        (self.control & 0x08) != 0
+        // SE_DACL_PROTECTED is bit 12 (0x1000) in the SD control word
+        // (MS-DTYP 2.4.6). The previous mask of 0x08 was SE_DACL_DEFAULTED,
+        // a completely different flag - so inheritance-broken DACLs (set-dacl
+        // writes one, and operators care about the state) were reported as
+        // not protected.
+        (self.control & 0x1000) != 0
     }
 }
 

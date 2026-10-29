@@ -71,8 +71,13 @@ pub fn set_spn(
         "add" => {
             let spn_value = spn.ok_or("SPN value is required for add action")?;
 
-            if current_spns.contains(&spn_value.to_string()) {
-                println!("[!] SPN {} already exists", spn_value);
+            // SPN uniqueness in AD is case-insensitive ("HTTP/host" and
+            // "http/host" collide); the old `.contains()` was case-sensitive
+            // so the operator could re-add an existing SPN in a different
+            // case, the DC would then reject it with "constraintViolation",
+            // and nothing explained why.
+            if current_spns.iter().any(|s| s.eq_ignore_ascii_case(spn_value)) {
+                println!("[!] SPN {} already exists (case-insensitive match)", spn_value);
                 add_terminal_spacing(1);
                 return Ok(());
             }
@@ -121,7 +126,12 @@ pub fn set_spn(
         "del" | "delete" => {
             let spn_value = spn.ok_or("SPN value is required for delete action")?;
 
-            if !current_spns.contains(&spn_value.to_string()) {
+            // SPNs are case-insensitive on AD; match that semantic here so
+            // "del HTTP/host" removes "http/host" too.
+            if !current_spns
+                .iter()
+                .any(|s| s.eq_ignore_ascii_case(spn_value))
+            {
                 println!("[!] SPN {} does not exist", spn_value);
                 add_terminal_spacing(1);
                 return Ok(());
@@ -129,7 +139,7 @@ pub fn set_spn(
 
             let new_spns: HashSet<&str> = current_spns
                 .iter()
-                .filter(|s| s.as_str() != spn_value)
+                .filter(|s| !s.as_str().eq_ignore_ascii_case(spn_value))
                 .map(String::as_str)
                 .collect();
 

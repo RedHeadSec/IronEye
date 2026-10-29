@@ -49,17 +49,19 @@ pub fn show_help_connect() {
 
     println!("\n=== Connect Submodule Options ===");
     println!("  1. 'Get SID/GUID' - Get SID/GUID of AD object.");
-    println!("  2. 'From SID/GUID' - Resolve object from SID/GUID");
-    println!("  3. 'Get SPNs' - Retrieve Service Principal Names (SPNs) for Kerberos services in the domain.");
-    println!("  4. 'Get ACE/DACL' - Analyze ACL permissions for a given user across all object categories.");
-    println!("  5. 'Machine Quota' - Check the machine account quota for the domain.");
-    println!("  6. 'Net Commands' - Execute predefined or custom network commands.");
-    println!("  7. 'Password Policy' - Retrieve and display the domain's password policy.");
-    println!("  8. 'Deep-Queries' - Perform predefined deep LDAP queries (e.g., users, computers, trusts).");
-    println!("  9. 'Custom LDAP Query' - Execute a custom LDAP query by providing a filter and attributes. BOFHound output compatiable!");
-    println!("  10. 'Actions' - Perform actions on AD objects.");
-    println!("  11. 'Help' - Show this help message.");
-    println!("  12. 'Back' - Return to the main menu.");
+    println!("  2. 'From SID/GUID' - Resolve object from SID/GUID.");
+    println!("  3. 'Get Domain Controllers' - List all Domain Controllers in the domain.");
+    println!("  4. 'Get SPNs' - Retrieve Service Principal Names (SPNs) for Kerberos services in the domain.");
+    println!("  5. 'Get ACE/DACL' - Analyze ACL permissions for a given user across all object categories.");
+    println!("  6. 'Machine Quota' - Check the machine account quota for the domain.");
+    println!("  7. 'Net Commands' - Execute predefined or custom network commands.");
+    println!("  8. 'Password Policy' - Retrieve and display the domain's password policy.");
+    println!("  9. 'Deep-Queries' - Perform predefined deep LDAP queries (e.g., users, computers, trusts).");
+    println!(" 10. 'Custom LDAP Query' - Execute a custom LDAP query by providing a filter and attributes. BOFHound output compatible!");
+    println!(" 11. 'Whoami' - Resolve the current authenticated identity, SID, groups and effective rights.");
+    println!(" 12. 'Actions' - Perform actions on AD objects.");
+    println!(" 13. 'Help' - Show this help message.");
+    println!(" 14. 'Back' - Return to the main menu.");
     println!("\n");
 }
 

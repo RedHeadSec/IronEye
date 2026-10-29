@@ -12,7 +12,10 @@ fn search_user(
     search_base: &str,
     object_name: &str,
 ) -> Result<Option<SearchEntry>, Box<dyn Error>> {
-    let filter = format!("(sAMAccountName={})", object_name);
+    let filter = format!(
+        "(sAMAccountName={})",
+        crate::ldap::escape_filter(object_name)
+    );
     debug::debug_log(2, format!("Searching for user with filter: {}", filter));
 
     let adapters: Vec<Box<dyn Adapter<_, _>>> = vec![

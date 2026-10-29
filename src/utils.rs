@@ -26,14 +26,33 @@ pub fn generate_password(length: usize) -> String {
     password.into_iter().collect()
 }
 
+/// Check whether a candidate password would satisfy the default Windows
+/// password-complexity policy. AD requires at least three of the four
+/// classes (upper, lower, digit, non-alphanumeric), not four of four,
+/// and the length check is on *characters*, not bytes. The previous
+/// 4-of-4 rule rejected plenty of passwords AD itself would have
+/// accepted (e.g. anything without a digit), and `password.len()`
+/// miscounted multi-byte characters so a 6-character password with
+/// accented letters could pass the 8-"byte" minimum.
+///
+/// Note: this is only a client-side pre-check. The server still runs
+/// its own policy (minimum length, history, dictionary filter, etc.);
+/// we don't try to replicate those here.
 pub fn validate_password_complexity(password: &str) -> bool {
     let has_upper = password.chars().any(|c| c.is_uppercase());
     let has_lower = password.chars().any(|c| c.is_lowercase());
     let has_digit = password.chars().any(|c| c.is_numeric());
     let has_special = password.chars().any(|c| !c.is_alphanumeric());
-    let min_length = password.len() >= 8;
 
-    has_upper && has_lower && has_digit && has_special && min_length
+    let class_count = [has_upper, has_lower, has_digit, has_special]
+        .iter()
+        .filter(|b| **b)
+        .count();
+
+    let char_count = password.chars().count();
+    let min_length = char_count >= 8;
+
+    class_count >= 3 && min_length
 }
 
 pub fn encode_password_for_ad(password: &str) -> Vec<u8> {
@@ -63,7 +82,19 @@ pub fn require_secure_connection(
     config: &LdapConfig,
     operation: &str,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    if !config.secure_ldaps && !config.kerberos {
+    // Any of these establishes a confidentiality-protected channel:
+    //   - LDAPS (:636 implicit TLS)       -> secure_ldaps = true
+    //   - StartTLS over :389              -> starttls = true
+    //   - SASL GSSAPI (Kerberos)          -> kerberos = true
+    //     (GSSAPI integrity+confidentiality is applied regardless of transport)
+    //   - Pass-the-Cert (cert_auth)       -> always runs on top of LDAPS or
+    //                                       StartTLS, so it's secure too.
+    // Previously only LDAPS or Kerberos counted; a StartTLS session
+    // (common on 2016/2019 DCs that don't publish LDAPS) was rejected
+    // even though it's cryptographically identical to LDAPS from the
+    // password-set standpoint.
+    let secure = config.secure_ldaps || config.kerberos || config.starttls || config.cert_auth;
+    if !secure {
         println!("[!] Secure connection required for {} operation", operation);
         println!("[!] Either:");
         println!("    1. Use Kerberos authentication (-k flag)");
